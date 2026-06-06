@@ -252,6 +252,104 @@ TIMUI_API TimuiRect timui_pad(TimuiRect r, int l, int t, int rr, int b);
 TIMUI_API void      timui_split_cols(TimuiRect r, float ratio, TimuiRect *a, TimuiRect *b);
 TIMUI_API void      timui_split_rows(TimuiRect r, float ratio, TimuiRect *a, TimuiRect *b);
 
+/* ---- Terminal transport (backend abstraction) ------------------------- *
+ * A vtable of read/write/flush/close over an opaque ctx. Real backends wrap
+ * file descriptors; the fake backend captures output and replays injected
+ * input so renderer/parser logic is unit-testable with no real terminal. */
+typedef struct TimuiTransport TimuiTransport;
+typedef int  (*TimuiTransportWrite)(TimuiTransport *t, const void *data, size_t len);
+typedef int  (*TimuiTransportRead)(TimuiTransport *t, void *buf, size_t cap);
+typedef int  (*TimuiTransportFlush)(TimuiTransport *t);
+typedef void (*TimuiTransportClose)(TimuiTransport *t);
+
+struct TimuiTransport {
+    TimuiTransportWrite  write;
+    TimuiTransportRead   read;
+    TimuiTransportFlush  flush;
+    TimuiTransportClose  close;
+    void                *ctx;
+};
+
+/* Fake transport (tests / no-real-terminal rendering). */
+typedef struct {
+    TimuiAllocator       alloc;
+    unsigned char       *out;
+    size_t               out_cap;
+    size_t               out_len;
+    const unsigned char *in;
+    size_t               in_len;
+    size_t               in_pos;
+} TimuiFakeTransport;
+
+TIMUI_API TimuiResult    timui_fake_init(TimuiFakeTransport *f, const TimuiAllocator *alloc);
+TIMUI_API void           timui_fake_destroy(TimuiFakeTransport *f);
+TIMUI_API void           timui_fake_set_input(TimuiFakeTransport *f, const void *bytes, size_t len);
+TIMUI_API TimuiStr       timui_fake_output(const TimuiFakeTransport *f);
+TIMUI_API void           timui_fake_clear_output(TimuiFakeTransport *f);
+TIMUI_API TimuiTransport timui_fake_transport(TimuiFakeTransport *f);
+
+/* ---- Screen mode setup/teardown (ANSI escape emission) --------------- *
+ * enter() emits the private-mode escapes for the requested flags plus an
+ * OSC title; exit() emits the matching 'l' resets in reverse order. */
+typedef struct {
+    uint32_t flags;   /* modes enabled by enter(); exit() reverses these */
+} TimuiScreenMode;
+
+TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_t flags, TimuiStr title);
+TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m);
+
+/* ---- Events ----------------------------------------------------------- */
+typedef enum {
+    TIMUI_EVENT_NONE = 0, TIMUI_EVENT_KEY, TIMUI_EVENT_TEXT, TIMUI_EVENT_MOUSE,
+    TIMUI_EVENT_PASTE, TIMUI_EVENT_RESIZE, TIMUI_EVENT_FOCUS,
+    TIMUI_EVENT_TIMER, TIMUI_EVENT_USER
+} TimuiEventKind;
+
+typedef enum {
+    TIMUI_KEY_UNKNOWN = 0, TIMUI_KEY_ESCAPE, TIMUI_KEY_ENTER, TIMUI_KEY_TAB,
+    TIMUI_KEY_BACKSPACE, TIMUI_KEY_DELETE, TIMUI_KEY_INSERT,
+    TIMUI_KEY_UP, TIMUI_KEY_DOWN, TIMUI_KEY_LEFT, TIMUI_KEY_RIGHT,
+    TIMUI_KEY_HOME, TIMUI_KEY_END, TIMUI_KEY_PAGE_UP, TIMUI_KEY_PAGE_DOWN,
+    TIMUI_KEY_F1, TIMUI_KEY_F2, TIMUI_KEY_F3, TIMUI_KEY_F4, TIMUI_KEY_F5,
+    TIMUI_KEY_F6, TIMUI_KEY_F7, TIMUI_KEY_F8, TIMUI_KEY_F9, TIMUI_KEY_F10,
+    TIMUI_KEY_F11, TIMUI_KEY_F12
+} TimuiKey;
+
+typedef enum {
+    TIMUI_MOD_NONE = 0, TIMUI_MOD_SHIFT = 1u << 0, TIMUI_MOD_ALT = 1u << 1,
+    TIMUI_MOD_CTRL = 1u << 2, TIMUI_MOD_SUPER = 1u << 3,
+    TIMUI_MOD_HYPER = 1u << 4, TIMUI_MOD_META = 1u << 5
+} TimuiMods;
+
+typedef enum { TIMUI_KEY_PRESS = 0, TIMUI_KEY_REPEAT, TIMUI_KEY_RELEASE } TimuiKeyAction;
+
+typedef struct {
+    TimuiEventKind kind;
+    union {
+        struct { TimuiKey key; uint32_t codepoint; uint32_t mods; TimuiKeyAction action; } key;
+        struct { const char *ptr; size_t len; uint32_t codepoint; } text;
+    } as;
+} TimuiEvent;
+
+/* ---- Input parser (legacy + CSI; incremental, callback-based) -------- *
+ * Feed raw input bytes; complete key/text events are delivered to cb. The
+ * parser holds state, so a sequence split across feeds still completes. */
+typedef struct {
+    int         state;     /* 0 ground, 1 esc, 2 csi, 3 ss3, 4 utf8 */
+    int         param;     /* current CSI numeric parameter */
+    int         nparams;   /* any parameter seen */
+    int         utf8_need;
+    int         utf8_len;
+    uint32_t    utf8_cp;
+    const char *utf8_ptr;
+} TimuiInputParser;
+
+typedef void (*TimuiEventFn)(void *ctx, const TimuiEvent *ev);
+
+TIMUI_API void   timui_input_init(TimuiInputParser *p);
+TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *bytes, size_t len,
+                                  TimuiEventFn cb, void *ctx);
+
 #ifdef __cplusplus
 }
 #endif
@@ -664,6 +762,258 @@ TIMUI_API void timui_split_rows(TimuiRect r, float ratio, TimuiRect *a, TimuiRec
     ah = (int)(r.h * ratio);
     if(a){ a->x = r.x; a->y = r.y;      a->w = r.w; a->h = ah; }
     if(b){ b->x = r.x; b->y = r.y + ah; b->w = r.w; b->h = r.h - ah; }
+}
+
+/* ---- terminal transport + fake backend --------------------------------- */
+static int fake_write(TimuiTransport *t, const void *data, size_t len){
+    TimuiFakeTransport *f = (TimuiFakeTransport *)t->ctx;
+    if(f->out_len + len > f->out_cap){
+        size_t ncap = f->out_cap ? f->out_cap : 64;
+        unsigned char *nb;
+        while(ncap < f->out_len + len) ncap *= 2;
+        nb = (unsigned char *)f->alloc.realloc(f->alloc.userdata, f->out, f->out_cap, ncap);
+        if(!nb) return -1;
+        f->out = nb;
+        f->out_cap = ncap;
+    }
+    memcpy(f->out + f->out_len, data, len);
+    f->out_len += len;
+    return (int)len;
+}
+static int fake_read(TimuiTransport *t, void *buf, size_t cap){
+    TimuiFakeTransport *f = (TimuiFakeTransport *)t->ctx;
+    size_t avail = f->in_len - f->in_pos;
+    size_t n = avail < cap ? avail : cap;
+    if(n == 0) return 0;
+    memcpy(buf, f->in + f->in_pos, n);
+    f->in_pos += n;
+    return (int)n;
+}
+static int fake_flush(TimuiTransport *t){ (void)t; return 0; }
+static void fake_close(TimuiTransport *t){ (void)t; }
+
+TIMUI_API TimuiResult timui_fake_init(TimuiFakeTransport *f, const TimuiAllocator *alloc){
+    if(!f || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
+    f->alloc = *alloc;
+    f->out = NULL; f->out_cap = 0; f->out_len = 0;
+    f->in = NULL;  f->in_len = 0;  f->in_pos = 0;
+    return TIMUI_OK;
+}
+TIMUI_API void timui_fake_destroy(TimuiFakeTransport *f){
+    if(!f) return;
+    if(f->out) f->alloc.free(f->alloc.userdata, f->out, f->out_cap);
+    f->out = NULL; f->out_cap = 0; f->out_len = 0;
+    f->in = NULL;  f->in_len = 0;  f->in_pos = 0;
+}
+TIMUI_API void timui_fake_set_input(TimuiFakeTransport *f, const void *bytes, size_t len){
+    if(!f) return;
+    f->in = (const unsigned char *)bytes;
+    f->in_len = len;
+    f->in_pos = 0;
+}
+TIMUI_API TimuiStr timui_fake_output(const TimuiFakeTransport *f){
+    TimuiStr s;
+    if(!f){ s.ptr = NULL; s.len = 0; return s; }
+    s.ptr = (const char *)f->out;
+    s.len = f->out_len;
+    return s;
+}
+TIMUI_API void timui_fake_clear_output(TimuiFakeTransport *f){
+    if(f) f->out_len = 0;
+}
+TIMUI_API TimuiTransport timui_fake_transport(TimuiFakeTransport *f){
+    TimuiTransport t;
+    t.write = fake_write;
+    t.read  = fake_read;
+    t.flush = fake_flush;
+    t.close = fake_close;
+    t.ctx   = f;
+    return t;
+}
+
+/* ---- screen mode setup/teardown ---------------------------------------- *
+ * Emit DEC/private-mode escapes through the transport. enter() records the
+ * enabled flags so exit() can emit the matching resets in reverse order. */
+static void emit_lit(TimuiTransport *t, const char *s, size_t n){
+    if(t && t->write) (void)t->write(t, s, n);
+}
+#define TIMUI_EMIT(t, lit) emit_lit((t), (lit), sizeof(lit) - 1)
+
+TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_t flags, TimuiStr title){
+    if(m) m->flags = flags;
+    if(title.ptr && title.len){
+        TIMUI_EMIT(t, "\x1b]0;");                       /* OSC 0 ; */
+        if(t && t->write) (void)t->write(t, title.ptr, title.len);
+        TIMUI_EMIT(t, "\x07");                          /* BEL */
+    }
+    if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049h");
+    if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25l");
+    if(flags & TIMUI_FLAG_MOUSE){          TIMUI_EMIT(t, "\x1b[?1000h"); TIMUI_EMIT(t, "\x1b[?1006h"); }
+    if(flags & TIMUI_FLAG_BRACKETED_PASTE) TIMUI_EMIT(t, "\x1b[?2004h");
+    if(flags & TIMUI_FLAG_FOCUS_EVENTS)    TIMUI_EMIT(t, "\x1b[?1004h");
+}
+TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m){
+    uint32_t flags = m ? m->flags : 0;
+    if(flags & TIMUI_FLAG_FOCUS_EVENTS)    TIMUI_EMIT(t, "\x1b[?1004l");
+    if(flags & TIMUI_FLAG_BRACKETED_PASTE) TIMUI_EMIT(t, "\x1b[?2004l");
+    if(flags & TIMUI_FLAG_MOUSE){          TIMUI_EMIT(t, "\x1b[?1006l"); TIMUI_EMIT(t, "\x1b[?1000l"); }
+    if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25h");
+    if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049l");
+}
+
+/* ---- input parser ------------------------------------------------------ *
+ * Incremental byte->event state machine: ground/esc/csi/ss3/utf8. Emits a
+ * TimuiEvent through cb for each complete key or text rune; invalid bytes
+ * become U+FFFD rather than crashing. */
+static void emit_key(TimuiEventFn cb, void *ctx, TimuiKey k, uint32_t mods, uint32_t cp){
+    TimuiEvent ev;
+    ev.kind = TIMUI_EVENT_KEY;
+    ev.as.key.key = k;
+    ev.as.key.codepoint = cp;
+    ev.as.key.mods = mods;
+    ev.as.key.action = TIMUI_KEY_PRESS;
+    if(cb) cb(ctx, &ev);
+}
+static void emit_text(TimuiEventFn cb, void *ctx, const char *ptr, size_t len, uint32_t cp){
+    TimuiEvent ev;
+    ev.kind = TIMUI_EVENT_TEXT;
+    ev.as.text.ptr = ptr;
+    ev.as.text.len = len;
+    ev.as.text.codepoint = cp;
+    if(cb) cb(ctx, &ev);
+}
+static TimuiKey csi_letter(unsigned char f){
+    switch(f){
+        case 'A': return TIMUI_KEY_UP;
+        case 'B': return TIMUI_KEY_DOWN;
+        case 'C': return TIMUI_KEY_RIGHT;
+        case 'D': return TIMUI_KEY_LEFT;
+        case 'H': return TIMUI_KEY_HOME;
+        case 'F': return TIMUI_KEY_END;
+        default:  return TIMUI_KEY_UNKNOWN;
+    }
+}
+static TimuiKey csi_tilde(int n){
+    switch(n){
+        case 1: case 7: return TIMUI_KEY_HOME;
+        case 4: case 8: return TIMUI_KEY_END;
+        case 2:  return TIMUI_KEY_INSERT;
+        case 3:  return TIMUI_KEY_DELETE;
+        case 5:  return TIMUI_KEY_PAGE_UP;
+        case 6:  return TIMUI_KEY_PAGE_DOWN;
+        case 15: return TIMUI_KEY_F5;
+        case 17: return TIMUI_KEY_F6;
+        case 18: return TIMUI_KEY_F7;
+        case 19: return TIMUI_KEY_F8;
+        case 20: return TIMUI_KEY_F9;
+        case 21: return TIMUI_KEY_F10;
+        case 23: return TIMUI_KEY_F11;
+        case 24: return TIMUI_KEY_F12;
+        default: return TIMUI_KEY_UNKNOWN;
+    }
+}
+static TimuiKey ss3_final(unsigned char f){
+    switch(f){
+        case 'P': return TIMUI_KEY_F1;
+        case 'Q': return TIMUI_KEY_F2;
+        case 'R': return TIMUI_KEY_F3;
+        case 'S': return TIMUI_KEY_F4;
+        case 'H': return TIMUI_KEY_HOME;
+        case 'F': return TIMUI_KEY_END;
+        default:  return TIMUI_KEY_UNKNOWN;
+    }
+}
+/* UTF-8 lead byte: continuation count (1..3), or -1 if not a valid lead. */
+static int utf8_lead(unsigned char b, uint32_t *cp){
+    if((b & 0xE0) == 0xC0){ *cp = (uint32_t)(b & 0x1F); return 1; }
+    if((b & 0xF0) == 0xE0){ *cp = (uint32_t)(b & 0x0F); return 2; }
+    if((b & 0xF8) == 0xF0){ *cp = (uint32_t)(b & 0x07); return 3; }
+    return -1;
+}
+TIMUI_API void timui_input_init(TimuiInputParser *p){
+    if(!p) return;
+    p->state = 0; p->param = 0; p->nparams = 0;
+    p->utf8_need = 0; p->utf8_len = 0; p->utf8_cp = 0; p->utf8_ptr = NULL;
+}
+TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t len,
+                                  TimuiEventFn cb, void *ctx){
+    const unsigned char *b = (const unsigned char *)data;
+    size_t i, count = 0;
+    if(!p || !b) return 0;
+    if(p->state == 4) p->utf8_ptr = NULL;   /* crossed a feed boundary: no stable byte view */
+    for(i = 0; i < len; i++){
+        unsigned char c = b[i];
+        switch(p->state){
+        case 0: /* GROUND */
+            if(c == 0x1b){ p->state = 1; break; }
+            if(c == '\r' || c == '\n'){ emit_key(cb, ctx, TIMUI_KEY_ENTER, 0, 0); count++; break; }
+            if(c == '\t'){ emit_key(cb, ctx, TIMUI_KEY_TAB, 0, 0); count++; break; }
+            if(c == 0x7f || c == 0x08){ emit_key(cb, ctx, TIMUI_KEY_BACKSPACE, 0, 0); count++; break; }
+            if(c < 0x20){
+                uint32_t cp = (c >= 1 && c <= 26) ? (uint32_t)('a' + c - 1) : (uint32_t)c;
+                emit_key(cb, ctx, TIMUI_KEY_UNKNOWN, TIMUI_MOD_CTRL, cp);
+                count++; break;
+            }
+            if(c < 0x80){
+                emit_text(cb, ctx, (const char *)&b[i], 1, (uint32_t)c);
+                count++; break;
+            }
+            {   /* UTF-8 multibyte lead (c >= 0x80) */
+                uint32_t cp = 0;
+                int need = utf8_lead(c, &cp);
+                if(need < 0){ emit_text(cb, ctx, (const char *)&b[i], 1, 0xFFFD); count++; break; }
+                p->utf8_cp = cp; p->utf8_need = need; p->utf8_len = need + 1;
+                p->utf8_ptr = (const char *)&b[i];
+                p->state = 4;
+            }
+            break;
+        case 1: /* ESC */
+            if(c == '['){ p->state = 2; p->param = 0; p->nparams = 0; break; }
+            if(c == 'O'){ p->state = 3; break; }
+            if(c == 0x1b){ emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0); count++; break; } /* stay ESC */
+            if(c >= 0x20 && c < 0x80){
+                emit_key(cb, ctx, TIMUI_KEY_UNKNOWN, TIMUI_MOD_ALT, (uint32_t)c);
+                count++; p->state = 0; break;
+            }
+            emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0); count++;
+            p->state = 0;
+            if(i > 0) i--;        /* reprocess the byte in ground */
+            break;
+        case 2: /* CSI */
+            if(c >= '0' && c <= '9'){ p->param = p->param * 10 + (c - '0'); p->nparams = 1; break; }
+            if(c == ';' || c == '?' || c == '>'){ p->param = 0; break; }
+            if(c >= 0x40 && c <= 0x7e){
+                TimuiKey k = (c == '~') ? csi_tilde(p->nparams ? p->param : 0) : csi_letter(c);
+                if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, 0, 0); count++; }
+                p->state = 0;
+                break;
+            }
+            p->state = 0;          /* unexpected: resync */
+            break;
+        case 3: /* SS3 (ESC O X) */
+            {
+                TimuiKey k = ss3_final(c);
+                if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, 0, 0); count++; }
+                p->state = 0;
+            }
+            break;
+        case 4: /* UTF-8 continuation */
+            if((c & 0xC0) == 0x80){
+                p->utf8_cp = (p->utf8_cp << 6) | (uint32_t)(c & 0x3F);
+                p->utf8_need--;
+                if(p->utf8_need == 0){
+                    emit_text(cb, ctx, p->utf8_ptr, p->utf8_ptr ? (size_t)p->utf8_len : 0, p->utf8_cp);
+                    count++; p->state = 0;
+                }
+                break;
+            }
+            emit_text(cb, ctx, (const char *)&b[i], 1, 0xFFFD);   /* invalid continuation */
+            count++; p->state = 0;
+            if(i > 0) i--;
+            break;
+        }
+    }
+    return count;
 }
 
 #endif /* TIMUI_IMPLEMENTATION */

@@ -38,6 +38,19 @@ int main(void){
         test_msgq_variable_sizes,
         test_mpsc_fifo_single,
         test_mpsc_multi_producer,
+        test_fake_capture_output,
+        test_fake_inject_input,
+        test_fake_grows,
+        test_screen_enter_emits_modes,
+        test_screen_exit_reverses,
+        test_input_arrows,
+        test_input_function_keys,
+        test_input_tilde_edit_keys,
+        test_input_control_chars,
+        test_input_text_and_alt,
+        test_input_partial_then_complete,
+        test_input_utf8,
+        test_input_invalid_safe,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

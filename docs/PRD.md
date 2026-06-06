@@ -2233,7 +2233,7 @@ Parallelization: blocks many tasks.
 
 ---
 
-### T1.3 — Strings
+### T1.3 — Strings ✅
 
 Dependencies: T1.2.
 
@@ -2279,7 +2279,7 @@ Parallelization: independent; widgets depend on it.
 
 ---
 
-### T1.5 — ID hashing and ID stack
+### T1.5 — ID hashing and ID stack ✅
 
 Dependencies: T1.2, T1.3.
 
@@ -2304,7 +2304,7 @@ Parallelization: blocks focus/widgets.
 
 ---
 
-### T1.6 — Message queue
+### T1.6 — Message queue ✅
 
 Dependencies: T1.2.
 
@@ -2328,7 +2328,7 @@ Parallelization: blocks functional runner.
 
 ---
 
-### T1.7 — Thread-safe MPSC queue
+### T1.7 — Thread-safe MPSC queue ✅
 
 Dependencies: T1.6.
 

@@ -49,5 +49,18 @@ void test_msgq_full_predictable(void);
 void test_msgq_variable_sizes(void);
 void test_mpsc_fifo_single(void);
 void test_mpsc_multi_producer(void);
+void test_fake_capture_output(void);
+void test_fake_inject_input(void);
+void test_fake_grows(void);
+void test_screen_enter_emits_modes(void);
+void test_screen_exit_reverses(void);
+void test_input_arrows(void);
+void test_input_function_keys(void);
+void test_input_tilde_edit_keys(void);
+void test_input_control_chars(void);
+void test_input_text_and_alt(void);
+void test_input_partial_then_complete(void);
+void test_input_utf8(void);
+void test_input_invalid_safe(void);
 
 #endif /* TIMUI_TEST_H */
