@@ -1,0 +1,13 @@
+/build/
+/release/
+/result
+/result-*
+.direnv/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.exe
+compile_commands.json
+.cache/
