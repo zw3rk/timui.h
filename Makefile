@@ -4,8 +4,8 @@
 .DEFAULT_GOAL := help
 
 CC         ?= cc
-CFLAGS     ?= -std=c99 -Wall -Wextra -Wpedantic -O2
-TESTCFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -O0 -g
+CFLAGS     ?= -std=c99 -Wall -Wextra -Wpedantic -O2 -pthread
+TESTCFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -O0 -g -pthread
 
 INCDIR   := include
 SRCDIR   := src
@@ -17,7 +17,7 @@ RELDIR   := release
 
 HEADER    := $(INCDIR)/timui.h
 EXAMPLES  := $(patsubst $(EXADIR)/%.c,$(BLDDIR)/%,$(wildcard $(EXADIR)/*.c))
-TEST_SRCS := $(SRCDIR)/timui_core.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c
+TEST_SRCS := $(SRCDIR)/timui_core.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TSTDIR)/test_result.c $(TSTDIR)/test_arena.c $(TSTDIR)/test_strings.c $(TSTDIR)/test_id_stack.c $(TSTDIR)/test_msgq.c $(TSTDIR)/test_mpsc.c
 TEST_BIN  := $(BLDDIR)/test_unit
 
 ifeq ($(NO_COLOR),)

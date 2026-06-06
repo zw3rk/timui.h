@@ -2100,7 +2100,7 @@ Parallelization notes
 
 ## Phase 0 — Product and scaffolding
 
-### T0.1 — Lock project decisions
+### T0.1 — Lock project decisions ✅
 
 Dependencies: none.
 
@@ -2135,7 +2135,7 @@ Parallelization: blocks public API work.
 
 ---
 
-### T0.2 — Repository skeleton
+### T0.2 — Repository skeleton ✅
 
 Dependencies: T0.1.
 
@@ -2161,7 +2161,7 @@ Parallelization: enables all teams.
 
 ---
 
-### T0.3 — Amalgamation tool
+### T0.3 — Amalgamation tool ✅
 
 Dependencies: T0.2.
 
@@ -2185,7 +2185,7 @@ Parallelization: can run alongside core work after file layout is stable.
 
 ## Phase 1 — Core foundations
 
-### T1.1 — Result/error system
+### T1.1 — Result/error system ✅
 
 Dependencies: T0.2.
 
@@ -2208,7 +2208,7 @@ Parallelization: independent.
 
 ---
 
-### T1.2 — Allocator and arena
+### T1.2 — Allocator and arena ✅
 
 Dependencies: T0.2, T1.1.
 
@@ -2257,7 +2257,7 @@ Parallelization: can proceed with layout/IDs.
 
 ---
 
-### T1.4 — Rect and layout primitives
+### T1.4 — Rect and layout primitives ✅
 
 Dependencies: T0.2.
 

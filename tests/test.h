@@ -27,5 +27,27 @@ void test_rect_cuts(void);
 void test_rect_split(void);
 void test_rect_inset_clamp(void);
 void test_ids_stable(void);
+void test_error_string(void);
+void test_version(void);
+void test_default_allocator(void);
+void test_arena_alloc_reset(void);
+void test_arena_oom(void);
+void test_arena_alignment(void);
+void test_arena_custom_allocator(void);
+void test_arena_invalid_args(void);
+void test_str_from_cstr(void);
+void test_str_copy_bounded(void);
+void test_str_slice(void);
+void test_str_eq_cstr(void);
+void test_str_invalid_utf8_passthrough(void);
+void test_id_stack_stable(void);
+void test_id_stack_nesting_order(void);
+void test_id_stack_pop_restore(void);
+void test_id_stack_empty_and_grow(void);
+void test_msgq_order_and_copy(void);
+void test_msgq_full_predictable(void);
+void test_msgq_variable_sizes(void);
+void test_mpsc_fifo_single(void);
+void test_mpsc_multi_producer(void);
 
 #endif /* TIMUI_TEST_H */
