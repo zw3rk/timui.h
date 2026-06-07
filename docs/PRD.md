@@ -2760,7 +2760,7 @@ Parallelization: v0.2; can be assigned separately once caps and renderer exist.
 
 ## Phase 4 — Frame and interaction core
 
-### T4.1 — Frame lifecycle
+### T4.1 — Frame lifecycle ✅
 
 Dependencies: T1.2, T2.4, T2.6, T3.4.
 
@@ -2787,7 +2787,7 @@ Parallelization: central integration task.
 
 ---
 
-### T4.2 — Focus/hot/active state
+### T4.2 — Focus/hot/active state ✅
 
 Dependencies: T1.5, T2.6, T2.7, T4.1.
 
@@ -2815,7 +2815,7 @@ Parallelization: blocks widgets.
 
 ---
 
-### T4.3 — Style/theme stack
+### T4.3 — Style/theme stack ✅
 
 Dependencies: T3.3, T4.1.
 
@@ -2888,7 +2888,7 @@ Parallelization: blocks menus/modals.
 
 ## Phase 5 — Widgets
 
-### T5.1 — Label, separator, panel
+### T5.1 — Label, separator, panel ✅
 
 Dependencies: T3.3, T4.3.
 
@@ -2911,7 +2911,7 @@ Parallelization: first widget milestone.
 
 ---
 
-### T5.2 — Button
+### T5.2 — Button ✅
 
 Dependencies: T4.2, T5.1.
 
@@ -2935,7 +2935,7 @@ Parallelization: enables many examples.
 
 ---
 
-### T5.3 — Checkbox and radio
+### T5.3 — Checkbox and radio ✅
 
 Dependencies: T5.2.
 
@@ -2957,7 +2957,7 @@ Parallelization: independent after button.
 
 ---
 
-### T5.4 — Input line
+### T5.4 — Input line ✅
 
 Dependencies: T2.7, T3.2, T3.5, T4.2.
 
@@ -2987,7 +2987,7 @@ Parallelization: complex; assign dedicated owner.
 
 ---
 
-### T5.5 — Listbox
+### T5.5 — Listbox ✅
 
 Dependencies: T4.2, T4.4, T5.1.
 
@@ -3015,7 +3015,7 @@ Parallelization: dedicated owner.
 
 ---
 
-### T5.6 — Status/function bar
+### T5.6 — Status/function bar ✅
 
 Dependencies: T5.1.
 
@@ -3161,7 +3161,7 @@ Parallelization: can run after queue.
 
 ## Phase 7 — Examples and demos
 
-### T7.1 — Hello
+### T7.1 — Hello ✅
 
 Dependencies: T4.1, T5.1.
 
@@ -3180,7 +3180,7 @@ compiles single-header
 
 ---
 
-### T7.2 — Counter
+### T7.2 — Counter ✅
 
 Dependencies: T5.2, T6.1.
 

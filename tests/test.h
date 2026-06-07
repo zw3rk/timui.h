@@ -109,5 +109,8 @@ void test_panel_body_rect(void);
 void test_input_types_and_submits(void);
 void test_listbox_down_key(void);
 void test_listbox_click_selects(void);
+void test_message_box_miss(void);
+void test_fuzz_parser_random_stream(void);
+void test_fuzz_parser_adversarial(void);
 
 #endif /* TIMUI_TEST_H */

@@ -1,8 +1,9 @@
 /*
- * hello.c — minimal timui.h single-header smoke test (Phase 0).
+ * hello.c — minimal timui.h app: a centred "Hello!" (T7.1).
  *
- * Exercises the pure layout/id helpers; no real terminal is required, so it
- * runs anywhere. The terminal backend lands in Phase 2.
+ * Build:   cc -std=c99 -Wall -Wextra -Wpedantic -O2 -pthread \
+ *              -Iinclude examples/hello.c -o hello
+ * Run:     ./hello   (press Esc to quit)
  *
  * SPDX-License-Identifier: Apache-2.0
  * Copyright 2026 Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd.
@@ -10,28 +11,30 @@
 #define TIMUI_IMPLEMENTATION
 #include "timui.h"
 
-#include <stdio.h>
-
 int main(void){
-    printf("timui.h %s\n", timui_version_string());
-
-    /* Rect-split layout — pure, no terminal required. */
-    TimuiRect root = TIMUI_RECT(0, 0, 80, 24);
-    TimuiRect top  = timui_cut_top(&root, 1);
-    TimuiRect left, right;
-    timui_split_cols(root, 0.5f, &left, &right);
-
-    printf("top   = %d,%d  %dx%d\n", top.x, top.y, top.w, top.h);
-    printf("left  = %d,%d  %dx%d\n", left.x, left.y, left.w, left.h);
-    printf("right = %d,%d  %dx%d\n", right.x, right.y, right.w, right.h);
-
-    /* IDs are stable across frames (FNV-1a, non-cryptographic). */
-    printf("id(\"save\") = 0x%016llx\n",
-           (unsigned long long)timui_id_from_cstr("save"));
-
-    /* Terminal backend is Phase 2; open() reports unsupported for now. */
+    TimuiConfig cfg = {0};
     Timui *ui = NULL;
-    TimuiResult r = timui_open(&(TimuiConfig){0}, &ui);
-    printf("timui_open -> %d (%s)\n", (int)r, timui_error_string(r));
+
+    cfg.title     = "timui.h hello";
+    cfg.input_fd  = 0;
+    cfg.output_fd = 1;
+    cfg.profile   = TIMUI_PROFILE_AUTO;
+    cfg.flags     = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_RESTORE_ON_EXIT;
+    cfg.theme     = TIMUI_THEME_DOS_BLUE;
+
+    if(timui_open(&cfg, &ui) != TIMUI_OK) return 1;
+
+    while(!timui_should_quit(ui)){
+        TimuiFrame *f = NULL;
+        TimuiRect root;
+        if(!timui_begin(ui, &f)) break;
+        if(timui_key_pressed(f, TIMUI_KEY_ESCAPE)) timui_quit(ui);
+        root = timui_root(f);
+        timui_label(f, root.w / 2 - 3, root.h / 2, TIMUI_STR_LIT("Hello!"),
+                    timui_style_make(0xFFFFFF, 0x0000AA, 0));
+        timui_end(f);
+    }
+
+    timui_close(ui);
     return 0;
 }

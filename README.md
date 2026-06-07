@@ -2,7 +2,22 @@
 
 > Single-header **C99** immediate-mode TUI for modern terminals (Ghostty, kitty, …) with a safe ANSI fallback. DOS / Midnight-Commander aesthetic. Functional / immutable by default, with `_mut` convenience wrappers. No ncurses.
 
-**Status:** Phase 0 scaffold. The foundational types and the pure layout/id/string helpers are implemented and unit-tested; the terminal, rendering, and widget stack land in later phases (see the [docs/PRD.md](docs/PRD.md) roadmap).
+**Status:** v0.1 core is implemented and tested (87 unit tests green) — a working
+immediate-mode TUI, not a scaffold:
+
+- **Terminal backend:** POSIX raw mode, screen-mode setup/teardown, terminal-size
+  query, capability detection (modern-terminal allowlist + multiplexer reduction),
+  synchronized output (DEC 2026).
+- **Input:** legacy + Kitty keyboard protocol, SGR mouse (button/wheel/motion),
+  bracketed paste, focus events — incremental, partial-sequence-safe.
+- **Rendering:** UTF-8 decode + minimal width, drawing primitives, truecolour
+  **diff renderer** (unchanged frames emit nothing), cursor placement.
+- **Interaction + widgets:** focus/hot/active, tab cycling, themed styles
+  (DOS-blue/gray/modern-dark/mono), button, checkbox, radio, input-line,
+  listbox, panel/label, function bar, message box — controlled + `_mut`.
+- **Examples:** `hello`, `counter` (functional), `form`, `mini_commander`.
+
+See [docs/PRD.md](docs/PRD.md) (roadmap, §15 progress) and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Build & test
 

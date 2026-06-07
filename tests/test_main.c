@@ -98,6 +98,9 @@ int main(void){
         test_input_types_and_submits,
         test_listbox_down_key,
         test_listbox_click_selects,
+        test_message_box_miss,
+        test_fuzz_parser_random_stream,
+        test_fuzz_parser_adversarial,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);
