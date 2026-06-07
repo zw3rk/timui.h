@@ -92,5 +92,22 @@ void test_render_diff_exact(void);
 void test_render_unchanged_emits_nothing(void);
 void test_render_cursor_visible(void);
 void test_render_cursor_hidden(void);
+void test_frame_lifecycle(void);
+void test_frame_quit_flag(void);
+void test_interact_click(void);
+void test_interact_hover_only(void);
+void test_interact_tab_cycles(void);
+void test_interact_keyboard_activate(void);
+void test_theme_dos_blue(void);
+void test_theme_mono_default(void);
+void test_theme_style_lookup(void);
+void test_button_click(void);
+void test_button_outside_no_click(void);
+void test_checkbox_toggles(void);
+void test_radio_selects(void);
+void test_panel_body_rect(void);
+void test_input_types_and_submits(void);
+void test_listbox_down_key(void);
+void test_listbox_click_selects(void);
 
 #endif /* TIMUI_TEST_H */

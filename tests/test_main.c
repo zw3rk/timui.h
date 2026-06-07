@@ -81,6 +81,23 @@ int main(void){
         test_render_unchanged_emits_nothing,
         test_render_cursor_visible,
         test_render_cursor_hidden,
+        test_frame_lifecycle,
+        test_frame_quit_flag,
+        test_interact_click,
+        test_interact_hover_only,
+        test_interact_tab_cycles,
+        test_interact_keyboard_activate,
+        test_theme_dos_blue,
+        test_theme_mono_default,
+        test_theme_style_lookup,
+        test_button_click,
+        test_button_outside_no_click,
+        test_checkbox_toggles,
+        test_radio_selects,
+        test_panel_body_rect,
+        test_input_types_and_submits,
+        test_listbox_down_key,
+        test_listbox_click_selects,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

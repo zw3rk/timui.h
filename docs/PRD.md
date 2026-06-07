@@ -2582,7 +2582,7 @@ Parallelization: depends on renderer output.
 
 ## Phase 3 — Rendering
 
-### T3.1 — Cell buffer
+### T3.1 — Cell buffer ✅
 
 Dependencies: T1.2, T1.4.
 
@@ -2607,7 +2607,7 @@ Parallelization: blocks drawing/diff.
 
 ---
 
-### T3.2 — UTF-8 decode and width
+### T3.2 — UTF-8 decode and width ✅
 
 Dependencies: T1.3.
 
@@ -2634,7 +2634,7 @@ Parallelization: can run with T3.1.
 
 ---
 
-### T3.3 — Drawing primitives
+### T3.3 — Drawing primitives ✅
 
 Dependencies: T3.1, T3.2.
 
@@ -2661,7 +2661,7 @@ Parallelization: blocks widgets.
 
 ---
 
-### T3.4 — Diff renderer
+### T3.4 — Diff renderer ✅
 
 Dependencies: T2.1, T3.1, T3.3.
 
@@ -2687,7 +2687,7 @@ Parallelization: blocks full frame lifecycle.
 
 ---
 
-### T3.5 — Cursor rendering
+### T3.5 — Cursor rendering ✅
 
 Dependencies: T3.4.
 

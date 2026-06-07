@@ -50,9 +50,11 @@ extern "C" {
 #endif
 
 /* ---- Forward declarations ---------------------------------------------- */
-typedef struct Timui         Timui;          /* runtime: caps, modes, buffers    */
-typedef struct TimuiFrame    TimuiFrame;     /* per-frame: valid only begin..end */
-typedef struct TimuiTransport TimuiTransport; /* forward (used by renderer) */
+typedef struct Timui          Timui;            /* runtime: caps, modes, buffers    */
+typedef struct TimuiFrame     TimuiFrame;       /* per-frame: valid only begin..end */
+typedef struct TimuiTransport TimuiTransport;   /* forward (used by renderer) */
+typedef struct TimuiCellBuffer TimuiCellBuffer; /* forward (used by lifecycle) */
+typedef struct TimuiEvent     TimuiEvent;       /* forward (used by lifecycle) */
 
 typedef uint64_t TimuiId;
 
@@ -166,6 +168,69 @@ TIMUI_API void      timui_end(TimuiFrame *frame);
 TIMUI_API TimuiRect timui_root(const TimuiFrame *frame);
 TIMUI_API int       timui_width(const TimuiFrame *frame);
 TIMUI_API int       timui_height(const TimuiFrame *frame);
+TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
+TIMUI_API void             timui_ui_resize(Timui *ui, int w, int h);
+TIMUI_API int              timui_poll_event(Timui *ui, TimuiEvent *out_event);
+TIMUI_API void             timui_quit(Timui *ui);
+TIMUI_API bool             timui_should_quit(const Timui *ui);
+/* Test constructor: a Timui backed by an injected transport + fixed size
+ * (no tty), so the frame/render path is unit-testable without a terminal. */
+TIMUI_API TimuiResult      timui_open_for_test(Timui **out_ui, TimuiTransport transport,
+                                               int w, int h, const TimuiAllocator *alloc);
+
+/* ---- Widgets (immediate-mode; controlled default + _mut convenience) -- */
+typedef struct {
+    bool clicked;
+    bool pressed;
+    bool hovered;
+    bool focused;
+} TimuiButtonResult;
+
+TIMUI_API TimuiButtonResult timui_button(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label);
+
+typedef struct {
+    bool changed;
+    bool value;
+    bool hovered;
+    bool focused;
+} TimuiBoolEdit;
+
+TIMUI_API void       timui_label(TimuiFrame *f, int x, int y, TimuiStr text, TimuiStyle style);
+TIMUI_API TimuiRect  timui_panel_begin(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr title, uint32_t border_flags);
+TIMUI_API void       timui_panel_end(TimuiFrame *f);
+TIMUI_API TimuiBoolEdit timui_checkbox(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool value);
+TIMUI_API bool       timui_checkbox_mut(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool *value);
+TIMUI_API TimuiBoolEdit timui_radio(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool selected);
+TIMUI_API void       timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text);
+
+/* Cursor/edit key flags accumulated per frame for the focused input. */
+#define TIMUI_KEYIN_BACKSPACE 1u
+#define TIMUI_KEYIN_LEFT      2u
+#define TIMUI_KEYIN_RIGHT     4u
+#define TIMUI_KEYIN_HOME      8u
+#define TIMUI_KEYIN_END       16u
+#define TIMUI_KEYIN_DELETE    32u
+#define TIMUI_KEYIN_UP        64u
+#define TIMUI_KEYIN_DOWN      128u
+
+/* Mutable single-line input: click to focus, type to append (bounded by cap),
+ * backspace deletes the last rune, Enter submits. Returns true on submit. */
+TIMUI_API bool       timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char *buf, size_t cap);
+
+typedef struct { int selected; int scroll; } TimuiListState;
+typedef const char *(*TimuiLabelFn)(void *userdata, int index);
+typedef struct {
+    int state_changed;
+    int activated;
+    int focused;
+    TimuiListState state;
+    int selected;
+} TimuiListResult;
+
+TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                        TimuiListState state, int count, TimuiLabelFn label, void *userdata);
+TIMUI_API TimuiListResult timui_listbox_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                            TimuiListState *state, int count, TimuiLabelFn label, void *userdata);
 
 /* ---- IDs --------------------------------------------------------------- */
 TIMUI_API TimuiId timui_id_from_bytes(const void *data, size_t len);
@@ -274,12 +339,12 @@ typedef struct {
     uint32_t image_id;
 } TimuiCell;
 
-typedef struct {
+struct TimuiCellBuffer {
     TimuiCell    *cells;
     int           w;
     int           h;
     TimuiAllocator alloc;   /* owning allocator (copied) */
-} TimuiCellBuffer;
+};
 
 TIMUI_API TimuiResult timui_cells_init(TimuiCellBuffer *buf, int w, int h, const TimuiAllocator *alloc);
 TIMUI_API void        timui_cells_destroy(TimuiCellBuffer *buf);
@@ -338,6 +403,24 @@ TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
 /* After a frame: position the logical cursor (for text input) and show it,
  * or hide it. Call after timui_render_diff. */
 TIMUI_API void timui_render_cursor(TimuiTransport *t, int x, int y, int visible);
+
+/* ---- Style/theme system ---------------------------------------------- */
+typedef enum {
+    TIMUI_SLOT_TEXT = 0, TIMUI_SLOT_TEXT_DIM, TIMUI_SLOT_PANEL, TIMUI_SLOT_PANEL_TITLE,
+    TIMUI_SLOT_BORDER, TIMUI_SLOT_BUTTON, TIMUI_SLOT_BUTTON_HOVERED,
+    TIMUI_SLOT_BUTTON_FOCUSED, TIMUI_SLOT_BUTTON_ACTIVE, TIMUI_SLOT_INPUT,
+    TIMUI_SLOT_INPUT_FOCUSED, TIMUI_SLOT_SELECTION, TIMUI_SLOT_MENU,
+    TIMUI_SLOT_MENU_ACTIVE, TIMUI_SLOT_STATUS, TIMUI_SLOT_ERROR,
+    TIMUI_SLOT_WARNING, TIMUI_SLOT_SUCCESS,
+    TIMUI_SLOT_COUNT
+} TimuiStyleSlot;
+
+typedef struct {
+    TimuiStyle slots[TIMUI_SLOT_COUNT];
+} TimuiTheme;
+
+TIMUI_API TimuiTheme timui_theme_builtin(TimuiBuiltinTheme t);
+TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot);
 
 /* ---- Terminal transport (backend abstraction) ------------------------- *
  * A vtable of read/write/flush/close over an opaque ctx. Real backends wrap
@@ -470,7 +553,7 @@ typedef enum {
 
 typedef enum { TIMUI_KEY_PRESS = 0, TIMUI_KEY_REPEAT, TIMUI_KEY_RELEASE } TimuiKeyAction;
 
-typedef struct {
+struct TimuiEvent {
     TimuiEventKind kind;
     union {
         struct { TimuiKey key; uint32_t codepoint; uint32_t mods; TimuiKeyAction action; } key;
@@ -480,7 +563,7 @@ typedef struct {
                  int pressed; int released; int motion; } mouse;
         struct { int focused; } focus;
     } as;
-} TimuiEvent;
+};
 
 /* ---- Input parser (legacy + CSI; incremental, callback-based) -------- *
  * Feed raw input bytes; complete key/text events are delivered to cb. The
@@ -508,6 +591,41 @@ TIMUI_API void   timui_input_init(TimuiInputParser *p);
 TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *bytes, size_t len,
                                   TimuiEventFn cb, void *ctx);
 
+/* ---- Interaction state (hot/active/focus) ----------------------------- *
+ * Immediate-mode interaction: each frame, widgets call timui_interact_button
+ * with their id + rect; the framework tracks hover, press/click edges,
+ * click-to-focus, keyboard activation, and tab cycling. */
+typedef struct {
+    int hovered;
+    int pressed;
+    int active;
+    int clicked;
+    int focused;
+} TimuiInteractResult;
+
+typedef struct {
+    TimuiId hot;
+    TimuiId active;
+    TimuiId focus;
+    int mouse_x, mouse_y;
+    int mouse_down;        /* current frame */
+    int mouse_down_prev;   /* previous frame (edge detection) */
+    int mouse_pressed;     /* edge: went down this frame */
+    int mouse_released;    /* edge: went up this frame */
+    int tab_pressed;
+    int activate_pressed;
+    TimuiId tab_order[64];
+    int tab_count;
+    int focus_advance;
+} TimuiInteract;
+
+TIMUI_API void                timui_interact_init(TimuiInteract *ia);
+TIMUI_API void                timui_interact_set_mouse(TimuiInteract *ia, int x, int y, int down);
+TIMUI_API void                timui_interact_set_keys(TimuiInteract *ia, int tab, int activate);
+TIMUI_API void                timui_interact_begin(TimuiInteract *ia);
+TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId id, TimuiRect r);
+TIMUI_API void                timui_interact_end(TimuiInteract *ia);
+
 #ifdef __cplusplus
 }
 #endif
@@ -521,15 +639,50 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *bytes, size_t
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #ifndef TIMUI_NO_THREADS
 #include <pthread.h>
 #endif
 
-/* Internal structs — completed only in the implementing TU (Phase 0 stubs). */
-struct Timui      { int _phase0_unused; };
-struct TimuiFrame { int _phase0_unused; };
+/* Internal structs (completed only in the implementing TU). */
+typedef struct { int read_fd; int write_fd; } TimuiFdCtx;
+
+struct TimuiFrame { Timui *ui; };
+
+struct Timui {
+    TimuiConfig       cfg;
+    TimuiAllocator    alloc;
+    TimuiTransport    transport;
+    int               have_transport;
+    TimuiFdCtx        fd;
+    TimuiCaps         caps;
+    TimuiScreenMode   screen;
+    int               screen_active;
+    TimuiTermios      termios;
+    int               termios_active;
+    TimuiCellBuffer   curr;
+    TimuiCellBuffer   prev;
+    int               have_buffers;
+    TimuiRenderer     renderer;
+    TimuiInputParser  input;
+    TimuiMsgQueue     msgq;
+    int               have_msgq;
+    TimuiIdStack      ids;
+    int               have_ids;
+    TimuiInteract     ia;
+    TimuiTheme        theme;
+    char              text_in[256];
+    int               text_in_len;
+    unsigned          key_in;
+    int               w, h;
+    int               should_quit;
+    TimuiEvent        events[16];
+    int               event_count;
+    TimuiFrame        frame;
+};
 
 /* ---- version ----------------------------------------------------------- */
 TIMUI_API const char *timui_version_string(void){
@@ -550,24 +703,198 @@ TIMUI_API const char *timui_error_string(TimuiResult result){
     return "unknown";
 }
 
-/* ---- lifecycle (Phase 2 backend not yet implemented) ------------------- */
+/* ---- lifecycle + frame ------------------------------------------------ */
+static void ui_event_cb(void *ctx, const TimuiEvent *ev){
+    Timui *ui = (Timui *)ctx;
+    if(ui->event_count < (int)(sizeof(ui->events) / sizeof(ui->events[0])))
+        ui->events[ui->event_count++] = *ev;
+}
+static int fd_write(TimuiTransport *t, const void *d, size_t n){
+    TimuiFdCtx *c = (TimuiFdCtx *)t->ctx;
+    ssize_t w = write(c->write_fd, d, n);
+    return w < 0 ? -1 : (int)w;
+}
+static int fd_read(TimuiTransport *t, void *b, size_t cap){
+    TimuiFdCtx *c = (TimuiFdCtx *)t->ctx;
+    ssize_t r = read(c->read_fd, b, cap);
+    return r <= 0 ? 0 : (int)r;
+}
+static int fd_flush(TimuiTransport *t){ (void)t; return 0; }
+static void fd_close(TimuiTransport *t){ (void)t; }
+
+/* Wire up the buffers/renderer/input/msgq/id-stack for a given size. */
+static TimuiResult timui_setup(Timui *ui, int w, int h){
+    TimuiResult r;
+    ui->w = w;
+    ui->h = h;
+    r = timui_cells_init(&ui->curr, w, h, &ui->alloc);
+    if(r != TIMUI_OK) return r;
+    r = timui_cells_init(&ui->prev, w, h, &ui->alloc);
+    if(r != TIMUI_OK){ timui_cells_destroy(&ui->curr); return r; }
+    ui->have_buffers = 1;
+    timui_renderer_reset(&ui->renderer);
+    timui_input_init(&ui->input);
+    r = timui_msgq_init(&ui->msgq, &ui->alloc, 4096);
+    if(r != TIMUI_OK){ timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); ui->have_buffers = 0; return r; }
+    ui->have_msgq = 1;
+    r = timui_id_stack_init(&ui->ids, &ui->alloc, 32);
+    if(r != TIMUI_OK){
+        timui_msgq_destroy(&ui->msgq); ui->have_msgq = 0;
+        timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); ui->have_buffers = 0;
+        return r;
+    }
+    ui->have_ids = 1;
+    timui_interact_init(&ui->ia);
+    ui->theme = timui_theme_builtin(ui->cfg.theme);
+    ui->should_quit = 0;
+    ui->event_count = 0;
+    ui->frame.ui = ui;
+    return TIMUI_OK;
+}
+TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transport, int w, int h, const TimuiAllocator *alloc){
+    Timui *ui;
+    TimuiResult r;
+    if(!out_ui || w <= 0 || h <= 0 || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
+    *out_ui = NULL;
+    ui = (Timui *)alloc->alloc(alloc->userdata, sizeof(Timui));
+    if(!ui) return TIMUI_ERR_OUT_OF_MEMORY;
+    memset(ui, 0, sizeof *ui);
+    ui->alloc = *alloc;
+    ui->transport = transport;
+    ui->have_transport = 1;
+    timui_caps_detect(&ui->caps, NULL, NULL, NULL);
+    r = timui_setup(ui, w, h);
+    if(r != TIMUI_OK){ alloc->free(alloc->userdata, ui, sizeof *ui); return r; }
+    *out_ui = ui;
+    return TIMUI_OK;
+}
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
-    (void)cfg;
-    (void)out_ui;
-    return TIMUI_ERR_UNSUPPORTED;
+    Timui *ui;
+    TimuiAllocator al;
+    int w = 80, h = 24;
+    TimuiResult r;
+    if(!cfg || !out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
+    *out_ui = NULL;
+    al = cfg->allocator.alloc ? cfg->allocator : timui_default_allocator();
+    ui = (Timui *)al.alloc(al.userdata, sizeof(Timui));
+    if(!ui) return TIMUI_ERR_OUT_OF_MEMORY;
+    memset(ui, 0, sizeof *ui);
+    ui->alloc = al;
+    ui->cfg = *cfg;
+    ui->fd.read_fd = cfg->input_fd;
+    ui->fd.write_fd = cfg->output_fd;
+    ui->transport.write = fd_write;
+    ui->transport.read  = fd_read;
+    ui->transport.flush = fd_flush;
+    ui->transport.close = fd_close;
+    ui->transport.ctx   = &ui->fd;
+    ui->have_transport  = 1;
+    timui_caps_detect(&ui->caps, getenv("TERM"), getenv("TERM_PROGRAM"), getenv("COLORTERM"));
+    if(timui_term_size(cfg->output_fd, &w, &h) != TIMUI_OK){ w = 80; h = 24; }
+    if(isatty(cfg->input_fd)){
+        int flags = fcntl(cfg->input_fd, F_GETFL, 0);
+        if(flags >= 0) (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);  /* nonblocking input */
+        if(timui_termios_enter(&ui->termios, cfg->input_fd) == TIMUI_OK) ui->termios_active = 1;
+        timui_screen_enter(&ui->transport, &ui->screen, cfg->flags, timui_str_from_cstr(cfg->title));
+        ui->screen_active = 1;
+    }
+    r = timui_setup(ui, w, h);
+    if(r != TIMUI_OK){
+        if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
+        if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
+        al.free(al.userdata, ui, sizeof *ui);
+        return r;
+    }
+    *out_ui = ui;
+    return TIMUI_OK;
 }
-TIMUI_API void timui_close(Timui *ui){ (void)ui; }
+TIMUI_API void timui_close(Timui *ui){
+    TimuiAllocator al;
+    if(!ui) return;
+    if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
+    if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
+    if(ui->have_buffers){ timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); }
+    if(ui->have_msgq) timui_msgq_destroy(&ui->msgq);
+    if(ui->have_ids) timui_id_stack_destroy(&ui->ids);
+    al = ui->alloc;
+    al.free(al.userdata, ui, sizeof *ui);
+}
 TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
-    (void)ui; (void)out_frame; return false;
+    if(!ui || !out_frame) return false;
+    if(ui->have_transport){
+        char buf[256];
+        int n = ui->transport.read(&ui->transport, buf, sizeof buf);
+        if(n > 0) timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
+    }
+    /* drain parsed events: mouse -> hit-testing; tab/enter -> interaction;
+     * printable text + cursor keys -> the focused input's accumulator. */
+    ui->text_in_len = 0;
+    ui->key_in = 0;
+    {
+        TimuiEvent ev;
+        while(timui_poll_event(ui, &ev)){
+            if(ev.kind == TIMUI_EVENT_MOUSE){
+                timui_interact_set_mouse(&ui->ia, ev.as.mouse.x - 1, ev.as.mouse.y - 1, ev.as.mouse.pressed);
+            } else if(ev.kind == TIMUI_EVENT_KEY){
+                if(ev.as.key.key == TIMUI_KEY_TAB) timui_interact_set_keys(&ui->ia, 1, 0);
+                else if(ev.as.key.key == TIMUI_KEY_ENTER) timui_interact_set_keys(&ui->ia, 0, 1);
+                else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
+                else if(ev.as.key.key == TIMUI_KEY_LEFT) ui->key_in |= TIMUI_KEYIN_LEFT;
+                else if(ev.as.key.key == TIMUI_KEY_RIGHT) ui->key_in |= TIMUI_KEYIN_RIGHT;
+                else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
+                else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
+            } else if(ev.kind == TIMUI_EVENT_TEXT){
+                if(ev.as.text.codepoint < 0x80 && ui->text_in_len < (int)sizeof(ui->text_in))
+                    ui->text_in[ui->text_in_len++] = (char)ev.as.text.codepoint;
+            }
+        }
+    }
+    timui_interact_begin(&ui->ia);
+    timui_cells_clear(&ui->curr);
+    ui->ids.count = 0;                  /* fresh id stack for this frame */
+    ui->frame.ui = ui;
+    *out_frame = &ui->frame;
+    return true;
 }
-TIMUI_API void timui_end(TimuiFrame *frame){ (void)frame; }
+TIMUI_API void timui_end(TimuiFrame *frame){
+    Timui *ui;
+    TimuiCellBuffer tmp;
+    if(!frame || !frame->ui) return;
+    ui = frame->ui;
+    timui_interact_end(&ui->ia);
+    timui_render_diff(&ui->transport, &ui->prev, &ui->curr, &ui->renderer);
+    tmp = ui->prev; ui->prev = ui->curr; ui->curr = tmp;   /* swap for next diff */
+}
 TIMUI_API TimuiRect timui_root(const TimuiFrame *frame){
     TimuiRect z = {0, 0, 0, 0};
-    (void)frame;
+    if(!frame || !frame->ui) return z;
+    z.w = frame->ui->w;
+    z.h = frame->ui->h;
     return z;
 }
-TIMUI_API int timui_width(const TimuiFrame *frame){ (void)frame; return 0; }
-TIMUI_API int timui_height(const TimuiFrame *frame){ (void)frame; return 0; }
+TIMUI_API int timui_width(const TimuiFrame *frame){ return (frame && frame->ui) ? frame->ui->w : 0; }
+TIMUI_API int timui_height(const TimuiFrame *frame){ return (frame && frame->ui) ? frame->ui->h : 0; }
+TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame){
+    return (frame && frame->ui) ? &frame->ui->curr : NULL;
+}
+TIMUI_API void timui_ui_resize(Timui *ui, int w, int h){
+    if(!ui || w <= 0 || h <= 0) return;
+    timui_cells_resize(&ui->curr, w, h, &ui->alloc);
+    timui_cells_resize(&ui->prev, w, h, &ui->alloc);
+    ui->w = w;
+    ui->h = h;
+    timui_renderer_reset(&ui->renderer);   /* cursor/SGR tracking invalidated */
+}
+TIMUI_API int timui_poll_event(Timui *ui, TimuiEvent *out_event){
+    int i;
+    if(!ui || !out_event || ui->event_count == 0) return 0;
+    *out_event = ui->events[0];
+    ui->event_count--;
+    for(i = 0; i < ui->event_count; i++) ui->events[i] = ui->events[i + 1];
+    return 1;
+}
+TIMUI_API void timui_quit(Timui *ui){ if(ui) ui->should_quit = 1; }
+TIMUI_API bool timui_should_quit(const Timui *ui){ return ui ? (bool)ui->should_quit : false; }
 
 /* ---- ids (FNV-1a 64; non-cryptographic widget identity) ---------------- */
 TIMUI_API TimuiId timui_id_from_bytes(const void *data, size_t len){
@@ -1190,6 +1517,78 @@ TIMUI_API void timui_render_cursor(TimuiTransport *t, int x, int y, int visible)
     }
 }
 
+/* ---- style/theme system ----------------------------------------------- */
+static TimuiStyle th_mk(uint32_t fg, uint32_t bg){
+    TimuiStyle s; s.fg = fg; s.bg = bg; s.attrs = 0; return s;
+}
+TIMUI_API TimuiTheme timui_theme_builtin(TimuiBuiltinTheme t){
+    TimuiTheme th;
+    int i;
+    /* default (MONO): white-on-black */
+    for(i = 0; i < TIMUI_SLOT_COUNT; i++){ th.slots[i].fg = 0xFFFFFF; th.slots[i].bg = 0x000000; th.slots[i].attrs = 0; }
+    if(t == TIMUI_THEME_DOS_BLUE){
+        uint32_t blue = 0x0000AA, white = 0xFFFFFF, cyan = 0x00FFFF, gray = 0xAAAAAA;
+        th.slots[TIMUI_SLOT_TEXT]          = th_mk(white, blue);
+        th.slots[TIMUI_SLOT_TEXT_DIM]      = th_mk(gray,  blue);
+        th.slots[TIMUI_SLOT_PANEL]         = th_mk(white, blue);
+        th.slots[TIMUI_SLOT_PANEL_TITLE]   = th_mk(cyan,  blue);
+        th.slots[TIMUI_SLOT_BORDER]        = th_mk(white, blue);
+        th.slots[TIMUI_SLOT_BUTTON]        = th_mk(0x000000, gray);
+        th.slots[TIMUI_SLOT_BUTTON_HOVERED]= th_mk(0x000000, 0xDDDDDD);
+        th.slots[TIMUI_SLOT_BUTTON_FOCUSED]= th_mk(white, 0x555555);
+        th.slots[TIMUI_SLOT_BUTTON_ACTIVE] = th_mk(0x000000, white);
+        th.slots[TIMUI_SLOT_INPUT]         = th_mk(white, 0x000000);
+        th.slots[TIMUI_SLOT_INPUT_FOCUSED] = th_mk(white, 0x333333);
+        th.slots[TIMUI_SLOT_SELECTION]     = th_mk(white, 0x5555FF);
+        th.slots[TIMUI_SLOT_MENU]          = th_mk(white, blue);
+        th.slots[TIMUI_SLOT_MENU_ACTIVE]   = th_mk(0x000000, gray);
+        th.slots[TIMUI_SLOT_STATUS]        = th_mk(white, 0x000055);
+        th.slots[TIMUI_SLOT_ERROR]         = th_mk(0xFF5555, blue);
+        th.slots[TIMUI_SLOT_WARNING]       = th_mk(0xFFFF55, blue);
+        th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(0x55FF55, blue);
+    } else if(t == TIMUI_THEME_DOS_GRAY){
+        uint32_t gray = 0xAAAAAA, black = 0x000000, white = 0xFFFFFF;
+        th.slots[TIMUI_SLOT_TEXT]          = th_mk(black, gray);
+        th.slots[TIMUI_SLOT_TEXT_DIM]      = th_mk(0x555555, gray);
+        th.slots[TIMUI_SLOT_PANEL]         = th_mk(black, gray);
+        th.slots[TIMUI_SLOT_PANEL_TITLE]   = th_mk(white, 0x555555);
+        th.slots[TIMUI_SLOT_BORDER]        = th_mk(black, gray);
+        th.slots[TIMUI_SLOT_BUTTON]        = th_mk(black, white);
+        th.slots[TIMUI_SLOT_BUTTON_HOVERED]= th_mk(black, 0xDDDDDD);
+        th.slots[TIMUI_SLOT_BUTTON_FOCUSED]= th_mk(white, 0x555555);
+        th.slots[TIMUI_SLOT_BUTTON_ACTIVE] = th_mk(black, 0xFFFFFF);
+        th.slots[TIMUI_SLOT_INPUT]         = th_mk(black, white);
+        th.slots[TIMUI_SLOT_INPUT_FOCUSED] = th_mk(white, 0x555555);
+        th.slots[TIMUI_SLOT_STATUS]        = th_mk(white, 0x555555);
+        th.slots[TIMUI_SLOT_ERROR]         = th_mk(white, 0xAA0000);
+        th.slots[TIMUI_SLOT_WARNING]       = th_mk(black, 0xAAAA00);
+        th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(black, 0x00AA00);
+    } else if(t == TIMUI_THEME_MODERN_DARK){
+        uint32_t bg = 0x1E1E2E, fg = 0xCDD6F4, accent = 0x89B4FA;
+        for(i = 0; i < TIMUI_SLOT_COUNT; i++){ th.slots[i].fg = fg; th.slots[i].bg = bg; }
+        th.slots[TIMUI_SLOT_PANEL_TITLE]   = th_mk(accent, bg);
+        th.slots[TIMUI_SLOT_BORDER]        = th_mk(0x585B70, bg);
+        th.slots[TIMUI_SLOT_BUTTON]        = th_mk(fg, 0x313244);
+        th.slots[TIMUI_SLOT_BUTTON_HOVERED]= th_mk(fg, 0x45475A);
+        th.slots[TIMUI_SLOT_BUTTON_FOCUSED]= th_mk(0x1E1E2E, accent);
+        th.slots[TIMUI_SLOT_INPUT]         = th_mk(fg, 0x313244);
+        th.slots[TIMUI_SLOT_INPUT_FOCUSED] = th_mk(fg, 0x45475A);
+        th.slots[TIMUI_SLOT_SELECTION]     = th_mk(0x1E1E2E, accent);
+        th.slots[TIMUI_SLOT_ERROR]         = th_mk(0xF38BA8, bg);
+        th.slots[TIMUI_SLOT_WARNING]       = th_mk(0xFAB387, bg);
+        th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(0xA6E3A1, bg);
+    }
+    /* TIMUI_THEME_MONO: the white-on-black default set above */
+    return th;
+}
+TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot){
+    if(!th || slot < 0 || slot >= TIMUI_SLOT_COUNT){
+        TimuiStyle z = {0, 0, 0};
+        return z;
+    }
+    return th->slots[slot];
+}
+
 /* ---- terminal transport + fake backend --------------------------------- */
 static int fake_write(TimuiTransport *t, const void *data, size_t len){
     TimuiFakeTransport *f = (TimuiFakeTransport *)t->ctx;
@@ -1662,6 +2061,244 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
         if(plen > 0){ emit_paste(cb, ctx, p->paste_ptr, plen); count++; }
     }
     return count;
+}
+
+/* ---- interaction state ------------------------------------------------ */
+TIMUI_API void timui_interact_init(TimuiInteract *ia){
+    if(!ia) return;
+    ia->hot = ia->active = ia->focus = 0;
+    ia->mouse_x = ia->mouse_y = 0;
+    ia->mouse_down = ia->mouse_down_prev = 0;
+    ia->mouse_pressed = ia->mouse_released = 0;
+    ia->tab_pressed = ia->activate_pressed = 0;
+    ia->tab_count = 0;
+    ia->focus_advance = 0;
+}
+TIMUI_API void timui_interact_set_mouse(TimuiInteract *ia, int x, int y, int down){
+    if(!ia) return;
+    ia->mouse_x = x;
+    ia->mouse_y = y;
+    ia->mouse_down = down ? 1 : 0;
+}
+TIMUI_API void timui_interact_set_keys(TimuiInteract *ia, int tab, int activate){
+    if(!ia) return;
+    if(tab) ia->tab_pressed = 1;
+    if(activate) ia->activate_pressed = 1;
+}
+TIMUI_API void timui_interact_begin(TimuiInteract *ia){
+    if(!ia) return;
+    ia->mouse_pressed  = ia->mouse_down && !ia->mouse_down_prev;
+    ia->mouse_released = !ia->mouse_down && ia->mouse_down_prev;
+    ia->mouse_down_prev = ia->mouse_down;
+    ia->hot = 0;                 /* recomputed from this frame's submissions */
+    ia->tab_count = 0;
+    ia->focus_advance = ia->tab_pressed;
+    ia->tab_pressed = 0;
+}
+TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId id, TimuiRect r){
+    TimuiInteractResult res = {0, 0, 0, 0, 0};
+    int hover;
+    if(!ia) return res;
+    hover = (ia->mouse_x >= r.x && ia->mouse_x < r.x + r.w &&
+             ia->mouse_y >= r.y && ia->mouse_y < r.y + r.h);
+    if(hover) ia->hot = id;
+    if(hover && ia->mouse_pressed){ ia->active = id; ia->focus = id; }
+    res.hovered = hover;
+    res.focused = (ia->focus == id);
+    res.active  = (ia->active == id);
+    res.pressed = res.active && ia->mouse_down;
+    if(res.active && ia->mouse_released){
+        res.clicked = 1;        /* released over the active widget */
+        ia->active = 0;
+    }
+    if(res.focused && ia->activate_pressed){
+        res.clicked = 1;        /* Enter/Space activates the focused widget */
+        ia->activate_pressed = 0;
+    }
+    if(ia->tab_count < (int)(sizeof(ia->tab_order) / sizeof(ia->tab_order[0])))
+        ia->tab_order[ia->tab_count++] = id;
+    return res;
+}
+TIMUI_API void timui_interact_end(TimuiInteract *ia){
+    int i, idx;
+    if(!ia || !ia->focus_advance || ia->tab_count == 0) return;
+    idx = -1;
+    for(i = 0; i < ia->tab_count; i++)
+        if(ia->tab_order[i] == ia->focus){ idx = i; break; }
+    ia->focus = ia->tab_order[(idx + 1) % ia->tab_count];
+}
+
+/* ---- widgets ---------------------------------------------------------- */
+TIMUI_API TimuiButtonResult timui_button(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label){
+    TimuiButtonResult br = {false, false, false, false};
+    TimuiInteractResult ir;
+    TimuiStyleSlot slot;
+    TimuiStyle st;
+    Timui *ui;
+    if(!f || !f->ui) return br;
+    ui = f->ui;
+    ir = timui_interact_button(&ui->ia, id, r);
+    br.clicked = ir.clicked;
+    br.pressed = ir.pressed;
+    br.hovered = ir.hovered;
+    br.focused = ir.focused;
+    slot = ir.active ? TIMUI_SLOT_BUTTON_ACTIVE
+          : ir.hovered ? TIMUI_SLOT_BUTTON_HOVERED
+          : ir.focused ? TIMUI_SLOT_BUTTON_FOCUSED
+          : TIMUI_SLOT_BUTTON;
+    st = timui_theme_style(&ui->theme, slot);
+    timui_draw_fill(&ui->curr, r, st);
+    timui_draw_text(&ui->curr, r.x + 1, r.y + (r.h > 1 ? (r.h - 1) / 2 : 0), label, st);
+    return br;
+}
+TIMUI_API void timui_label(TimuiFrame *f, int x, int y, TimuiStr text, TimuiStyle style){
+    Timui *ui;
+    if(!f || !f->ui) return;
+    ui = f->ui;
+    timui_draw_text(&ui->curr, x, y, text, style);
+}
+TIMUI_API TimuiRect timui_panel_begin(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr title, uint32_t border_flags){
+    TimuiRect body = {0, 0, 0, 0};
+    Timui *ui;
+    (void)id;
+    if(!f || !f->ui) return body;
+    ui = f->ui;
+    timui_draw_box(&ui->curr, r, border_flags, timui_theme_style(&ui->theme, TIMUI_SLOT_BORDER));
+    if(title.ptr && title.len)
+        timui_draw_text(&ui->curr, r.x + 1, r.y, title, timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL_TITLE));
+    body.x = r.x + 1; body.y = r.y + 1;
+    body.w = r.w - 2; body.h = r.h - 2;
+    if(body.w < 0) body.w = 0;
+    if(body.h < 0) body.h = 0;
+    timui_draw_fill(&ui->curr, body, timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL));
+    return body;
+}
+TIMUI_API void timui_panel_end(TimuiFrame *f){ (void)f; }   /* clip stack is future work */
+static TimuiBoolEdit bool_widget(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label,
+                                 bool value, int is_radio){
+    TimuiBoolEdit be = {false, value, false, false};
+    TimuiInteractResult ir;
+    Timui *ui;
+    TimuiStyle st;
+    char box[4];
+    if(!f || !f->ui) return be;
+    ui = f->ui;
+    ir = timui_interact_button(&ui->ia, id, r);
+    be.hovered = ir.hovered;
+    be.focused = ir.focused;
+    if(ir.clicked){
+        be.changed = true;
+        be.value = is_radio ? true : !value;   /* radio selects; checkbox toggles */
+    }
+    st = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    box[0] = is_radio ? '(' : '[';
+    box[1] = value ? (is_radio ? 'o' : 'x') : ' ';
+    box[2] = is_radio ? ')' : ']';
+    box[3] = ' ';
+    timui_draw_text(&ui->curr, r.x, r.y, (TimuiStr){ box, 4 }, st);
+    timui_draw_text(&ui->curr, r.x + 4, r.y, label, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
+    return be;
+}
+TIMUI_API TimuiBoolEdit timui_checkbox(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool value){
+    return bool_widget(f, id, r, label, value, 0);
+}
+TIMUI_API bool timui_checkbox_mut(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool *value){
+    TimuiBoolEdit be;
+    if(!value) return false;
+    be = timui_checkbox(f, id, r, label, *value);
+    if(be.changed) *value = be.value;
+    return *value;
+}
+TIMUI_API TimuiBoolEdit timui_radio(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool selected){
+    return bool_widget(f, id, r, label, selected, 1);
+}
+TIMUI_API void timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text){
+    Timui *ui;
+    if(!f || !f->ui) return;
+    ui = f->ui;
+    timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
+    timui_draw_text(&ui->curr, r.x, r.y, text, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
+}
+TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char *buf, size_t cap){
+    Timui *ui;
+    TimuiInteractResult ir;
+    TimuiStyle st;
+    size_t len;
+    bool submitted = false;
+    if(!f || !f->ui || !buf || cap == 0) return false;
+    ui = f->ui;
+    {
+        int submit = ui->ia.activate_pressed;   /* capture before interact_button consumes it */
+        ir = timui_interact_button(&ui->ia, id, r);   /* click to focus */
+        len = strlen(buf);
+        if(ir.focused){
+            int i;
+            for(i = 0; i < ui->text_in_len && len + 1 < cap; i++)
+                buf[len++] = ui->text_in[i];
+            buf[len] = '\0';
+            if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && len > 0) buf[--len] = '\0';
+            if(submit) submitted = true;
+            ui->text_in_len = 0;       /* consumed by the focused input */
+            ui->key_in = 0;
+        }
+    }
+    st = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    timui_draw_fill(&ui->curr, r, st);
+    timui_draw_text(&ui->curr, r.x, r.y, timui_str_from_cstr(buf), st);
+    return submitted;
+}
+TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                        TimuiListState state, int count, TimuiLabelFn label, void *userdata){
+    TimuiListResult res;
+    Timui *ui;
+    TimuiInteractResult ir;
+    int orig, i, visible;
+    res.state_changed = 0; res.activated = 0; res.focused = 0;
+    res.state = state; res.selected = state.selected;
+    if(!f || !f->ui || count < 0) return res;
+    ui = f->ui;
+    orig = state.selected;
+    ir = timui_interact_button(&ui->ia, id, r);
+    res.focused = ir.focused;
+    if(ir.focused){
+        if((ui->key_in & TIMUI_KEYIN_UP) && state.selected > 0) state.selected--;
+        if((ui->key_in & TIMUI_KEYIN_DOWN) && state.selected < count - 1) state.selected++;
+    }
+    visible = r.h > 0 ? r.h : 0;
+    if(state.scroll < 0) state.scroll = 0;
+    if(state.selected < state.scroll) state.scroll = state.selected;
+    if(visible > 0 && state.selected >= state.scroll + visible) state.scroll = state.selected - visible + 1;
+    if(state.scroll < 0) state.scroll = 0;
+    if(ir.clicked){
+        int my = ui->ia.mouse_y - r.y;
+        int idx = state.scroll + my;
+        if(idx >= 0 && idx < count){ state.selected = idx; res.activated = 1; }
+    }
+    for(i = 0; i < visible; i++){
+        int idx = state.scroll + i;
+        TimuiStyleSlot slot;
+        TimuiStyle st;
+        const char *s;
+        if(idx >= count) break;
+        s = label ? label(userdata, idx) : "";
+        slot = (idx == state.selected) ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT;
+        st = timui_theme_style(&ui->theme, slot);
+        timui_draw_fill(&ui->curr, TIMUI_RECT(r.x, r.y + i, r.w, 1), st);
+        timui_draw_text(&ui->curr, r.x, r.y + i, timui_str_from_cstr(s), st);
+    }
+    if(state.selected != orig) res.state_changed = 1;
+    res.state = state;
+    res.selected = state.selected;
+    return res;
+}
+TIMUI_API TimuiListResult timui_listbox_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                            TimuiListState *state, int count, TimuiLabelFn label, void *userdata){
+    TimuiListResult res;
+    TimuiListState empty = {0, 0};
+    if(!state) return timui_listbox(f, id, r, empty, count, label, userdata);
+    res = timui_listbox(f, id, r, *state, count, label, userdata);
+    if(res.state_changed) *state = res.state;
+    return res;
 }
 
 #endif /* TIMUI_IMPLEMENTATION */
