@@ -68,6 +68,19 @@ int main(void){
         test_kitty_mods_on_arrows,
         test_sync_begin_end_bytes,
         test_cursor_hide_show_bytes,
+        test_cells_init_clear,
+        test_cells_put_get_roundtrip,
+        test_cells_resize,
+        test_utf8_decode,
+        test_utf8_width,
+        test_draw_text,
+        test_draw_fill,
+        test_draw_box_single,
+        test_draw_box_ascii,
+        test_render_diff_exact,
+        test_render_unchanged_emits_nothing,
+        test_render_cursor_visible,
+        test_render_cursor_hidden,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

@@ -2378,7 +2378,7 @@ Parallelization: blocks parser and renderer tests.
 
 ---
 
-### T2.2 — POSIX raw mode
+### T2.2 — POSIX raw mode ✅
 
 Dependencies: T2.1.
 
@@ -2428,7 +2428,7 @@ Parallelization: can run with T2.4.
 
 ---
 
-### T2.4 — Terminal size
+### T2.4 — Terminal size ✅
 
 Dependencies: T2.2.
 
@@ -2451,7 +2451,7 @@ Parallelization: blocks robust frame begin.
 
 ---
 
-### T2.5 — Capability detection
+### T2.5 — Capability detection ✅
 
 Dependencies: T2.1, T2.3.
 
@@ -2504,7 +2504,7 @@ Parallelization: can run with renderer.
 
 ---
 
-### T2.7 — Mouse, paste, focus parser
+### T2.7 — Mouse, paste, focus parser ✅
 
 Dependencies: T2.6.
 
@@ -2530,7 +2530,7 @@ Parallelization: blocks input widgets.
 
 ---
 
-### T2.8 — Kitty keyboard protocol
+### T2.8 — Kitty keyboard protocol ✅
 
 Dependencies: T2.5, T2.6.
 
@@ -2557,7 +2557,7 @@ Parallelization: independent after parser/caps.
 
 ---
 
-### T2.9 — Synchronized output
+### T2.9 — Synchronized output ✅
 
 Dependencies: T2.5, T3.4.
 

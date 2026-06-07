@@ -79,5 +79,18 @@ void test_kitty_special_codes(void);
 void test_kitty_mods_on_arrows(void);
 void test_sync_begin_end_bytes(void);
 void test_cursor_hide_show_bytes(void);
+void test_cells_init_clear(void);
+void test_cells_put_get_roundtrip(void);
+void test_cells_resize(void);
+void test_utf8_decode(void);
+void test_utf8_width(void);
+void test_draw_text(void);
+void test_draw_fill(void);
+void test_draw_box_single(void);
+void test_draw_box_ascii(void);
+void test_render_diff_exact(void);
+void test_render_unchanged_emits_nothing(void);
+void test_render_cursor_visible(void);
+void test_render_cursor_hidden(void);
 
 #endif /* TIMUI_TEST_H */
