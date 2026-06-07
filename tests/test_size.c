@@ -1,0 +1,53 @@
+/*
+ * test_size.c — terminal size query (T2.4).
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#include "test.h"
+#include "timui.h"
+
+#include <fcntl.h>
+#include <stdlib.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+TIMUI_TEST(test_term_size_query){
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    struct winsize ws;
+    int w = 0, h = 0;
+    char *name;
+    int slave;
+
+    TIMUI_CHECK(master >= 0);
+    if(master < 0) return;
+    grantpt(master);
+    unlockpt(master);
+    name = ptsname(master);
+    TIMUI_CHECK(name != NULL);
+    slave = open(name, O_RDWR);
+    TIMUI_CHECK(slave >= 0);
+    if(slave < 0){ close(master); return; }
+
+    ws.ws_col = 100; ws.ws_row = 40; ws.ws_xpixel = 0; ws.ws_ypixel = 0;
+    TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
+    TIMUI_CHECK(timui_term_size(slave, &w, &h) == TIMUI_OK);
+    TIMUI_CHECK(w == 100 && h == 40);
+
+    /* zero-size is handled safely (no crash, no negative) */
+    ws.ws_col = 0; ws.ws_row = 0;
+    TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
+    TIMUI_CHECK(timui_term_size(slave, &w, &h) == TIMUI_OK);
+    TIMUI_CHECK(w == 0 && h == 0);
+
+    close(slave);
+    close(master);
+}
+
+TIMUI_TEST(test_term_size_not_a_tty){
+    int p[2];
+    int w, h;
+    TIMUI_CHECK(pipe(p) == 0);
+    TIMUI_CHECK(timui_term_size(p[0], &w, &h) == TIMUI_ERR_NOT_A_TTY);
+    close(p[0]);
+    close(p[1]);
+}

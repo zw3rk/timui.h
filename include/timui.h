@@ -298,6 +298,67 @@ typedef struct {
 TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_t flags, TimuiStr title);
 TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m);
 
+/* ---- Terminal raw mode (POSIX) ---------------------------------------- *
+ * Save the fd's termios, switch to raw (no canonical/echo/signals, 8-bit
+ * clean, VMIN=1/VTIME=0), and restore exactly on close. struct termios is
+ * stored opaquely so <termios.h> stays out of the public header. */
+typedef struct {
+    int  fd;
+    void *saved;       /* struct termios* (heap-allocated in enter) */
+    int  have_saved;
+} TimuiTermios;
+
+TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd);
+TIMUI_API TimuiResult timui_termios_restore(TimuiTermios *t);
+TIMUI_API void        timui_termios_destroy(TimuiTermios *t);
+
+/* Query the terminal size (cols x rows) via TIOCGWINSZ. Resize is detected
+ * by polling (the frame re-queries each tick), avoiding signal-handler state.
+ * Returns TIMUI_ERR_NOT_A_TTY if fd is not a terminal. */
+TIMUI_API TimuiResult timui_term_size(int fd, int *out_w, int *out_h);
+
+/* ---- Capability detection --------------------------------------------- */
+typedef enum {
+    TIMUI_CAP_ALT_SCREEN      = 1u << 0,
+    TIMUI_CAP_TRUECOLOR       = 1u << 1,
+    TIMUI_CAP_256_COLOR       = 1u << 2,
+    TIMUI_CAP_SGR_MOUSE       = 1u << 3,
+    TIMUI_CAP_BRACKETED_PASTE = 1u << 4,
+    TIMUI_CAP_FOCUS_EVENTS    = 1u << 5,
+    TIMUI_CAP_SYNC_OUTPUT     = 1u << 6,
+    TIMUI_CAP_KITTY_KEYBOARD  = 1u << 7,
+    TIMUI_CAP_OSC8_HYPERLINKS = 1u << 8,
+    TIMUI_CAP_KITTY_GRAPHICS  = 1u << 9,
+    TIMUI_CAP_UNICODE_CORE    = 1u << 10
+} TimuiCapFlags;
+
+typedef struct {
+    uint32_t flags;
+    int      colors;
+    int      width;
+    int      height;
+    char     term[64];
+    char     term_program[64];
+    char     term_program_version[64];
+} TimuiCaps;
+
+/* Pure, deterministic detection from environment strings (no I/O, no live
+ * queries): known modern terminals get the modern cap set; multiplexers
+ * (tmux/screen/zellij) reduce it; unknown terminals fall back to a safe
+ * minimum. force_on / force_off override the result. */
+TIMUI_API void timui_caps_detect(TimuiCaps *caps, const char *term, const char *term_program, const char *colorterm);
+TIMUI_API void timui_caps_apply_force(TimuiCaps *caps, uint32_t force_on, uint32_t force_off);
+TIMUI_API int  timui_caps_has(const TimuiCaps *caps, TimuiCapFlags cap);
+
+/* ---- Synchronized output (DEC 2026) + cursor -------------------------- *
+ * Wrap a frame's terminal writes so the terminal repaints atomically. The
+ * caller gates sync on TIMUI_CAP_SYNC_OUTPUT; hide/show cursor are the safe
+ * fallback when synchronized output is unavailable. */
+TIMUI_API void timui_sync_begin(TimuiTransport *t);
+TIMUI_API void timui_sync_end(TimuiTransport *t);
+TIMUI_API void timui_hide_cursor(TimuiTransport *t);
+TIMUI_API void timui_show_cursor(TimuiTransport *t);
+
 /* ---- Events ----------------------------------------------------------- */
 typedef enum {
     TIMUI_EVENT_NONE = 0, TIMUI_EVENT_KEY, TIMUI_EVENT_TEXT, TIMUI_EVENT_MOUSE,
@@ -328,6 +389,10 @@ typedef struct {
     union {
         struct { TimuiKey key; uint32_t codepoint; uint32_t mods; TimuiKeyAction action; } key;
         struct { const char *ptr; size_t len; uint32_t codepoint; } text;
+        struct { const char *ptr; size_t len; } paste;
+        struct { int x; int y; int button; int wheel_y; uint32_t mods;
+                 int pressed; int released; int motion; } mouse;
+        struct { int focused; } focus;
     } as;
 } TimuiEvent;
 
@@ -336,8 +401,15 @@ typedef struct {
  * parser holds state, so a sequence split across feeds still completes. */
 typedef struct {
     int         state;     /* 0 ground, 1 esc, 2 csi, 3 ss3, 4 utf8 */
-    int         param;     /* current CSI numeric parameter */
+    int         param;     /* current CSI numeric parameter (~ keys) */
     int         nparams;   /* any parameter seen */
+    int         mod_param; /* second CSI parameter (kitty modifiers) */
+    int         has_mod;   /* a second parameter was given */
+    int         csi_mouse; /* '<' introducer seen — SGR mouse */
+    int         mparam[3]; /* mouse params: button-code, x, y */
+    int         mcount;    /* mouse param index */
+    int         pasting;   /* between ESC[200~ and ESC[201~ */
+    const unsigned char *paste_ptr; /* start of in-feed paste content */
     int         utf8_need;
     int         utf8_len;
     uint32_t    utf8_cp;
@@ -362,6 +434,9 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *bytes, size_t
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <termios.h>
 #ifndef TIMUI_NO_THREADS
 #include <pthread.h>
 #endif
@@ -861,6 +936,114 @@ TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m){
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049l");
 }
 
+/* ---- terminal raw mode (POSIX) ---------------------------------------- */
+TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd){
+    struct termios *orig, raw;
+    if(!t) return TIMUI_ERR_INVALID_ARGUMENT;
+    orig = (struct termios *)malloc(sizeof(struct termios));
+    if(!orig) return TIMUI_ERR_OUT_OF_MEMORY;
+    if(tcgetattr(fd, orig) != 0){ free(orig); return TIMUI_ERR_OS; }
+    t->fd = fd;
+    t->saved = orig;
+    t->have_saved = 1;
+    raw = *orig;
+    raw.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+    raw.c_oflag &= ~OPOST;
+    raw.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    raw.c_cflag &= ~(CSIZE | PARENB);
+    raw.c_cflag |= CS8;
+    raw.c_cc[VMIN]  = 1;
+    raw.c_cc[VTIME] = 0;
+    if(tcsetattr(fd, TCSAFLUSH, &raw) != 0) return TIMUI_ERR_OS;
+    return TIMUI_OK;
+}
+TIMUI_API TimuiResult timui_termios_restore(TimuiTermios *t){
+    if(!t || !t->have_saved) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(tcsetattr(t->fd, TCSAFLUSH, (const struct termios *)t->saved) != 0) return TIMUI_ERR_OS;
+    return TIMUI_OK;
+}
+TIMUI_API void timui_termios_destroy(TimuiTermios *t){
+    if(!t) return;
+    if(t->saved){ free(t->saved); t->saved = NULL; }
+    t->have_saved = 0;
+}
+TIMUI_API TimuiResult timui_term_size(int fd, int *out_w, int *out_h){
+    struct winsize ws;
+    if(ioctl(fd, TIOCGWINSZ, &ws) != 0){
+        return (errno == ENOTTY) ? TIMUI_ERR_NOT_A_TTY : TIMUI_ERR_OS;
+    }
+    if(out_w) *out_w = (int)ws.ws_col;
+    if(out_h) *out_h = (int)ws.ws_row;
+    return TIMUI_OK;
+}
+
+/* ---- capability detection --------------------------------------------- */
+static int caps_streq(const char *a, const char *b){
+    return a && b && strcmp(a, b) == 0;
+}
+static int caps_is_kitty_family(const char *tp){
+    return caps_streq(tp, "kitty") || caps_streq(tp, "xterm-kitty")
+        || caps_streq(tp, "ghostty") || caps_streq(tp, "xterm-ghostty");
+}
+static int caps_is_modern(const char *tp){
+    return caps_is_kitty_family(tp) || caps_streq(tp, "WezTerm")
+        || caps_streq(tp, "alacritty") || caps_streq(tp, "foot")
+        || caps_streq(tp, "rio");
+}
+static void caps_set_str(char *dst, size_t cap, const char *src){
+    size_t n;
+    if(!dst) return;
+    dst[0] = '\0';
+    if(!src) return;
+    n = strlen(src);
+    if(n >= cap) n = cap - 1;
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *term_program, const char *colorterm){
+    if(!c) return;
+    memset(c, 0, sizeof(*c));
+    c->colors = 16;
+    caps_set_str(c->term, sizeof(c->term), term);
+    caps_set_str(c->term_program, sizeof(c->term_program), term_program);
+    if(colorterm && (caps_streq(colorterm, "truecolor") || caps_streq(colorterm, "24bit"))){
+        c->flags |= TIMUI_CAP_TRUECOLOR;
+        c->colors = 16777216;
+    }
+    if(caps_is_modern(term_program)){
+        c->flags |= TIMUI_CAP_TRUECOLOR | TIMUI_CAP_256_COLOR | TIMUI_CAP_SGR_MOUSE
+                  | TIMUI_CAP_BRACKETED_PASTE | TIMUI_CAP_FOCUS_EVENTS
+                  | TIMUI_CAP_SYNC_OUTPUT | TIMUI_CAP_OSC8_HYPERLINKS;
+        if(c->colors < 16777216) c->colors = 16777216;
+        if(caps_is_kitty_family(term_program)){
+            c->flags |= TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
+        }
+    } else if(term && strstr(term, "256color")){
+        c->flags |= TIMUI_CAP_256_COLOR;
+        c->colors = 256;
+    }
+    /* multiplexers reduce capabilities unless explicit passthrough is known */
+    if(term && (strstr(term, "tmux") || strstr(term, "screen") || strstr(term, "zellij"))){
+        c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SYNC_OUTPUT);
+        c->flags |= TIMUI_CAP_256_COLOR;
+        if(c->colors < 256) c->colors = 256;
+    }
+}
+TIMUI_API void timui_caps_apply_force(TimuiCaps *c, uint32_t force_on, uint32_t force_off){
+    if(!c) return;
+    c->flags |= force_on;
+    c->flags &= ~force_off;
+}
+TIMUI_API int timui_caps_has(const TimuiCaps *c, TimuiCapFlags cap){
+    return c && ((c->flags & (uint32_t)cap) != 0);
+}
+
+/* ---- synchronized output (DEC 2026) + cursor -------------------------- */
+TIMUI_API void timui_sync_begin(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?2026h"); }
+TIMUI_API void timui_sync_end(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?2026l"); }
+TIMUI_API void timui_hide_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25l"); }
+TIMUI_API void timui_show_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25h"); }
+
 /* ---- input parser ------------------------------------------------------ *
  * Incremental byte->event state machine: ground/esc/csi/ss3/utf8. Emits a
  * TimuiEvent through cb for each complete key or text rune; invalid bytes
@@ -880,6 +1063,44 @@ static void emit_text(TimuiEventFn cb, void *ctx, const char *ptr, size_t len, u
     ev.as.text.ptr = ptr;
     ev.as.text.len = len;
     ev.as.text.codepoint = cp;
+    if(cb) cb(ctx, &ev);
+}
+static void emit_paste(TimuiEventFn cb, void *ctx, const unsigned char *ptr, size_t len){
+    TimuiEvent ev;
+    ev.kind = TIMUI_EVENT_PASTE;
+    ev.as.paste.ptr = (const char *)ptr;
+    ev.as.paste.len = len;
+    if(cb) cb(ctx, &ev);
+}
+static void emit_focus(TimuiEventFn cb, void *ctx, int focused){
+    TimuiEvent ev;
+    ev.kind = TIMUI_EVENT_FOCUS;
+    ev.as.focus.focused = focused;
+    if(cb) cb(ctx, &ev);
+}
+/* SGR mouse: mp = {Cb, x, y}; final 'M' press, 'm' release. Cb encodes
+ * button, modifiers, motion (0x20) and wheel (0x40). */
+static void emit_mouse(TimuiEventFn cb, void *ctx, const int *mp, unsigned char final){
+    TimuiEvent ev;
+    int code = mp[0];
+    ev.kind = TIMUI_EVENT_MOUSE;
+    ev.as.mouse.x = mp[1];
+    ev.as.mouse.y = mp[2];
+    ev.as.mouse.button = -1;
+    ev.as.mouse.wheel_y = 0;
+    ev.as.mouse.mods = 0;
+    ev.as.mouse.pressed  = (final == 'M');
+    ev.as.mouse.released = (final == 'm');
+    ev.as.mouse.motion = 0;
+    if(code & 0x40){
+        ev.as.mouse.wheel_y = (code == 64) ? 1 : (code == 65 ? -1 : 0);
+    } else {
+        ev.as.mouse.button = code & 0x03;
+        ev.as.mouse.motion = (code & 0x20) ? 1 : 0;
+    }
+    if(code & 0x04) ev.as.mouse.mods |= TIMUI_MOD_SHIFT;
+    if(code & 0x08) ev.as.mouse.mods |= TIMUI_MOD_ALT;
+    if(code & 0x10) ev.as.mouse.mods |= TIMUI_MOD_CTRL;
     if(cb) cb(ctx, &ev);
 }
 static TimuiKey csi_letter(unsigned char f){
@@ -923,6 +1144,28 @@ static TimuiKey ss3_final(unsigned char f){
         default:  return TIMUI_KEY_UNKNOWN;
     }
 }
+/* Kitty keyboard: CSI <code>;<mods>u -- map well-known codes, decode mods
+ * (value = 1 + bitmask: shift/alt/ctrl/super/hyper/meta). */
+static TimuiKey kitty_code_key(int code){
+    switch(code){
+        case 9:   return TIMUI_KEY_TAB;
+        case 13:  return TIMUI_KEY_ENTER;
+        case 27:  return TIMUI_KEY_ESCAPE;
+        case 127: return TIMUI_KEY_BACKSPACE;
+        default:  return TIMUI_KEY_UNKNOWN;
+    }
+}
+static uint32_t decode_kitty_mods(int param){
+    uint32_t mods = TIMUI_MOD_NONE;
+    int m = param > 0 ? param - 1 : 0;
+    if(m & 1)  mods |= TIMUI_MOD_SHIFT;
+    if(m & 2)  mods |= TIMUI_MOD_ALT;
+    if(m & 4)  mods |= TIMUI_MOD_CTRL;
+    if(m & 8)  mods |= TIMUI_MOD_SUPER;
+    if(m & 16) mods |= TIMUI_MOD_HYPER;
+    if(m & 32) mods |= TIMUI_MOD_META;
+    return mods;
+}
 /* UTF-8 lead byte: continuation count (1..3), or -1 if not a valid lead. */
 static int utf8_lead(unsigned char b, uint32_t *cp){
     if((b & 0xE0) == 0xC0){ *cp = (uint32_t)(b & 0x1F); return 1; }
@@ -933,6 +1176,10 @@ static int utf8_lead(unsigned char b, uint32_t *cp){
 TIMUI_API void timui_input_init(TimuiInputParser *p){
     if(!p) return;
     p->state = 0; p->param = 0; p->nparams = 0;
+    p->mod_param = 0; p->has_mod = 0;
+    p->csi_mouse = 0; p->mcount = 0;
+    p->mparam[0] = p->mparam[1] = p->mparam[2] = 0;
+    p->pasting = 0; p->paste_ptr = NULL;
     p->utf8_need = 0; p->utf8_len = 0; p->utf8_cp = 0; p->utf8_ptr = NULL;
 }
 TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t len,
@@ -941,8 +1188,20 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
     size_t i, count = 0;
     if(!p || !b) return 0;
     if(p->state == 4) p->utf8_ptr = NULL;   /* crossed a feed boundary: no stable byte view */
+    if(p->pasting) p->paste_ptr = (const unsigned char *)&b[0];   /* paste continues into this feed */
     for(i = 0; i < len; i++){
         unsigned char c = b[i];
+        if(p->pasting){
+            /* scan for the ESC[201~ terminator; anything else is paste content */
+            if(c == 0x1b && i + 5 < len &&
+               b[i+1] == '[' && b[i+2] == '2' && b[i+3] == '0' && b[i+4] == '1' && b[i+5] == '~'){
+                emit_paste(cb, ctx, p->paste_ptr, (size_t)(&b[i] - p->paste_ptr));
+                count++;
+                p->pasting = 0;
+                i += 5;                 /* consume the 6-byte terminator */
+            }
+            continue;
+        }
         switch(p->state){
         case 0: /* GROUND */
             if(c == 0x1b){ p->state = 1; break; }
@@ -968,7 +1227,13 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             }
             break;
         case 1: /* ESC */
-            if(c == '['){ p->state = 2; p->param = 0; p->nparams = 0; break; }
+            if(c == '['){
+                p->state = 2; p->param = 0; p->nparams = 0;
+                p->mod_param = 0; p->has_mod = 0;
+                p->csi_mouse = 0; p->mcount = 0;
+                p->mparam[0] = p->mparam[1] = p->mparam[2] = 0;
+                break;
+            }
             if(c == 'O'){ p->state = 3; break; }
             if(c == 0x1b){ emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0); count++; break; } /* stay ESC */
             if(c >= 0x20 && c < 0x80){
@@ -980,11 +1245,39 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             if(i > 0) i--;        /* reprocess the byte in ground */
             break;
         case 2: /* CSI */
-            if(c >= '0' && c <= '9'){ p->param = p->param * 10 + (c - '0'); p->nparams = 1; break; }
-            if(c == ';' || c == '?' || c == '>'){ p->param = 0; break; }
+            if(c == '<'){ p->csi_mouse = 1; p->mcount = 0; p->mparam[0] = p->mparam[1] = p->mparam[2] = 0; break; }
+            if(c == '?' || c == '>' || c == '='){ break; }              /* private marker */
+            if(c >= '0' && c <= '9'){
+                if(p->csi_mouse){
+                    if(p->mcount < 3) p->mparam[p->mcount] = p->mparam[p->mcount] * 10 + (c - '0');
+                } else if(p->has_mod){
+                    p->mod_param = p->mod_param * 10 + (c - '0');
+                } else { p->param = p->param * 10 + (c - '0'); p->nparams = 1; }
+                break;
+            }
+            if(c == ';'){
+                if(p->csi_mouse){ if(p->mcount < 2) p->mcount++; }
+                else { p->has_mod = 1; p->mod_param = 0; }
+                break;
+            }
             if(c >= 0x40 && c <= 0x7e){
-                TimuiKey k = (c == '~') ? csi_tilde(p->nparams ? p->param : 0) : csi_letter(c);
-                if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, 0, 0); count++; }
+                uint32_t mods = p->has_mod ? decode_kitty_mods(p->mod_param) : 0;
+                if(p->csi_mouse){
+                    if(c == 'M' || c == 'm'){ emit_mouse(cb, ctx, p->mparam, c); count++; }
+                    p->csi_mouse = 0;
+                } else if(c == '~'){
+                    int n = p->nparams ? p->param : 0;
+                    if(n == 200){ p->pasting = 1; p->paste_ptr = (const unsigned char *)&b[i+1]; }
+                    else if(n == 201){ p->pasting = 0; }
+                    else { TimuiKey k = csi_tilde(n); if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, mods, 0); count++; } }
+                } else if(c == 'u'){
+                    /* Kitty keyboard: CSI <code>;<mods>u */
+                    int code = p->nparams ? p->param : 0;
+                    emit_key(cb, ctx, kitty_code_key(code), mods, (uint32_t)code);
+                    count++;
+                } else if(c == 'I'){ emit_focus(cb, ctx, 1); count++; }
+                else if(c == 'O'){ emit_focus(cb, ctx, 0); count++; }
+                else { TimuiKey k = csi_letter(c); if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, mods, 0); count++; } }
                 p->state = 0;
                 break;
             }
@@ -1012,6 +1305,10 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             if(i > 0) i--;
             break;
         }
+    }
+    if(p->pasting){   /* paste ran to end of feed: emit the chunk accumulated so far */
+        size_t plen = (size_t)(&b[len] - p->paste_ptr);
+        if(plen > 0){ emit_paste(cb, ctx, p->paste_ptr, plen); count++; }
     }
     return count;
 }

@@ -2355,7 +2355,7 @@ Parallelization: can proceed while rendering/widgets happen.
 
 ## Phase 2 — Terminal backend
 
-### T2.1 — Terminal transport abstraction
+### T2.1 — Terminal transport abstraction ✅
 
 Dependencies: T1.1, T1.2.
 
@@ -2402,7 +2402,7 @@ Parallelization: backend-specific.
 
 ---
 
-### T2.3 — Screen mode setup/teardown
+### T2.3 — Screen mode setup/teardown ✅
 
 Dependencies: T2.1, T2.2.
 
@@ -2477,7 +2477,7 @@ Parallelization: blocks sync output and kitty keyboard negotiation.
 
 ---
 
-### T2.6 — Legacy input parser
+### T2.6 — Legacy input parser ✅
 
 Dependencies: T1.3, T2.1.
 

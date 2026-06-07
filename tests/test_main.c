@@ -51,6 +51,23 @@ int main(void){
         test_input_partial_then_complete,
         test_input_utf8,
         test_input_invalid_safe,
+        test_mouse_press_release,
+        test_mouse_wheel_and_motion,
+        test_focus_events,
+        test_bracketed_paste,
+        test_termios_raw_and_restore,
+        test_term_size_query,
+        test_term_size_not_a_tty,
+        test_caps_modern_kitty_family,
+        test_caps_multiplexer_reduces,
+        test_caps_unknown_fallback,
+        test_caps_force_masks,
+        test_kitty_csi_u_plain,
+        test_kitty_csi_u_with_mods,
+        test_kitty_special_codes,
+        test_kitty_mods_on_arrows,
+        test_sync_begin_end_bytes,
+        test_cursor_hide_show_bytes,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);
