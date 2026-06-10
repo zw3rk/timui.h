@@ -2838,7 +2838,7 @@ Parallelization: can run with focus work.
 
 ---
 
-### T4.4 — Clip stack
+### T4.4 — Clip stack ✅
 
 Dependencies: T3.3, T4.1.
 
@@ -2861,7 +2861,7 @@ Parallelization: blocks scroll/list widgets.
 
 ---
 
-### T4.5 — Modal/menu stack
+### T4.5 — Modal/menu stack ✅
 
 Dependencies: T4.2.
 
@@ -3036,7 +3036,7 @@ Parallelization: simple; can be early.
 
 ---
 
-### T5.7 — Menu bar and menus
+### T5.7 — Menu bar and menus ✅
 
 Dependencies: T4.5, T5.2, T5.5.
 
@@ -3090,7 +3090,7 @@ Parallelization: after modal stack and button.
 
 ## Phase 6 — Functional/app runner
 
-### T6.1 — Controlled widget examples
+### T6.1 — Controlled widget examples ✅
 
 Dependencies: T5.2, T5.3, T5.4, T5.5.
 
@@ -3113,7 +3113,7 @@ Parallelization: docs/examples team.
 
 ---
 
-### T6.2 — App runner
+### T6.2 — App runner ✅
 
 Dependencies: T1.6, T4.1, T6.1.
 
@@ -3244,7 +3244,7 @@ under 500 LOC target
 
 ---
 
-### T7.5 — Keyboard inspector
+### T7.5 — Keyboard inspector ✅
 
 Dependencies: T2.8.
 
@@ -3263,7 +3263,7 @@ useful for comparing Ghostty/kitty/fallback behavior
 
 ---
 
-### T7.6 — Protocol capability inspector
+### T7.6 — Protocol capability inspector ✅
 
 Dependencies: T2.5.
 
@@ -3372,7 +3372,7 @@ modal trapping
 
 ---
 
-### T8.5 — Fuzz input parser
+### T8.5 — Fuzz input parser ✅
 
 Dependencies: T2.6.
 
@@ -3392,7 +3392,7 @@ timeout-safe
 
 ---
 
-### T8.6 — Sanitizers
+### T8.6 — Sanitizers ✅
 
 Dependencies: broad.
 
@@ -3437,7 +3437,7 @@ screenshots/gifs later
 
 ---
 
-### T9.2 — API reference
+### T9.2 — API reference ✅
 
 Dependencies: public API stabilization.
 
@@ -3456,7 +3456,7 @@ ownership/lifetime/threading documented
 
 ---
 
-### T9.3 — Design document
+### T9.3 — Design document ✅
 
 Dependencies: architecture stabilized.
 
@@ -3480,7 +3480,7 @@ state model
 
 ---
 
-### T9.4 — Threading guide
+### T9.4 — Threading guide ✅
 
 Dependencies: T1.7, T6.3.
 
@@ -3501,7 +3501,7 @@ which APIs are UI-thread-only
 
 ---
 
-### T9.5 — Terminal protocol guide
+### T9.5 — Terminal protocol guide ✅
 
 Dependencies: T2.5, T2.8, T2.9.
 

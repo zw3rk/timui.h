@@ -101,6 +101,10 @@ int main(void){
         test_message_box_miss,
         test_fuzz_parser_random_stream,
         test_fuzz_parser_adversarial,
+        test_clip_restricts_drawing,
+        test_menu_open_and_select,
+        test_menu_outside_click_closes,
+        test_modal_traps_background,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

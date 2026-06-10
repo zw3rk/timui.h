@@ -8,6 +8,7 @@ TIMUI_API void timui_interact_init(TimuiInteract *ia){
     ia->tab_pressed = ia->activate_pressed = 0;
     ia->tab_count = 0;
     ia->focus_advance = 0;
+    ia->modal_active = 0;
 }
 TIMUI_API void timui_interact_set_mouse(TimuiInteract *ia, int x, int y, int down){
     if(!ia) return;
@@ -34,6 +35,11 @@ TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId i
     TimuiInteractResult res = {0, 0, 0, 0, 0};
     int hover;
     if(!ia) return res;
+    if(ia->modal_active){      /* modal focus trap: widgets behind the modal are inert */
+        int in_m = (ia->mouse_x >= ia->modal_rect.x && ia->mouse_x < ia->modal_rect.x + ia->modal_rect.w &&
+                   ia->mouse_y >= ia->modal_rect.y && ia->mouse_y < ia->modal_rect.y + ia->modal_rect.h);
+        if(!in_m) return res;
+    }
     hover = (ia->mouse_x >= r.x && ia->mouse_x < r.x + r.w &&
              ia->mouse_y >= r.y && ia->mouse_y < r.y + r.h);
     if(hover) ia->hot = id;
@@ -251,12 +257,14 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
     if(boxh < 3) boxh = 3;
     bx = parent.x + (parent.w - boxw) / 2;
     by = parent.y + (parent.h - boxh) / 2;
+    ui->ia.modal_active = 1;
+    ui->ia.modal_rect = TIMUI_RECT(bx, by, boxw, boxh);
     timui_panel_begin(f, id, TIMUI_RECT(bx, by, boxw, boxh), title, TIMUI_BORDER_DOUBLE);
     timui_label(f, bx + 2, by + 1, message, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
     btnx = bx + 2;
     for(i = 0; i < count; i++){
         TimuiRect br = TIMUI_RECT(btnx, by + boxh - 2, (int)buttons[i].len + 2, 1);
-        if(timui_button(f, id + (TimuiId)(i + 1), br, buttons[i]).clicked) clicked = i;
+        if(timui_button(f, id + (TimuiId)(i + 1), br, buttons[i]).clicked){ clicked = i; ui->ia.modal_active = 0; }
         btnx += br.w + 1;
     }
     return clicked;

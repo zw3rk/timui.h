@@ -17,7 +17,7 @@ RELDIR   := release
 
 HEADER    := $(INCDIR)/timui.h
 EXAMPLES  := $(patsubst $(EXADIR)/%.c,$(BLDDIR)/%,$(wildcard $(EXADIR)/*.c))
-TEST_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TSTDIR)/test_result.c $(TSTDIR)/test_arena.c $(TSTDIR)/test_strings.c $(TSTDIR)/test_id_stack.c $(TSTDIR)/test_msgq.c $(TSTDIR)/test_mpsc.c $(TSTDIR)/test_transport.c $(TSTDIR)/test_screen.c $(TSTDIR)/test_input.c $(TSTDIR)/test_mouse.c $(TSTDIR)/test_termios.c $(TSTDIR)/test_size.c $(TSTDIR)/test_caps.c $(TSTDIR)/test_kitty.c $(TSTDIR)/test_sync.c $(TSTDIR)/test_cells.c $(TSTDIR)/test_utf8.c $(TSTDIR)/test_draw.c $(TSTDIR)/test_render.c $(TSTDIR)/test_cursor.c $(TSTDIR)/test_frame.c $(TSTDIR)/test_interact.c $(TSTDIR)/test_theme.c $(TSTDIR)/test_button.c $(TSTDIR)/test_widgets.c $(TSTDIR)/test_input_widget.c $(TSTDIR)/test_listbox.c $(TSTDIR)/test_dialog.c $(TSTDIR)/test_fuzz.c
+TEST_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TSTDIR)/test_result.c $(TSTDIR)/test_arena.c $(TSTDIR)/test_strings.c $(TSTDIR)/test_id_stack.c $(TSTDIR)/test_msgq.c $(TSTDIR)/test_mpsc.c $(TSTDIR)/test_transport.c $(TSTDIR)/test_screen.c $(TSTDIR)/test_input.c $(TSTDIR)/test_mouse.c $(TSTDIR)/test_termios.c $(TSTDIR)/test_size.c $(TSTDIR)/test_caps.c $(TSTDIR)/test_kitty.c $(TSTDIR)/test_sync.c $(TSTDIR)/test_cells.c $(TSTDIR)/test_utf8.c $(TSTDIR)/test_draw.c $(TSTDIR)/test_render.c $(TSTDIR)/test_cursor.c $(TSTDIR)/test_frame.c $(TSTDIR)/test_interact.c $(TSTDIR)/test_theme.c $(TSTDIR)/test_button.c $(TSTDIR)/test_widgets.c $(TSTDIR)/test_input_widget.c $(TSTDIR)/test_listbox.c $(TSTDIR)/test_dialog.c $(TSTDIR)/test_fuzz.c $(TSTDIR)/test_clip.c $(TSTDIR)/test_menus.c $(TSTDIR)/test_modal.c
 TEST_BIN  := $(BLDDIR)/test_unit
 
 ifeq ($(NO_COLOR),)
@@ -28,7 +28,7 @@ C_GREEN := \033[32m
 C_YELL  := \033[33m
 endif
 
-.PHONY: help build test run amalgamate release-check fmt check clean
+.PHONY: help build test test-san run amalgamate release-check fmt check clean
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -55,6 +55,11 @@ $(TEST_BIN): $(TEST_SRCS) $(HEADER)
 
 run: build ## Build and run the hello example
 	@./$(BLDDIR)/hello
+
+test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=address
+	@mkdir -p $(BLDDIR)
+	@$(CC) -std=c99 -Wall -Wextra -Wpedantic -O1 -g -fsanitize=$(SAN) -I$(INCDIR) $(TEST_SRCS) -o $(BLDDIR)/test_san
+	@./$(BLDDIR)/test_san
 
 amalgamate: $(BLDDIR)/amalgamate $(HEADER) $(SRCDIR)/timui_int.h $(SRCDIR)/timui_core.c $(SRCDIR)/timui_render.c $(SRCDIR)/timui_term.c $(SRCDIR)/timui_input.c $(SRCDIR)/timui_widgets.c ## Regenerate the flat release single-header into release/
 	@mkdir -p $(RELDIR)

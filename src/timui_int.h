@@ -44,6 +44,10 @@ struct Timui {
     int               should_quit;
     TimuiEvent        events[16];
     int               event_count;
+    struct { TimuiRect clip; int has_clip; } clip_stack[8];
+    int               clip_count;
+    TimuiId           open_menu;
+    int               menu_bar_x, menu_bar_y, menu_item_x, menu_item_y, menu_clicked;
     TimuiFrame        frame;
 };
 

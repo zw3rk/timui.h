@@ -112,5 +112,9 @@ void test_listbox_click_selects(void);
 void test_message_box_miss(void);
 void test_fuzz_parser_random_stream(void);
 void test_fuzz_parser_adversarial(void);
+void test_clip_restricts_drawing(void);
+void test_menu_open_and_select(void);
+void test_menu_outside_click_closes(void);
+void test_modal_traps_background(void);
 
 #endif /* TIMUI_TEST_H */

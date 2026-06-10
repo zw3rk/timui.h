@@ -6,6 +6,7 @@ TIMUI_API TimuiResult timui_cells_init(TimuiCellBuffer *buf, int w, int h, const
     buf->w = w;
     buf->h = h;
     buf->alloc = *alloc;
+    buf->has_clip = 0;
     buf->cells = (TimuiCell *)alloc->alloc(alloc->userdata, n * sizeof(TimuiCell));
     if(!buf->cells){ buf->w = buf->h = 0; return TIMUI_ERR_OUT_OF_MEMORY; }
     timui_cells_clear(buf);
@@ -88,6 +89,8 @@ TIMUI_API int timui_utf8_width(uint32_t cp){
 /* ---- drawing primitives ----------------------------------------------- */
 static void put_glyph(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyle st){
     TimuiCell c;
+    if(buf->has_clip && (x < buf->clip.x || y < buf->clip.y ||
+       x >= buf->clip.x + buf->clip.w || y >= buf->clip.y + buf->clip.h)) return;
     memset(&c, 0, sizeof c);
     c.codepoint = cp;
     c.fg = st.fg;

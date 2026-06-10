@@ -166,6 +166,8 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         }
     }
     timui_interact_begin(&ui->ia);
+    ui->curr.has_clip = 0;            /* fresh clip stack each frame */
+    ui->clip_count = 0;
     timui_cells_clear(&ui->curr);
     ui->ids.count = 0;                  /* fresh id stack for this frame */
     ui->frame.ui = ui;

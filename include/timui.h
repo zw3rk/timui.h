@@ -246,6 +246,30 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
                                 TimuiStr title, TimuiStr message,
                                 const TimuiStr *buttons, int count);
 
+/* ---- Menu bar + popups (T5.7) ----------------------------------------- */
+TIMUI_API void timui_menu_bar_begin(TimuiFrame *f, TimuiRect r);
+TIMUI_API int  timui_menu_begin(TimuiFrame *f, TimuiId id, TimuiStr label);   /* 1 if open */
+TIMUI_API int  timui_menu_item(TimuiFrame *f, TimuiId id, TimuiStr label);    /* 1 if clicked */
+TIMUI_API void timui_menu_end(TimuiFrame *f);
+TIMUI_API void timui_menu_bar_end(TimuiFrame *f);                             /* outside-click closes */
+
+/* ---- Optional functional runner (T6) ---------------------------------- *
+ * view() describes the frame from an immutable model; update() is the only
+ * place the model changes. The runner drains UI-thread messages (timui_emit)
+ * into update between frames. The manual begin/end loop stays supported. */
+typedef void (*TimuiViewFn)(TimuiFrame *f, void *model);
+typedef void (*TimuiUpdateFn)(void *model, uint32_t msg_type, const void *msg, size_t msg_size);
+typedef struct {
+    void         *model;
+    TimuiViewFn   view;
+    TimuiUpdateFn update;
+} TimuiApp;
+
+TIMUI_API int  timui_run(const TimuiConfig *cfg, TimuiApp *app);
+TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size);
+TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size);
+TIMUI_API void timui_frame_quit(TimuiFrame *f);
+
 /* ---- IDs --------------------------------------------------------------- */
 TIMUI_API TimuiId timui_id_from_bytes(const void *data, size_t len);
 TIMUI_API TimuiId timui_id_from_cstr(const char *str);
@@ -358,7 +382,11 @@ struct TimuiCellBuffer {
     int           w;
     int           h;
     TimuiAllocator alloc;   /* owning allocator (copied) */
+    TimuiRect     clip;     /* active clip rect when has_clip */
+    int           has_clip;
 };
+TIMUI_API void timui_push_clip(TimuiFrame *f, TimuiRect rect);
+TIMUI_API void timui_pop_clip(TimuiFrame *f);
 
 TIMUI_API TimuiResult timui_cells_init(TimuiCellBuffer *buf, int w, int h, const TimuiAllocator *alloc);
 TIMUI_API void        timui_cells_destroy(TimuiCellBuffer *buf);
@@ -632,6 +660,8 @@ typedef struct {
     TimuiId tab_order[64];
     int tab_count;
     int focus_advance;
+    int modal_active;
+    TimuiRect modal_rect;
 } TimuiInteract;
 
 TIMUI_API void                timui_interact_init(TimuiInteract *ia);
@@ -658,4 +688,7 @@ TIMUI_API void                timui_interact_end(TimuiInteract *ia);
 #include "../src/timui_term.c"
 #include "../src/timui_input.c"
 #include "../src/timui_widgets.c"
+#include "../src/timui_clip.c"
+#include "../src/timui_menus.c"
+#include "../src/timui_app.c"
 #endif /* TIMUI_IMPLEMENTATION */
