@@ -3064,7 +3064,7 @@ Parallelization: after modal/menu stack.
 
 ---
 
-### T5.8 — Message box/modal
+### T5.8 — Message box/modal ✅
 
 Dependencies: T4.5, T5.2.
 
@@ -3136,7 +3136,7 @@ Parallelization: optional, not blocking MVP if manual loop is good.
 
 ---
 
-### T6.3 — Worker example
+### T6.3 — Worker example ✅
 
 Dependencies: T1.7, T6.1.
 
@@ -3199,7 +3199,7 @@ under 150 LOC
 
 ---
 
-### T7.3 — Form demo
+### T7.3 — Form demo ✅
 
 Dependencies: T5.3, T5.4, T5.8.
 
@@ -3220,7 +3220,7 @@ submit modal
 
 ---
 
-### T7.4 — Mini Commander
+### T7.4 — Mini Commander ✅
 
 Dependencies: T5.4, T5.5, T5.6, T5.7, T5.8.
 
@@ -3284,7 +3284,7 @@ shows why each capability is enabled/disabled
 
 ## Phase 8 — Testing and quality
 
-### T8.1 — Unit test harness
+### T8.1 — Unit test harness ✅
 
 Dependencies: T0.2.
 
@@ -3305,7 +3305,7 @@ nonzero exit on failure
 
 ---
 
-### T8.2 — Input parser golden tests
+### T8.2 — Input parser golden tests ✅
 
 Dependencies: T2.6, T2.7, T2.8.
 
@@ -3329,7 +3329,7 @@ invalid sequences
 
 ---
 
-### T8.3 — Renderer snapshot tests
+### T8.3 — Renderer snapshot tests ✅
 
 Dependencies: T3.4.
 
@@ -3349,7 +3349,7 @@ diff output minimal enough for MVP
 
 ---
 
-### T8.4 — Widget interaction tests
+### T8.4 — Widget interaction tests ✅
 
 Dependencies: T4.2, T5.x.
 
@@ -3414,7 +3414,7 @@ core tests pass under sanitizers
 
 ## Phase 9 — Documentation
 
-### T9.1 — README
+### T9.1 — README ✅
 
 Dependencies: T7.1, T7.2.
 

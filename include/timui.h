@@ -268,6 +268,7 @@ typedef struct {
 TIMUI_API int  timui_run(const TimuiConfig *cfg, TimuiApp *app);
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size);
+TIMUI_API bool timui_post(Timui *ui, uint32_t type, const void *data, size_t size);   /* thread-safe */
 TIMUI_API void timui_frame_quit(TimuiFrame *f);
 
 /* ---- IDs --------------------------------------------------------------- */

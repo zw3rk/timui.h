@@ -30,8 +30,8 @@ struct Timui {
     int               have_buffers;
     TimuiRenderer     renderer;
     TimuiInputParser  input;
-    TimuiMsgQueue     msgq;
-    int               have_msgq;
+    TimuiMpsc         postq;     /* thread-safe message queue (timui_post) */
+    int               have_postq;
     TimuiIdStack      ids;
     int               have_ids;
     TimuiInteract     ia;

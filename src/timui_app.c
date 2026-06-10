@@ -1,10 +1,13 @@
 /* ---- optional functional runner --------------------------------------- *
  * UI-thread message queue (emit during view, recv into update) + the runner. */
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size){
-    return f && f->ui && timui_msgq_emit(&f->ui->msgq, type, data, size) != 0;
+    return f && f->ui && timui_mpsc_post(&f->ui->postq, type, data, size) != 0;
+}
+TIMUI_API bool timui_post(Timui *ui, uint32_t type, const void *data, size_t size){
+    return ui && timui_mpsc_post(&ui->postq, type, data, size) != 0;
 }
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size){
-    return ui && timui_msgq_recv(&ui->msgq, out_type, out_buf, inout_size) != 0;
+    return ui && timui_mpsc_recv(&ui->postq, out_type, out_buf, inout_size) != 0;
 }
 TIMUI_API void timui_frame_quit(TimuiFrame *f){
     if(f && f->ui) timui_quit(f->ui);

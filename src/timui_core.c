@@ -48,12 +48,12 @@ static TimuiResult timui_setup(Timui *ui, int w, int h){
     ui->have_buffers = 1;
     timui_renderer_reset(&ui->renderer);
     timui_input_init(&ui->input);
-    r = timui_msgq_init(&ui->msgq, &ui->alloc, 4096);
+    r = timui_mpsc_init(&ui->postq, &ui->alloc);
     if(r != TIMUI_OK){ timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); ui->have_buffers = 0; return r; }
-    ui->have_msgq = 1;
+    ui->have_postq = 1;
     r = timui_id_stack_init(&ui->ids, &ui->alloc, 32);
     if(r != TIMUI_OK){
-        timui_msgq_destroy(&ui->msgq); ui->have_msgq = 0;
+        timui_mpsc_destroy(&ui->postq); ui->have_postq = 0;
         timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); ui->have_buffers = 0;
         return r;
     }
@@ -128,7 +128,7 @@ TIMUI_API void timui_close(Timui *ui){
     if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
     if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
     if(ui->have_buffers){ timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); }
-    if(ui->have_msgq) timui_msgq_destroy(&ui->msgq);
+    if(ui->have_postq) timui_mpsc_destroy(&ui->postq);
     if(ui->have_ids) timui_id_stack_destroy(&ui->ids);
     al = ui->alloc;
     al.free(al.userdata, ui, sizeof *ui);
