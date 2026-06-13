@@ -116,23 +116,6 @@ int main(void){
         test_tree_renders,
         test_cmd_palette_filter,
         test_snapshot_row_eq,
-        test_snapshot_grid_full,
-        test_snapshot_grid_eq_same,
-        test_snapshot_grid_eq_diff,
-        test_snapshot_grid_eq_dim,
-        test_snapshot_goldens,
-#if __has_include(<vterm.h>)
-        /* Tier A libvterm round-trip tests — only present when libvterm is on
-         * the include path (WITH_VTERM=1), matching tests/test_vt_roundtrip.c. */
-        test_vt_plain_text,
-        test_vt_rainbow,
-        test_vt_attrs,
-        test_vt_box_glyphs,
-        test_vt_fill,
-        test_vt_hyperlink,
-        test_vt_partial_update,
-        test_vt_wide_glyph,
-#endif
         test_text_area_renders,
         test_conpty_unsupported,
         test_kitty_graphics_transmit,

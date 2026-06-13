@@ -25,26 +25,16 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
       i = 0;
       while(i < st->cap && st->text[i]){
           size_t ls = i;
-          while(i < st->cap && st->text[i] && st->text[i] != '\n'){
-              if(st->text[i] == '\r') break;  /* \r or \r\n line break */
-              i++;
-          }
+          while(i < st->cap && st->text[i] && st->text[i] != '\n') i++;
           timui_draw_text(&ui->curr, content.x, content.y + y,
                           (TimuiStr){ st->text + ls, i - ls }, sst);
-          if(i < st->cap && (st->text[i] == '\r' || st->text[i] == '\n')){
-              if(st->text[i] == '\r' && i + 1 < st->cap && st->text[i+1] == '\n') i++;
-              i++;
-          }
+          if(i < st->cap && st->text[i] == '\n') i++;
           y++;
       }
-      /* auto-scroll to keep the cursor visible (computed before scroll_begin next frame) */
+      /* auto-scroll to keep the cursor visible */
       {  int cursor_row = 0;
          size_t ci;
-         for(ci = 0; ci < st->cursor && ci < st->cap; ci++)
-             if(st->text[ci] == '\n' || st->text[ci] == '\r'){
-                 cursor_row++;
-                 if(st->text[ci] == '\r' && ci + 1 < st->cap && st->text[ci+1] == '\n') ci++;
-             }
+         for(ci = 0; ci < st->cursor && ci < st->cap; ci++) if(st->text[ci] == '\n') cursor_row++;
          if(cursor_row < st->scroll_y) st->scroll_y = cursor_row;
          if(cursor_row >= st->scroll_y + r.h) st->scroll_y = cursor_row - r.h + 1;
          if(st->scroll_y < 0) st->scroll_y = 0;

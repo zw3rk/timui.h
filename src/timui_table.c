@@ -42,12 +42,6 @@ TIMUI_API void timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
         }
     }
     timui_scroll_end(f);
-    /* keyboard nav only when focused — call interact_button once to avoid
-     * double-registering the table id in the tab order */
-    { TimuiInteractResult tir = timui_interact_button(&ui->ia, id, r);
-      if(tir.focused){
-        if(timui_key_pressed(f, TIMUI_KEY_UP) && state->selected > 0) state->selected--;
-        else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && state->selected < nrows - 1) state->selected++;
-      }
-    }
+    if(timui_key_pressed(f, TIMUI_KEY_UP) && state->selected > 0) state->selected--;
+    else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && state->selected < nrows - 1) state->selected++;
 }

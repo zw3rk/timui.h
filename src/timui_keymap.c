@@ -1,8 +1,7 @@
 /* ---- configurable keymaps (v0.2) -------------------------------------- *
  * A flat table of (key, mods, action) bindings. The app binds keys to its own
- * action enum values, then checks timui_keymap_hit each frame. Bindings with
- * non-zero mods use timui_key_pressed_mods (all requested mods must be
- * present); bindings with mods==0 use plain timui_key_pressed. */
+ * action enum values, then checks timui_keymap_hit each frame. (Mods are
+ * stored but not checked in this MVP; a future revision will match them.) */
 TIMUI_API void timui_keymap_bind(TimuiKeymap *km, TimuiKey key, uint32_t mods, int action){
     if(!km || km->count >= (int)(sizeof(km->bindings) / sizeof(km->bindings[0]))) return;
     km->bindings[km->count].key = key;

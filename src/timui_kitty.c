@@ -46,22 +46,21 @@ TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){
                 int first = 1;
                 while(sent < (size_t)b64len){
                     size_t chunk = (size_t)b64len - sent;
-                    char hdr[40]; int hn = 0;
-                    int is_last;
+                    char hdr[32]; int hn = 0;
                     if(chunk > KITTY_CHUNK) chunk = KITTY_CHUNK;
-                    is_last = (sent + chunk >= (size_t)b64len);
-                    /* header: first chunk has a=T,t=d,f=100; all chunks carry m=0/1 */
-                    hn = 0;
-                    hdr[hn++] = 0x1b; hdr[hn++] = 'G';
+                    /* header: first chunk has a=T,t=d,f=100; continuation has m=1 */
                     if(first){
-                        hdr[hn++] = 'a'; hdr[hn++] = '='; hdr[hn++] = 'T';
-                        hdr[hn++] = ','; hdr[hn++] = 't'; hdr[hn++] = '='; hdr[hn++] = 'd';
-                        hdr[hn++] = ','; hdr[hn++] = 'f'; hdr[hn++] = '='; hdr[hn++] = '1'; hdr[hn++] = '0'; hdr[hn++] = '0';
-                        hdr[hn++] = ',';
+                        const char *h = "\x1bGa=T,t=d,f=100,";
+                        hn = 18;
+                        memcpy(hdr, h, hn);
+                        hdr[hn++] = 'm'; hdr[hn++] = '=';
+                        hdr[hn++] = (sent + chunk < (size_t)b64len) ? '1' : '0';
+                        hdr[hn++] = ';';
+                    } else {
+                        const char *h = "\x1bGm=1,";
+                        hn = 6;
+                        memcpy(hdr, h, hn);
                     }
-                    hdr[hn++] = 'm'; hdr[hn++] = '=';
-                    hdr[hn++] = is_last ? '0' : '1';
-                    hdr[hn++] = ';';
                     if(ui->transport.write) (void)ui->transport.write(&ui->transport, hdr, (size_t)hn);
                     if(ui->transport.write) (void)ui->transport.write(&ui->transport, buf + sent, chunk);
                     if(ui->transport.write) (void)ui->transport.write(&ui->transport, "\x1b\\", 2);

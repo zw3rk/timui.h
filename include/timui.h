@@ -720,13 +720,6 @@ TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
 /* ---- v0.2: snapshot testing + text-area + ConPTY ---------------------- */
 TIMUI_API void timui_snapshot_render(const TimuiCellBuffer *buf, int row, char *out, size_t cap);
 TIMUI_API int  timui_snapshot_row_eq(const TimuiCellBuffer *buf, int row, const char *expected);
-/* Full-grid serialization for golden-file visual testing (Tier B). Returns the
- * would-be length (snprintf-style); see src/timui_snapshot.c for the format. */
-TIMUI_API size_t timui_snapshot_grid(const TimuiCellBuffer *buf, char *out, size_t cap);
-/* Cell-by-cell grid equality (reused by the libvterm round-trip harness).
- * Writes a one-cell diff message to diff_out on the first mismatch. */
-TIMUI_API int   timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b,
-                              char *diff_out, size_t diff_cap);
 
 typedef struct { char *text; size_t cap; size_t cursor; int scroll_y; } TimuiTextAreaState;
 TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *state);

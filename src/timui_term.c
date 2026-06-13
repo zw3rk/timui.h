@@ -76,16 +76,18 @@ static void emit_lit(TimuiTransport *t, const char *s, size_t n){
 TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_t flags, TimuiStr title){
     if(m) m->flags = flags;
     if(title.ptr && title.len){
-        /* Sanitize: strip BEL/ESC, build buffer, single write */
-        char clean[128];
-        size_t cn = 0, j;
-        for(j = 0; j < title.len && cn < sizeof(clean) - 1; j++)
-            if(title.ptr[j] != 0x07 && title.ptr[j] != 0x1b) clean[cn++] = title.ptr[j];
-        if(cn > 0){   /* skip OSC entirely if all chars were stripped */
-            TIMUI_EMIT(t, "\x1b]0;");
-            if(t && t->write) (void)t->write(t, clean, cn);
-            TIMUI_EMIT(t, "\x07");
+        TIMUI_EMIT(t, "\x1b]0;");                       /* OSC 0 ; */
+        /* Sanitize: strip BEL/ESC that would inject terminal control sequences */
+        {   const char *p = title.ptr;
+            size_t j;
+            for(j = 0; j < title.len; j++){
+                if(p[j] != 0x07 && p[j] != 0x1b){
+                    char ch = p[j];
+                    if(t && t->write) (void)t->write(t, &ch, 1);
+                }
+            }
         }
+        TIMUI_EMIT(t, "\x07");                          /* BEL */
     }
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049h");
     if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25l");

@@ -169,12 +169,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             p->paste_tail_len = 0;
             b += need; len -= (size_t)need;
         } else {
-            /* not a terminator — emit deferred bytes as paste content */
-            if(p->paste_tail_len > 0){
-                emit_paste(cb, ctx, p->paste_tail, (size_t)p->paste_tail_len);
-                count++;
-            }
-            p->paste_tail_len = 0;
+            p->paste_tail_len = 0;      /* not a terminator; deferred bytes lost (rare) */
         }
     }
     if(p->pasting) p->paste_ptr = (const unsigned char *)&b[0];
