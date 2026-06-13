@@ -18,8 +18,8 @@ static int b64_encode(const unsigned char *src, size_t len, char *dst, size_t ca
     return (int)j;
 }
 TIMUI_API void timui_clipboard_set(TimuiTransport *t, TimuiStr text){
-    size_t b64cap;
-    char *buf;
+    size_t b64cap, total;
+    char *buf, *full;
     int b64len;
     if(!t || !t->write || !text.ptr || text.len == 0) return;
     b64cap = ((text.len + 2) / 3) * 4 + 1;
@@ -28,9 +28,21 @@ TIMUI_API void timui_clipboard_set(TimuiTransport *t, TimuiStr text){
       if(!buf) return;
       b64len = b64_encode((const unsigned char *)text.ptr, text.len, buf, b64cap - 1);
       if(b64len > 0){
-          if(t->write) (void)t->write(t, "\x1b]52;c;", 7);
-          if(t->write) (void)t->write(t, buf, (size_t)b64len);
-          if(t->write) (void)t->write(t, "\x1b\\", 2);
+          /* Build the full OSC 52 in one buffer and write in a single call */
+          total = (size_t)(7 + b64len + 2);
+          full = (char *)al.alloc(al.userdata, total);
+          if(full){
+              memcpy(full, "\x1b]52;c;", 7);
+              memcpy(full + 7, buf, (size_t)b64len);
+              memcpy(full + 7 + b64len, "\x1b\\", 2);
+              (void)t->write(t, full, total);
+              al.free(al.userdata, full, total);
+          } else {
+              /* fallback: three writes (better than nothing) */
+              (void)t->write(t, "\x1b]52;c;", 7);
+              (void)t->write(t, buf, (size_t)b64len);
+              (void)t->write(t, "\x1b\\", 2);
+          }
       }
       al.free(al.userdata, buf, b64cap);
     }

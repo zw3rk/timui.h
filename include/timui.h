@@ -641,7 +641,9 @@ typedef struct {
     uint32_t    utf8_cp;
     const char *utf8_ptr;
     uint64_t    now_ms;        /* current time, set via timui_input_set_now */
-    uint64_t    esc_since_ms;  /* timestamp ESC state was entered; 0 = none */
+    uint64_t    esc_since_ms;  /* timestamp ESC state was entered */
+    unsigned char paste_tail[6]; /* deferred partial paste terminator */
+    int         paste_tail_len; /* length of deferred partial terminator */
 } TimuiInputParser;
 
 typedef void (*TimuiEventFn)(void *ctx, const TimuiEvent *ev);
@@ -653,6 +655,7 @@ TIMUI_API void    timui_input_set_now(TimuiInputParser *p, uint64_t now_ms);
 TIMUI_API void    timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx);
 TIMUI_API uint64_t timui_now_ms(void);   /* monotonic milliseconds */
 TIMUI_API int    timui_key_pressed(TimuiFrame *f, TimuiKey key);
+TIMUI_API int    timui_key_pressed_mods(TimuiFrame *f, TimuiKey key, uint32_t mods);
 
 /* ---- Interaction state (hot/active/focus) ----------------------------- *
  * Immediate-mode interaction: each frame, widgets call timui_interact_button
@@ -717,8 +720,15 @@ TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
 /* ---- v0.2: snapshot testing + text-area + ConPTY ---------------------- */
 TIMUI_API void timui_snapshot_render(const TimuiCellBuffer *buf, int row, char *out, size_t cap);
 TIMUI_API int  timui_snapshot_row_eq(const TimuiCellBuffer *buf, int row, const char *expected);
+/* Full-grid serialization for golden-file visual testing (Tier B). Returns the
+ * would-be length (snprintf-style); see src/timui_snapshot.c for the format. */
+TIMUI_API size_t timui_snapshot_grid(const TimuiCellBuffer *buf, char *out, size_t cap);
+/* Cell-by-cell grid equality (reused by the libvterm round-trip harness).
+ * Writes a one-cell diff message to diff_out on the first mismatch. */
+TIMUI_API int   timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b,
+                              char *diff_out, size_t diff_cap);
 
-typedef struct { char *text; size_t cap; size_t cursor; } TimuiTextAreaState;
+typedef struct { char *text; size_t cap; size_t cursor; int scroll_y; } TimuiTextAreaState;
 TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *state);
 
 TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);

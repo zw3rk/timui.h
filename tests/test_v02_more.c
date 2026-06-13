@@ -27,7 +27,7 @@ TIMUI_TEST(test_text_area_renders){
     Timui *ui = NULL;
     TimuiFrame *f = NULL;
     char text[64] = "Hello";
-    TimuiTextAreaState tas = { text, sizeof text, 5 };
+    TimuiTextAreaState tas = { text, sizeof text, 5, 0 };
     TimuiCellBuffer *buf;
     timui_fake_init(&fake, &al);
     t = timui_fake_transport(&fake);

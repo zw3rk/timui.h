@@ -24,6 +24,7 @@ TIMUI_API int timui_run(const TimuiConfig *cfg, TimuiApp *app){
         app->view(f, app->model);
         sz = sizeof buf;
         while(timui_recv(ui, &type, buf, &sz)){
+            if(sz > sizeof buf) sz = sizeof buf;   /* clamp to prevent stack over-read */
             if(app->update) app->update(app->model, type, buf, sz);
             sz = sizeof buf;
         }

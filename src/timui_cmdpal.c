@@ -23,7 +23,7 @@ TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
     Timui *ui;
     TimuiRect input_r, list_r;
     int i, matched_count = 0, activated = -1;
-    int matched_idx[128];
+    int matched_idx[256];
     (void)id;
     if(!f || !f->ui || !commands || count <= 0 || !state) return -1;
     ui = f->ui;
@@ -32,7 +32,7 @@ TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
     list_r  = TIMUI_RECT(r.x + 1, r.y + 2, r.w - 2, r.h - 3);
     timui_input_line_buf(f, id + 1, input_r, state->filter, sizeof state->filter);
     /* filter */
-    for(i = 0; i < count && matched_count < 128; i++){
+    for(i = 0; i < count && matched_count < 256; i++){
         const char *s = commands[i].ptr ? commands[i].ptr : "";
         if(cmd_matches(s, state->filter)) matched_idx[matched_count++] = i;
     }
@@ -50,7 +50,7 @@ TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
       timui_scroll_end(f);
     }
     if(timui_key_pressed(f, TIMUI_KEY_UP) && state->selected > 0) state->selected--;
-    if(timui_key_pressed(f, TIMUI_KEY_DOWN) && state->selected < matched_count - 1) state->selected++;
+    else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && state->selected < matched_count - 1) state->selected++;
     if(timui_key_pressed(f, TIMUI_KEY_ENTER) && matched_count > 0){
         activated = matched_idx[state->selected];
         state->filter[0] = '\0';

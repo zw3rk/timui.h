@@ -136,6 +136,7 @@ TIMUI_API void timui_input_init(TimuiInputParser *p){
     p->pasting = 0; p->paste_ptr = NULL;
     p->utf8_need = 0; p->utf8_len = 0; p->utf8_cp = 0; p->utf8_ptr = NULL;
     p->now_ms = 0; p->esc_since_ms = 0;
+    p->paste_tail_len = 0;
 }
 #define TIMUI_ESC_TIMEOUT_MS 50   /* lone-Esc resolution window */
 TIMUI_API void timui_input_set_now(TimuiInputParser *p, uint64_t now_ms){
@@ -143,7 +144,7 @@ TIMUI_API void timui_input_set_now(TimuiInputParser *p, uint64_t now_ms){
 }
 TIMUI_API void timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx){
     if(!p) return;
-    if(p->state == 1 && p->esc_since_ms != 0 &&
+    if(p->state == 1 &&
        now_ms - p->esc_since_ms >= TIMUI_ESC_TIMEOUT_MS){
         emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0);
         p->state = 0;
@@ -156,17 +157,59 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
     size_t i, count = 0;
     if(!p || !b) return 0;
     if(p->state == 4) p->utf8_ptr = NULL;   /* crossed a feed boundary: no stable byte view */
-    if(p->pasting) p->paste_ptr = (const unsigned char *)&b[0];   /* paste continues into this feed */
+    /* Handle deferred partial paste terminator from the previous feed */
+    if(p->pasting && p->paste_tail_len > 0){
+        static const unsigned char term[] = {0x1b,'[','2','0','1','~'};
+        int need = 6 - p->paste_tail_len;
+        int matched = 1, j;
+        for(j = 0; j < need && j < (int)len; j++)
+            if(b[j] != term[p->paste_tail_len + j]){ matched = 0; break; }
+        if(matched && (int)len >= need){
+            p->pasting = 0;             /* terminator completed across feeds */
+            p->paste_tail_len = 0;
+            b += need; len -= (size_t)need;
+        } else {
+            /* not a terminator — emit deferred bytes as paste content */
+            if(p->paste_tail_len > 0){
+                emit_paste(cb, ctx, p->paste_tail, (size_t)p->paste_tail_len);
+                count++;
+            }
+            p->paste_tail_len = 0;
+        }
+    }
+    if(p->pasting) p->paste_ptr = (const unsigned char *)&b[0];
     for(i = 0; i < len; i++){
         unsigned char c = b[i];
         if(p->pasting){
-            /* scan for the ESC[201~ terminator; anything else is paste content */
-            if(c == 0x1b && i + 5 < len &&
-               b[i+1] == '[' && b[i+2] == '2' && b[i+3] == '0' && b[i+4] == '1' && b[i+5] == '~'){
-                emit_paste(cb, ctx, p->paste_ptr, (size_t)(&b[i] - p->paste_ptr));
-                count++;
-                p->pasting = 0;
-                i += 5;                 /* consume the 6-byte terminator */
+            if(c == 0x1b){
+                size_t remaining = len - i;
+                if(remaining >= 6 &&
+                   b[i+1] == '[' && b[i+2] == '2' && b[i+3] == '0' && b[i+4] == '1' && b[i+5] == '~'){
+                    emit_paste(cb, ctx, p->paste_ptr, (size_t)(&b[i] - p->paste_ptr));
+                    count++;
+                    p->pasting = 0;
+                    i += 5;
+                } else {
+                    /* Potential partial terminator — check prefix match */
+                    static const unsigned char term[] = {0x1b,'[','2','0','1','~'};
+                    int is_prefix = 1;
+                    size_t j;
+                    for(j = 0; j < remaining && j < 6; j++)
+                        if(b[i+j] != term[j]){ is_prefix = 0; break; }
+                    if(is_prefix && remaining < 6){
+                        /* Defer: emit content up to here, save partial bytes */
+                        if(&b[i] > p->paste_ptr){
+                            emit_paste(cb, ctx, p->paste_ptr, (size_t)(&b[i] - p->paste_ptr));
+                            count++;
+                        }
+                        p->paste_tail_len = (int)remaining;
+                        for(j = 0; j < remaining; j++) p->paste_tail[j] = b[i+j];
+                        p->paste_ptr = (const unsigned char *)&b[len];  /* prevent end-of-feed re-emit */
+                        i = len;  /* exit the loop */
+                        break;
+                    }
+                    /* Not a prefix — treat as paste content */
+                }
             }
             continue;
         }
@@ -203,7 +246,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 break;
             }
             if(c == 'O'){ p->state = 3; break; }
-            if(c == 0x1b){ emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0); count++; break; } /* stay ESC */
+            if(c == 0x1b){ emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0); count++; p->esc_since_ms = p->now_ms; break; }
             if(c >= 0x20 && c < 0x80){
                 emit_key(cb, ctx, TIMUI_KEY_UNKNOWN, TIMUI_MOD_ALT, (uint32_t)c);
                 count++; p->state = 0; break;
@@ -217,10 +260,11 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             if(c == '?' || c == '>' || c == '='){ break; }              /* private marker */
             if(c >= '0' && c <= '9'){
                 if(p->csi_mouse){
-                    if(p->mcount < 3) p->mparam[p->mcount] = p->mparam[p->mcount] * 10 + (c - '0');
+                    if(p->mcount < 3 && p->mparam[p->mcount] < 99999)
+                        p->mparam[p->mcount] = p->mparam[p->mcount] * 10 + (c - '0');
                 } else if(p->has_mod){
-                    p->mod_param = p->mod_param * 10 + (c - '0');
-                } else { p->param = p->param * 10 + (c - '0'); p->nparams = 1; }
+                    if(p->mod_param < 99999) p->mod_param = p->mod_param * 10 + (c - '0');
+                } else { if(p->param < 999999) p->param = p->param * 10 + (c - '0'); p->nparams = 1; }
                 break;
             }
             if(c == ';'){

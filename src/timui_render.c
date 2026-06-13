@@ -75,6 +75,11 @@ TIMUI_API int timui_utf8_decode(const char *s, size_t len, uint32_t *out_cp){
         cp = (cp << 6) | (uint32_t)(p[i] & 0x3F);
     }
     if(out_cp) *out_cp = cp;
+    /* reject overlong encodings and surrogate halves */
+    if(need == 1 && cp < 0x80){ if(out_cp) *out_cp = 0xFFFD; return 1; }
+    if(need == 2 && cp < 0x800){ if(out_cp) *out_cp = 0xFFFD; return 1; }
+    if(need == 3 && cp < 0x10000){ if(out_cp) *out_cp = 0xFFFD; return 1; }
+    if(cp >= 0xD800 && cp <= 0xDFFF){ if(out_cp) *out_cp = 0xFFFD; return 1; }
     return 1 + need;
 }
 TIMUI_API int timui_utf8_width(uint32_t cp){
@@ -94,15 +99,24 @@ TIMUI_API int timui_utf8_width(uint32_t cp){
 /* ---- drawing primitives ----------------------------------------------- */
 static void put_glyph(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyle st){
     TimuiCell c;
+    int w;
     if(buf->has_clip && (x < buf->clip.x || y < buf->clip.y ||
        x >= buf->clip.x + buf->clip.w || y >= buf->clip.y + buf->clip.h)) return;
     memset(&c, 0, sizeof c);
+    w = timui_utf8_width(cp);
     c.codepoint = cp;
     c.fg = st.fg;
     c.bg = st.bg;
     c.attrs = st.attrs;
-    c.width = 1;
+    c.width = (uint16_t)(w > 1 ? 2 : 1);
     timui_cells_put(buf, x, y, &c);
+    /* wide glyph: blank the continuation cell so stale content isn't left behind */
+    if(w > 1 && !(buf->has_clip && (x + 1 < buf->clip.x || x + 1 >= buf->clip.x + buf->clip.w))){
+        memset(&c, 0, sizeof c);
+        c.flags = TIMUI_CELL_CONTINUATION;
+        c.width = 0;
+        timui_cells_put(buf, x + 1, y, &c);
+    }
 }
 TIMUI_API TimuiStyle timui_style_make(uint32_t fg, uint32_t bg, uint32_t attrs){
     TimuiStyle s;
@@ -164,7 +178,15 @@ TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiS
             if(cell){
                 memset(cell, 0, sizeof *cell);
                 cell->codepoint = cp; cell->fg = st.fg; cell->bg = st.bg;
-                cell->attrs = st.attrs; cell->width = 1; cell->hyperlink_id = link;
+                cell->attrs = st.attrs; cell->width = (uint16_t)(w > 1 ? 2 : 1); cell->hyperlink_id = link;
+            }
+            /* wide glyph: blank continuation cell (consistent with put_glyph) */
+            if(w > 1){
+                TimuiCell *cont = timui_cells_get(buf, cx + 1, y);
+                if(cont && !(buf->has_clip && (cx + 1 < buf->clip.x || cx + 1 >= buf->clip.x + buf->clip.w))){
+                    memset(cont, 0, sizeof *cont);
+                    cont->flags = TIMUI_CELL_CONTINUATION;
+                }
             }
             cx += w;
         }

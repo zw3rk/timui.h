@@ -76,9 +76,16 @@ static void emit_lit(TimuiTransport *t, const char *s, size_t n){
 TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_t flags, TimuiStr title){
     if(m) m->flags = flags;
     if(title.ptr && title.len){
-        TIMUI_EMIT(t, "\x1b]0;");                       /* OSC 0 ; */
-        if(t && t->write) (void)t->write(t, title.ptr, title.len);
-        TIMUI_EMIT(t, "\x07");                          /* BEL */
+        /* Sanitize: strip BEL/ESC, build buffer, single write */
+        char clean[128];
+        size_t cn = 0, j;
+        for(j = 0; j < title.len && cn < sizeof(clean) - 1; j++)
+            if(title.ptr[j] != 0x07 && title.ptr[j] != 0x1b) clean[cn++] = title.ptr[j];
+        if(cn > 0){   /* skip OSC entirely if all chars were stripped */
+            TIMUI_EMIT(t, "\x1b]0;");
+            if(t && t->write) (void)t->write(t, clean, cn);
+            TIMUI_EMIT(t, "\x07");
+        }
     }
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049h");
     if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25l");
@@ -113,7 +120,7 @@ TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd){
     raw.c_cflag |= CS8;
     raw.c_cc[VMIN]  = 1;
     raw.c_cc[VTIME] = 0;
-    if(tcsetattr(fd, TCSAFLUSH, &raw) != 0) return TIMUI_ERR_OS;
+    if(tcsetattr(fd, TCSAFLUSH, &raw) != 0){ free(orig); t->have_saved = 0; return TIMUI_ERR_OS; }
     return TIMUI_OK;
 }
 TIMUI_API TimuiResult timui_termios_restore(TimuiTermios *t){
@@ -169,12 +176,12 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         c->flags |= TIMUI_CAP_TRUECOLOR;
         c->colors = 16777216;
     }
-    if(caps_is_modern(term_program)){
+    if(caps_is_modern(term_program) || caps_is_modern(term)){
         c->flags |= TIMUI_CAP_TRUECOLOR | TIMUI_CAP_256_COLOR | TIMUI_CAP_SGR_MOUSE
                   | TIMUI_CAP_BRACKETED_PASTE | TIMUI_CAP_FOCUS_EVENTS
                   | TIMUI_CAP_SYNC_OUTPUT | TIMUI_CAP_OSC8_HYPERLINKS;
         if(c->colors < 16777216) c->colors = 16777216;
-        if(caps_is_kitty_family(term_program)){
+        if(caps_is_kitty_family(term_program) || caps_is_kitty_family(term)){
             c->flags |= TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
         }
     } else if(term && strstr(term, "256color")){
@@ -182,7 +189,7 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         c->colors = 256;
     }
     /* multiplexers reduce capabilities unless explicit passthrough is known */
-    if(term && (strstr(term, "tmux") || strstr(term, "screen") || strstr(term, "zellij"))){
+    if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
         c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SYNC_OUTPUT);
         c->flags |= TIMUI_CAP_256_COLOR;
         if(c->colors < 256) c->colors = 256;

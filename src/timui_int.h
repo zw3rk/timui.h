@@ -6,6 +6,7 @@
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <time.h>
+#include <poll.h>
 #ifndef TIMUI_NO_THREADS
 #include <pthread.h>
 #endif
@@ -41,6 +42,8 @@ struct Timui {
     int               text_in_len;
     unsigned          key_in;
     TimuiKey          key_pressed;
+    uint32_t          key_mods;     /* modifiers of the last key event */
+    int               events_dropped;
     int               w, h;
     int               should_quit;
     TimuiEvent        events[16];

@@ -22,6 +22,8 @@ static void ui_event_cb(void *ctx, const TimuiEvent *ev){
     Timui *ui = (Timui *)ctx;
     if(ui->event_count < (int)(sizeof(ui->events) / sizeof(ui->events[0])))
         ui->events[ui->event_count++] = *ev;
+    else
+        ui->events_dropped++;
 }
 static int fd_write(TimuiTransport *t, const void *d, size_t n){
     TimuiFdCtx *c = (TimuiFdCtx *)t->ctx;
@@ -142,7 +144,13 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     if(!ui || !out_frame) return false;
     if(ui->have_transport){
         char buf[256];
-        int n = ui->transport.read(&ui->transport, buf, sizeof buf);
+        int n;
+        if(ui->termios_active){   /* real terminal: poll to avoid 100% CPU hot-spin */
+            struct pollfd pfd;
+            pfd.fd = ui->fd.read_fd; pfd.events = POLLIN; pfd.revents = 0;
+            while(poll(&pfd, 1, 16) == -1 && errno == EINTR){}  /* retry on signal */
+        }
+        n = ui->transport.read(&ui->transport, buf, sizeof buf);
         if(n > 0){
             timui_input_set_now(&ui->input, timui_now_ms());
             timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
@@ -154,6 +162,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->text_in_len = 0;
     ui->key_in = 0;
     ui->key_pressed = TIMUI_KEY_UNKNOWN;
+    ui->key_mods = 0;
     {
         TimuiEvent ev;
         while(timui_poll_event(ui, &ev)){
@@ -161,6 +170,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 timui_interact_set_mouse(&ui->ia, ev.as.mouse.x - 1, ev.as.mouse.y - 1, ev.as.mouse.pressed);
             } else if(ev.kind == TIMUI_EVENT_KEY){
                 ui->key_pressed = ev.as.key.key;   /* app-level key detection */
+                ui->key_mods = ev.as.key.mods;
                 if(ev.as.key.key == TIMUI_KEY_TAB) timui_interact_set_keys(&ui->ia, 1, 0);
                 else if(ev.as.key.key == TIMUI_KEY_ENTER) timui_interact_set_keys(&ui->ia, 0, 1);
                 else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
@@ -169,8 +179,17 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
                 else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
             } else if(ev.kind == TIMUI_EVENT_TEXT){
-                if(ev.as.text.codepoint < 0x80 && ui->text_in_len < (int)sizeof(ui->text_in))
-                    ui->text_in[ui->text_in_len++] = (char)ev.as.text.codepoint;
+                /* UTF-8 encode the codepoint into text_in (supports international input) */
+                uint32_t cp = ev.as.text.codepoint;
+                char enc[4]; int enclen = 0;
+                if(cp < 0x80){ enc[0] = (char)cp; enclen = 1; }
+                else if(cp < 0x800){ enc[0] = (char)(0xC0 | (cp >> 6)); enc[1] = (char)(0x80 | (cp & 0x3F)); enclen = 2; }
+                else if(cp < 0x10000){ enc[0] = (char)(0xE0 | (cp >> 12)); enc[1] = (char)(0x80 | ((cp >> 6) & 0x3F)); enc[2] = (char)(0x80 | (cp & 0x3F)); enclen = 3; }
+                else { enc[0] = (char)(0xF0 | (cp >> 18)); enc[1] = (char)(0x80 | ((cp >> 12) & 0x3F)); enc[2] = (char)(0x80 | ((cp >> 6) & 0x3F)); enc[3] = (char)(0x80 | (cp & 0x3F)); enclen = 4; }
+                if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
+                    int ei;
+                    for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
+                }
             }
         }
     }
@@ -205,9 +224,12 @@ TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame){
     return (frame && frame->ui) ? &frame->ui->curr : NULL;
 }
 TIMUI_API void timui_ui_resize(Timui *ui, int w, int h){
+    TimuiResult r;
     if(!ui || w <= 0 || h <= 0) return;
-    timui_cells_resize(&ui->curr, w, h, &ui->alloc);
-    timui_cells_resize(&ui->prev, w, h, &ui->alloc);
+    r = timui_cells_resize(&ui->curr, w, h, &ui->alloc);
+    if(r != TIMUI_OK) return;
+    r = timui_cells_resize(&ui->prev, w, h, &ui->alloc);
+    if(r != TIMUI_OK) return;
     ui->w = w;
     ui->h = h;
     timui_renderer_reset(&ui->renderer);   /* cursor/SGR tracking invalidated */
@@ -224,6 +246,10 @@ TIMUI_API void timui_quit(Timui *ui){ if(ui) ui->should_quit = 1; }
 TIMUI_API bool timui_should_quit(const Timui *ui){ return ui ? (bool)ui->should_quit : false; }
 TIMUI_API int timui_key_pressed(TimuiFrame *f, TimuiKey key){
     return (f && f->ui && f->ui->key_pressed == key);
+}
+TIMUI_API int timui_key_pressed_mods(TimuiFrame *f, TimuiKey key, uint32_t mods){
+    return (f && f->ui && f->ui->key_pressed == key &&
+            (f->ui->key_mods & mods) == mods);
 }
 
 /* ---- ids (FNV-1a 64; non-cryptographic widget identity) ---------------- */
@@ -266,6 +292,9 @@ TIMUI_API TimuiResult timui_id_stack_init(TimuiIdStack *s, const TimuiAllocator 
     if(!s->seeds){ s->cap = 0; return TIMUI_ERR_OUT_OF_MEMORY; }
     return TIMUI_OK;
 }
+/* Note: on OOM during geometric grow, the push is silently dropped (void return).
+ * The caller cannot detect this. If this matters, use a sufficiently large
+ * initial capacity via timui_id_stack_init. See docs/gaps.md G6. */
 TIMUI_API void timui_id_stack_push(TimuiIdStack *s, TimuiId id){
     TimuiId seed;
     if(!s) return;
@@ -353,9 +382,20 @@ TIMUI_API void timui_msgq_destroy(TimuiMsgQueue *q){
 }
 TIMUI_API int timui_msgq_emit(TimuiMsgQueue *q, uint32_t type, const void *data, size_t size){
     const size_t hdr = sizeof(uint32_t) + sizeof(size_t);
-    size_t need = hdr + size;
+    size_t need;
     unsigned char *p;
-    if(!q || need > q->cap || q->tail + need > q->cap) return 0;   /* full / no fit */
+    if(!q || size > SIZE_MAX - hdr) return 0;   /* overflow guard */
+    need = hdr + size;
+    if(need > q->cap) return 0;   /* never fits */
+    if(q->tail + need > q->cap){
+        /* compact: move remaining data to the front to reuse freed head space */
+        if(q->head > 0 && q->tail > q->head){
+            memmove(q->buf, q->buf + q->head, q->tail - q->head);
+            q->tail -= q->head;
+            q->head = 0;
+        }
+        if(q->tail + need > q->cap) return 0;   /* still full after compact */
+    }
     p = q->buf + q->tail;
     memcpy(p, &type, sizeof(uint32_t));
     memcpy(p + sizeof(uint32_t), &size, sizeof(size_t));
@@ -476,7 +516,7 @@ TIMUI_API int timui_mpsc_empty(TimuiMpsc *q){
  * the backing buffer to the allocator. */
 static void *def_alloc(void *ud, size_t sz){ (void)ud; return malloc(sz); }
 static void *def_realloc(void *ud, void *p, size_t os, size_t ns){
-    (void)ud; (void)os; return realloc(p, ns);
+    (void)ud; (void)os; if(ns == 0) ns = 1; return realloc(p, ns);
 }
 static void def_free(void *ud, void *p, size_t sz){ (void)ud; (void)sz; free(p); }
 

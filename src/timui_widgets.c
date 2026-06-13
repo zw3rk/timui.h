@@ -30,6 +30,10 @@ TIMUI_API void timui_interact_begin(TimuiInteract *ia){
     ia->tab_count = 0;
     ia->focus_advance = ia->tab_pressed;
     ia->tab_pressed = 0;
+    /* modal_active persists across frames; message_box re-asserts it each
+     * frame it is called, and clears it on button click. When the caller
+     * stops calling message_box, modal_active remains 1 — the caller must
+     * set ui->ia.modal_active = 0 when dismissing the modal. */
 }
 TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId id, TimuiRect r){
     TimuiInteractResult res = {0, 0, 0, 0, 0};
@@ -264,6 +268,7 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
     btnx = bx + 2;
     for(i = 0; i < count; i++){
         TimuiRect br = TIMUI_RECT(btnx, by + boxh - 2, (int)buttons[i].len + 2, 1);
+        if(btnx + br.w > bx + boxw) break;   /* prevent button overflow past panel */
         if(timui_button(f, id + (TimuiId)(i + 1), br, buttons[i]).clicked){ clicked = i; ui->ia.modal_active = 0; }
         btnx += br.w + 1;
     }

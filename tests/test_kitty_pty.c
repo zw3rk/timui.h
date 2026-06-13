@@ -119,13 +119,19 @@ TIMUI_TEST(test_pty_hello_exits_on_esc){
 
         nanosleep(&ts200, NULL);  /* let hello enter alt screen + render */
 
-        /* verify hello ran: alt-screen-enter in the master output */
+        /* verify hello ran: alt-screen-enter in the master output (retry for 1s) */
         fcntl(master, F_SETFL, fcntl(master, F_GETFL, 0) | O_NONBLOCK);
-        n = read(master, out, sizeof(out) - 1);
-        if(n <= 0 || !bytes_contain(out, (size_t)n, "\x1b[?1049h")){
+        { int found_alt = 0; int retry;
+          for(retry = 0; retry < 10 && !found_alt; retry++){
+            n = read(master, out, sizeof(out) - 1);
+            if(n > 0 && bytes_contain(out, (size_t)n, "\x1b[?1049h")) found_alt = 1;
+            if(!found_alt) nanosleep(&ts100, NULL);
+          }
+          if(!found_alt){
             close(master); kill(pid, SIGKILL); waitpid(pid, &status, 0);
-            TIMUI_CHECK(0);   /* hello didn't run under the pty */
+            TIMUI_CHECK(0);
             return;
+          }
         }
 
         /* send Esc; the Esc-timeout (50ms) should fire and quit hello */

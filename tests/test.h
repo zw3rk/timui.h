@@ -127,10 +127,28 @@ void test_table_renders(void);
 void test_tree_renders(void);
 void test_cmd_palette_filter(void);
 void test_snapshot_row_eq(void);
+void test_snapshot_grid_full(void);
+void test_snapshot_grid_eq_same(void);
+void test_snapshot_grid_eq_diff(void);
+void test_snapshot_grid_eq_dim(void);
+void test_snapshot_goldens(void);
+/* libvterm round-trip tests (Tier A) — only linked when WITH_VTERM=1.
+ * Registered in test_main.c under #if __has_include(<vterm.h>). */
+void test_vt_plain_text(void);
+void test_vt_rainbow(void);
+void test_vt_attrs(void);
+void test_vt_box_glyphs(void);
+void test_vt_fill(void);
+void test_vt_hyperlink(void);
+void test_vt_partial_update(void);
+void test_vt_wide_glyph(void);
 void test_text_area_renders(void);
 void test_conpty_unsupported(void);
 void test_kitty_graphics_transmit(void);
 void test_kitty_graphics_placeholder(void);
 void test_pty_hello_exits_on_esc(void);
+void test_paste_cross_feed_terminator(void);
+void test_esc_timeout_zero_now(void);
+void test_msgq_overflow_guard(void);
 
 #endif /* TIMUI_TEST_H */
