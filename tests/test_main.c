@@ -105,6 +105,22 @@ int main(void){
         test_menu_open_and_select,
         test_menu_outside_click_closes,
         test_modal_traps_background,
+        test_hyperlink_renders_osc8,
+        test_esc_timeout_flushes,
+        test_esc_arrow_not_delayed,
+        test_scroll_view_clips,
+        test_theme_modern_light,
+        test_clipboard_osc52,
+        test_keymap_bind,
+        test_table_renders,
+        test_tree_renders,
+        test_cmd_palette_filter,
+        test_snapshot_row_eq,
+        test_text_area_renders,
+        test_conpty_unsupported,
+        test_kitty_graphics_transmit,
+        test_kitty_graphics_placeholder,
+        test_pty_hello_exits_on_esc,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

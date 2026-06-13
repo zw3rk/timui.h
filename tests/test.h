@@ -116,5 +116,21 @@ void test_clip_restricts_drawing(void);
 void test_menu_open_and_select(void);
 void test_menu_outside_click_closes(void);
 void test_modal_traps_background(void);
+void test_hyperlink_renders_osc8(void);
+void test_esc_timeout_flushes(void);
+void test_esc_arrow_not_delayed(void);
+void test_scroll_view_clips(void);
+void test_theme_modern_light(void);
+void test_clipboard_osc52(void);
+void test_keymap_bind(void);
+void test_table_renders(void);
+void test_tree_renders(void);
+void test_cmd_palette_filter(void);
+void test_snapshot_row_eq(void);
+void test_text_area_renders(void);
+void test_conpty_unsupported(void);
+void test_kitty_graphics_transmit(void);
+void test_kitty_graphics_placeholder(void);
+void test_pty_hello_exits_on_esc(void);
 
 #endif /* TIMUI_TEST_H */

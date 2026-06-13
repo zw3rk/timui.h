@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <termios.h>
+#include <time.h>
 #ifndef TIMUI_NO_THREADS
 #include <pthread.h>
 #endif

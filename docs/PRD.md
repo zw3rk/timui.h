@@ -2711,7 +2711,7 @@ Parallelization: needed for input widgets.
 
 ---
 
-### T3.6 — Hyperlink overlay
+### T3.6 — Hyperlink overlay ✅
 
 Dependencies: T3.4.
 

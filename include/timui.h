@@ -123,7 +123,8 @@ typedef enum {
     TIMUI_THEME_DOS_BLUE = 0,
     TIMUI_THEME_DOS_GRAY,
     TIMUI_THEME_MODERN_DARK,
-    TIMUI_THEME_MONO
+    TIMUI_THEME_MONO,
+    TIMUI_THEME_MODERN_LIGHT
 } TimuiBuiltinTheme;
 
 typedef enum {
@@ -378,6 +379,8 @@ typedef struct {
     uint32_t image_id;
 } TimuiCell;
 
+typedef struct { char uri[256]; } TimuiHyperlink;
+
 struct TimuiCellBuffer {
     TimuiCell    *cells;
     int           w;
@@ -385,9 +388,16 @@ struct TimuiCellBuffer {
     TimuiAllocator alloc;   /* owning allocator (copied) */
     TimuiRect     clip;     /* active clip rect when has_clip */
     int           has_clip;
+    TimuiHyperlink *links;  /* per-frame hyperlink table (id = index + 1) */
+    int           link_count;
+    int           link_cap;
 };
 TIMUI_API void timui_push_clip(TimuiFrame *f, TimuiRect rect);
 TIMUI_API void timui_pop_clip(TimuiFrame *f);
+
+/* ---- Scroll view (v0.2) ----------------------------------------------- */
+TIMUI_API TimuiRect timui_scroll_begin(TimuiFrame *f, TimuiRect viewport, int scroll_y);
+TIMUI_API void      timui_scroll_end(TimuiFrame *f);
 
 TIMUI_API TimuiResult timui_cells_init(TimuiCellBuffer *buf, int w, int h, const TimuiAllocator *alloc);
 TIMUI_API void        timui_cells_destroy(TimuiCellBuffer *buf);
@@ -395,6 +405,9 @@ TIMUI_API TimuiResult timui_cells_resize(TimuiCellBuffer *buf, int w, int h, con
 TIMUI_API void        timui_cells_clear(TimuiCellBuffer *buf);
 TIMUI_API TimuiCell  *timui_cells_get(TimuiCellBuffer *buf, int x, int y);
 TIMUI_API int         timui_cells_put(TimuiCellBuffer *buf, int x, int y, const TimuiCell *cell);
+TIMUI_API uint32_t    timui_hyperlink_set(TimuiCellBuffer *buf, const char *uri);   /* v0.2: OSC 8 */
+TIMUI_API void        timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiStr text, TimuiStyle st, uint32_t link);
+TIMUI_API void        timui_label_hyperlink(TimuiFrame *f, int x, int y, TimuiStr text, const char *uri, TimuiStyle style);
 
 /* ---- UTF-8 decode + display width (minimal v0.1) ---------------------- *
  * timui_utf8_decode returns the byte length of the next codepoint (1..4),
@@ -436,6 +449,7 @@ typedef enum {
 typedef struct {
     int last_x, last_y;                 /* last written cell (0-based); -1 = none */
     int last_fg, last_bg, last_attrs;   /* -1 = not yet emitted this run */
+    int last_link;                      /* current OSC 8 hyperlink id, 0 = none */
 } TimuiRenderer;
 
 TIMUI_API void timui_renderer_reset(TimuiRenderer *r);
@@ -626,6 +640,8 @@ typedef struct {
     int         utf8_len;
     uint32_t    utf8_cp;
     const char *utf8_ptr;
+    uint64_t    now_ms;        /* current time, set via timui_input_set_now */
+    uint64_t    esc_since_ms;  /* timestamp ESC state was entered; 0 = none */
 } TimuiInputParser;
 
 typedef void (*TimuiEventFn)(void *ctx, const TimuiEvent *ev);
@@ -633,6 +649,9 @@ typedef void (*TimuiEventFn)(void *ctx, const TimuiEvent *ev);
 TIMUI_API void   timui_input_init(TimuiInputParser *p);
 TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *bytes, size_t len,
                                   TimuiEventFn cb, void *ctx);
+TIMUI_API void    timui_input_set_now(TimuiInputParser *p, uint64_t now_ms);
+TIMUI_API void    timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx);
+TIMUI_API uint64_t timui_now_ms(void);   /* monotonic milliseconds */
 TIMUI_API int    timui_key_pressed(TimuiFrame *f, TimuiKey key);
 
 /* ---- Interaction state (hot/active/focus) ----------------------------- *
@@ -672,6 +691,46 @@ TIMUI_API void                timui_interact_begin(TimuiInteract *ia);
 TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId id, TimuiRect r);
 TIMUI_API void                timui_interact_end(TimuiInteract *ia);
 
+/* ---- v0.2 utilities: clipboard + keymaps ------------------------------ */
+TIMUI_API void timui_clipboard_set(TimuiTransport *t, TimuiStr text);
+
+typedef struct { TimuiKey key; uint32_t mods; int action; } TimuiKeyBinding;
+typedef struct { TimuiKeyBinding bindings[32]; int count; } TimuiKeymap;
+TIMUI_API void timui_keymap_bind(TimuiKeymap *km, TimuiKey key, uint32_t mods, int action);
+TIMUI_API int  timui_keymap_hit(TimuiFrame *f, const TimuiKeymap *km, int action);
+
+/* ---- v0.2 widgets: table, tree, command palette ----------------------- */
+typedef const char *(*TimuiCellFn)(void *ud, int row, int col);
+typedef struct { int selected; int scroll; } TimuiTableState;
+TIMUI_API void timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *headers, int ncols, int nrows, TimuiCellFn cell_fn, void *ud,
+    TimuiTableState *state);
+
+typedef struct { int depth; const char *label; int has_children; int expanded; } TimuiTreeNode;
+TIMUI_API void timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiTreeNode *nodes, int count, int *selected);
+
+typedef struct { char filter[64]; int selected; } TimuiCmdPaletteState;
+TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *commands, int count, TimuiCmdPaletteState *state);
+
+/* ---- v0.2: snapshot testing + text-area + ConPTY ---------------------- */
+TIMUI_API void timui_snapshot_render(const TimuiCellBuffer *buf, int row, char *out, size_t cap);
+TIMUI_API int  timui_snapshot_row_eq(const TimuiCellBuffer *buf, int row, const char *expected);
+
+typedef struct { char *text; size_t cap; size_t cursor; } TimuiTextAreaState;
+TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *state);
+
+TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);
+TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
+
+/* ---- v0.2: Kitty graphics images -------------------------------------- */
+typedef struct TimuiImage { unsigned char *data; size_t len; } TimuiImage;
+TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
+TIMUI_API void        timui_image_free(Timui *ui, TimuiImage *img);
+TIMUI_API void        timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r);
+TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
+
 #ifdef __cplusplus
 }
 #endif
@@ -690,6 +749,16 @@ TIMUI_API void                timui_interact_end(TimuiInteract *ia);
 #include "../src/timui_input.c"
 #include "../src/timui_widgets.c"
 #include "../src/timui_clip.c"
+#include "../src/timui_scroll.c"
+#include "../src/timui_clipboard.c"
+#include "../src/timui_keymap.c"
+#include "../src/timui_table.c"
+#include "../src/timui_tree.c"
+#include "../src/timui_cmdpal.c"
+#include "../src/timui_snapshot.c"
+#include "../src/timui_textarea.c"
+#include "../src/timui_conpty.c"
+#include "../src/timui_kitty.c"
 #include "../src/timui_menus.c"
 #include "../src/timui_app.c"
 #endif /* TIMUI_IMPLEMENTATION */

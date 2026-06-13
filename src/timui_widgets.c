@@ -269,4 +269,12 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
     }
     return clicked;
 }
+TIMUI_API void timui_label_hyperlink(TimuiFrame *f, int x, int y, TimuiStr text, const char *uri, TimuiStyle style){
+    Timui *ui;
+    uint32_t id;
+    if(!f || !f->ui) return;
+    ui = f->ui;
+    id = uri ? timui_hyperlink_set(&ui->curr, uri) : 0;
+    timui_draw_text_linked(&ui->curr, x, y, text, style, id);
+}
 

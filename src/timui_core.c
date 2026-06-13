@@ -133,12 +133,21 @@ TIMUI_API void timui_close(Timui *ui){
     al = ui->alloc;
     al.free(al.userdata, ui, sizeof *ui);
 }
+TIMUI_API uint64_t timui_now_ms(void){
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
 TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     if(!ui || !out_frame) return false;
     if(ui->have_transport){
         char buf[256];
         int n = ui->transport.read(&ui->transport, buf, sizeof buf);
-        if(n > 0) timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
+        if(n > 0){
+            timui_input_set_now(&ui->input, timui_now_ms());
+            timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
+        }
+        timui_input_flush_esc(&ui->input, timui_now_ms(), ui_event_cb, ui);
     }
     /* drain parsed events: mouse -> hit-testing; tab/enter -> interaction;
      * printable text + cursor keys -> the focused input's accumulator. */

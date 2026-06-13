@@ -7,6 +7,9 @@ TIMUI_API TimuiResult timui_cells_init(TimuiCellBuffer *buf, int w, int h, const
     buf->h = h;
     buf->alloc = *alloc;
     buf->has_clip = 0;
+    buf->links = NULL;
+    buf->link_count = 0;
+    buf->link_cap = 0;
     buf->cells = (TimuiCell *)alloc->alloc(alloc->userdata, n * sizeof(TimuiCell));
     if(!buf->cells){ buf->w = buf->h = 0; return TIMUI_ERR_OUT_OF_MEMORY; }
     timui_cells_clear(buf);
@@ -16,6 +19,7 @@ TIMUI_API void timui_cells_destroy(TimuiCellBuffer *buf){
     size_t n;
     if(!buf || !buf->cells) return;
     n = (size_t)buf->w * (size_t)buf->h;
+    if(buf->links){ buf->alloc.free(buf->alloc.userdata, buf->links, (size_t)buf->link_cap * sizeof(*buf->links)); buf->links = NULL; }
     buf->alloc.free(buf->alloc.userdata, buf->cells, n * sizeof(TimuiCell));
     buf->cells = NULL;
     buf->w = buf->h = 0;
@@ -39,6 +43,7 @@ TIMUI_API TimuiResult timui_cells_resize(TimuiCellBuffer *buf, int w, int h, con
 TIMUI_API void timui_cells_clear(TimuiCellBuffer *buf){
     if(!buf || !buf->cells) return;
     memset(buf->cells, 0, (size_t)buf->w * (size_t)buf->h * sizeof(TimuiCell));
+    buf->link_count = 0;   /* hyperlinks are per-frame */
 }
 TIMUI_API TimuiCell *timui_cells_get(TimuiCellBuffer *buf, int x, int y){
     if(!buf || !buf->cells || x < 0 || y < 0 || x >= buf->w || y >= buf->h) return NULL;
@@ -118,6 +123,49 @@ TIMUI_API void timui_draw_text(TimuiCellBuffer *buf, int x, int y, TimuiStr text
         w = timui_utf8_width(cp);
         if(w > 0){
             put_glyph(buf, cx, y, cp, st);
+            cx += w;
+        }
+        i += (size_t)adv;
+    }
+}
+TIMUI_API uint32_t timui_hyperlink_set(TimuiCellBuffer *buf, const char *uri){
+    size_t n;
+    if(!buf || !uri) return 0;
+    if(buf->link_count >= buf->link_cap){
+        int nc = buf->link_cap ? buf->link_cap * 2 : 8;
+        TimuiHyperlink *nl = (TimuiHyperlink *)buf->alloc.realloc(buf->alloc.userdata,
+            buf->links, (size_t)buf->link_cap * sizeof(*nl), (size_t)nc * sizeof(*nl));
+        if(!nl) return 0;
+        buf->links = nl;
+        buf->link_cap = nc;
+    }
+    n = strlen(uri);
+    if(n >= sizeof(buf->links[0].uri)) n = sizeof(buf->links[0].uri) - 1;
+    memcpy(buf->links[buf->link_count].uri, uri, n);
+    buf->links[buf->link_count].uri[n] = '\0';
+    buf->link_count++;
+    return (uint32_t)buf->link_count;   /* 1-based id */
+}
+TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiStr text, TimuiStyle st, uint32_t link){
+    size_t i = 0;
+    int cx = x;
+    if(!buf || !text.ptr) return;
+    while(i < text.len){
+        uint32_t cp = 0;
+        int adv = timui_utf8_decode(text.ptr + i, text.len - i, &cp);
+        int w;
+        TimuiCell *cell;
+        if(adv <= 0) adv = 1;
+        w = timui_utf8_width(cp);
+        if(w > 0){
+            if(buf->has_clip && (cx < buf->clip.x || y < buf->clip.y ||
+               cx >= buf->clip.x + buf->clip.w || y >= buf->clip.y + buf->clip.h)){ i += (size_t)adv; cx += w; continue; }
+            cell = timui_cells_get(buf, cx, y);
+            if(cell){
+                memset(cell, 0, sizeof *cell);
+                cell->codepoint = cp; cell->fg = st.fg; cell->bg = st.bg;
+                cell->attrs = st.attrs; cell->width = 1; cell->hyperlink_id = link;
+            }
             cx += w;
         }
         i += (size_t)adv;
@@ -227,10 +275,17 @@ static void emit_sgr(TimuiTransport *t, TimuiRenderer *r, const TimuiCell *c){
     r->last_bg = (int)c->bg;
     r->last_attrs = (int)c->attrs;
 }
+/* OSC 8 hyperlink: ESC]8;;<uri>ESC\\ to open, ESC]8;;ESC\\ to close. */
+static void emit_osc8(TimuiTransport *t, const char *uri){
+    R_EMIT(t, "\x1b]8;;");
+    if(uri) r_emit(t, uri, strlen(uri));
+    R_EMIT(t, "\x1b\\");
+}
 TIMUI_API void timui_renderer_reset(TimuiRenderer *r){
     if(!r) return;
     r->last_x = -1; r->last_y = -1;
     r->last_fg = -1; r->last_bg = -1; r->last_attrs = -1;
+    r->last_link = 0;
 }
 TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
                                  const TimuiCellBuffer *curr, TimuiRenderer *r){
@@ -245,9 +300,17 @@ TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
             char gb[4];
             int gn;
             if(pc->codepoint == cc->codepoint && pc->fg == cc->fg &&
-               pc->bg == cc->bg && pc->attrs == cc->attrs) continue;
+               pc->bg == cc->bg && pc->attrs == cc->attrs &&
+               pc->hyperlink_id == cc->hyperlink_id) continue;
             if(r->last_x != x || r->last_y != y) emit_cup(t, x, y);
             emit_sgr(t, r, cc);
+            if(cc->hyperlink_id != (uint32_t)r->last_link){
+                const char *uri = (cc->hyperlink_id && curr->links &&
+                                   cc->hyperlink_id <= (uint32_t)curr->link_count)
+                                  ? curr->links[cc->hyperlink_id - 1].uri : NULL;
+                emit_osc8(t, uri);
+                r->last_link = (int)cc->hyperlink_id;
+            }
             gn = utf8_encode(cc->codepoint ? cc->codepoint : ' ', gb);
             r_emit(t, gb, (size_t)gn);
             r->last_x = x + 1;
@@ -326,6 +389,21 @@ TIMUI_API TimuiTheme timui_theme_builtin(TimuiBuiltinTheme t){
         th.slots[TIMUI_SLOT_ERROR]         = th_mk(0xF38BA8, bg);
         th.slots[TIMUI_SLOT_WARNING]       = th_mk(0xFAB387, bg);
         th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(0xA6E3A1, bg);
+    }
+    else if(t == TIMUI_THEME_MODERN_LIGHT){
+        uint32_t bg = 0xFFFFFF, fg = 0x2E2E2E, accent = 0x0066CC;
+        for(i = 0; i < TIMUI_SLOT_COUNT; i++){ th.slots[i].fg = fg; th.slots[i].bg = bg; }
+        th.slots[TIMUI_SLOT_PANEL_TITLE]   = th_mk(accent, bg);
+        th.slots[TIMUI_SLOT_BORDER]        = th_mk(0xCCCCCC, bg);
+        th.slots[TIMUI_SLOT_BUTTON]        = th_mk(fg, 0xE0E0E0);
+        th.slots[TIMUI_SLOT_BUTTON_HOVERED]= th_mk(fg, 0xD0D0D0);
+        th.slots[TIMUI_SLOT_BUTTON_FOCUSED]= th_mk(0xFFFFFF, accent);
+        th.slots[TIMUI_SLOT_INPUT]         = th_mk(fg, 0xF0F0F0);
+        th.slots[TIMUI_SLOT_INPUT_FOCUSED] = th_mk(fg, 0xE0E0E0);
+        th.slots[TIMUI_SLOT_SELECTION]     = th_mk(0xFFFFFF, accent);
+        th.slots[TIMUI_SLOT_ERROR]         = th_mk(0xCC0000, bg);
+        th.slots[TIMUI_SLOT_WARNING]       = th_mk(0xCC6600, bg);
+        th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(0x008800, bg);
     }
     /* TIMUI_THEME_MONO: the white-on-black default set above */
     return th;

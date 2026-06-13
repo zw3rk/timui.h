@@ -135,6 +135,20 @@ TIMUI_API void timui_input_init(TimuiInputParser *p){
     p->mparam[0] = p->mparam[1] = p->mparam[2] = 0;
     p->pasting = 0; p->paste_ptr = NULL;
     p->utf8_need = 0; p->utf8_len = 0; p->utf8_cp = 0; p->utf8_ptr = NULL;
+    p->now_ms = 0; p->esc_since_ms = 0;
+}
+#define TIMUI_ESC_TIMEOUT_MS 50   /* lone-Esc resolution window */
+TIMUI_API void timui_input_set_now(TimuiInputParser *p, uint64_t now_ms){
+    if(p) p->now_ms = now_ms;
+}
+TIMUI_API void timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx){
+    if(!p) return;
+    if(p->state == 1 && p->esc_since_ms != 0 &&
+       now_ms - p->esc_since_ms >= TIMUI_ESC_TIMEOUT_MS){
+        emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0);
+        p->state = 0;
+        p->esc_since_ms = 0;
+    }
 }
 TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t len,
                                   TimuiEventFn cb, void *ctx){
@@ -158,7 +172,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
         }
         switch(p->state){
         case 0: /* GROUND */
-            if(c == 0x1b){ p->state = 1; break; }
+            if(c == 0x1b){ p->state = 1; p->esc_since_ms = p->now_ms; break; }
             if(c == '\r' || c == '\n'){ emit_key(cb, ctx, TIMUI_KEY_ENTER, 0, 0); count++; break; }
             if(c == '\t'){ emit_key(cb, ctx, TIMUI_KEY_TAB, 0, 0); count++; break; }
             if(c == 0x7f || c == 0x08){ emit_key(cb, ctx, TIMUI_KEY_BACKSPACE, 0, 0); count++; break; }

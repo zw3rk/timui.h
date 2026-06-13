@@ -1,0 +1,81 @@
+/*
+ * test_v02_widgets.c — table, tree, command palette (v0.2).
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#include "test.h"
+#include "timui.h"
+
+#include <stdio.h>
+#include <string.h>
+
+/* ---- table (#47) ---- */
+static const char *tbl_cell(void *ud, int row, int col){
+    static char buf[2][8];
+    int r = row % 2;
+    (void)ud;
+    if(col == 0) snprintf(buf[r], sizeof buf[r], "r%d", row);
+    else         snprintf(buf[r], sizeof buf[r], "c%d", col);
+    return buf[r];
+}
+TIMUI_TEST(test_table_renders){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiTableState ts = {0, 0};
+    TimuiStr hdrs[2] = { TIMUI_STR_LIT("Name"), TIMUI_STR_LIT("Val") };
+    TimuiCellBuffer *buf;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_begin(ui, &f); buf = timui_frame_buffer(f);
+    timui_table(f, TIMUI_ID("t"), TIMUI_RECT(0, 0, 20, 5), hdrs, 2, 3, tbl_cell, 0, &ts);
+    /* check BEFORE end (end swaps curr/prev) */
+    TIMUI_CHECK(timui_cells_get(buf, 1, 0)->codepoint == 'N');  /* header "Name" */
+    TIMUI_CHECK(timui_cells_get(buf, 1, 1)->codepoint == 'r');  /* data "r0" */
+    timui_end(f);
+    timui_close(ui);
+}
+
+/* ---- tree (#48) ---- */
+TIMUI_TEST(test_tree_renders){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiTreeNode nodes[] = {
+        {0, "root", 1, 1}, {1, "child", 0, 0}
+    };
+    int sel = 0;
+    TimuiCellBuffer *buf;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_begin(ui, &f); buf = timui_frame_buffer(f);
+    timui_tree(f, TIMUI_ID("tr"), TIMUI_RECT(0, 0, 20, 5), nodes, 2, &sel);
+    /* root at row 0: expand marker '-' then "root" */
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == '-');
+    TIMUI_CHECK(timui_cells_get(buf, 2, 0)->codepoint == 'r');
+    /* child at row 1: depth-1 indent (4 chars) then "child" at x=4 */
+    TIMUI_CHECK(timui_cells_get(buf, 4, 1)->codepoint == 'c');
+    timui_end(f);
+    timui_close(ui);
+}
+
+/* ---- command palette (#50) ---- */
+TIMUI_TEST(test_cmd_palette_filter){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr cmds[3] = { TIMUI_STR_LIT("Save"), TIMUI_STR_LIT("Open"), TIMUI_STR_LIT("Quit") };
+    TimuiCmdPaletteState cps = {0};
+    int r;
+    TimuiCellBuffer *buf;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    strcpy(cps.filter, "op");
+    timui_begin(ui, &f); buf = timui_frame_buffer(f);
+    r = timui_command_palette(f, TIMUI_ID("cp"), TIMUI_RECT(0, 0, 20, 6), cmds, 3, &cps);
+    TIMUI_CHECK(r == -1);             /* not activated yet (no Enter) */
+    /* "Open" visible in the list at row 2 (inside the panel body) */
+    TIMUI_CHECK(timui_cells_get(buf, 2, 2)->codepoint == 'O');
+    timui_end(f);
+    timui_close(ui);
+}
