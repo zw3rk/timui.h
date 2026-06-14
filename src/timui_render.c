@@ -45,8 +45,14 @@ TIMUI_API TimuiResult timui_cells_resize(TimuiCellBuffer *buf, int w, int h, con
     return TIMUI_OK;
 }
 TIMUI_API void timui_cells_clear(TimuiCellBuffer *buf){
+    size_t i, n;
     if(!buf || !buf->cells) return;
-    memset(buf->cells, 0, (size_t)buf->w * (size_t)buf->h * sizeof(TimuiCell));
+    n = (size_t)buf->w * (size_t)buf->h;
+    memset(buf->cells, 0, n * sizeof(TimuiCell));   /* codepoint/attrs/width/flags/links = 0 */
+    for(i = 0; i < n; i++){                          /* empty = DEFAULT colour (ADR 0001), not black */
+        buf->cells[i].fg = TIMUI_COLOR_DEFAULT;
+        buf->cells[i].bg = TIMUI_COLOR_DEFAULT;
+    }
     buf->link_count = 0;   /* hyperlinks are per-frame */
 }
 TIMUI_API TimuiCell *timui_cells_get(TimuiCellBuffer *buf, int x, int y){
@@ -118,6 +124,8 @@ static void put_glyph(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyl
     /* wide glyph: blank the continuation cell so stale content isn't left behind */
     if(w > 1 && !(buf->has_clip && (x + 1 < buf->clip.x || x + 1 >= buf->clip.x + buf->clip.w))){
         memset(&c, 0, sizeof c);
+        c.fg = TIMUI_COLOR_DEFAULT;   /* ADR 0001: blanked = default, not black */
+        c.bg = TIMUI_COLOR_DEFAULT;
         c.flags = TIMUI_CELL_CONTINUATION;
         c.width = 0;
         timui_cells_put(buf, x + 1, y, &c);
@@ -190,6 +198,8 @@ TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiS
                 TimuiCell *cont = timui_cells_get(buf, cx + 1, y);
                 if(cont && !(buf->has_clip && (cx + 1 < buf->clip.x || cx + 1 >= buf->clip.x + buf->clip.w))){
                     memset(cont, 0, sizeof *cont);
+                    cont->fg = TIMUI_COLOR_DEFAULT;   /* ADR 0001: blanked = default */
+                    cont->bg = TIMUI_COLOR_DEFAULT;
                     cont->flags = TIMUI_CELL_CONTINUATION;
                 }
             }
@@ -198,11 +208,24 @@ TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiS
         i += (size_t)adv;
     }
 }
+/* Clamp a rect to the buffer bounds (and non-negative). Prevents a runaway
+ * loop and signed-overflow UB (r.y+r.h) on an extreme rect; put_glyph already
+ * bounds-checks each cell, so this is about loop bounds + UB, not write safety. */
+static TimuiRect rect_clamp_buf(const TimuiCellBuffer *buf, TimuiRect r){
+    if(r.x < 0){ r.w += r.x; r.x = 0; }
+    if(r.y < 0){ r.h += r.y; r.y = 0; }
+    if(r.x > buf->w) r.x = buf->w;
+    if(r.y > buf->h) r.y = buf->h;
+    if(r.w > buf->w - r.x) r.w = buf->w - r.x;
+    if(r.h > buf->h - r.y) r.h = buf->h - r.y;
+    if(r.w < 0) r.w = 0;
+    if(r.h < 0) r.h = 0;
+    return r;
+}
 TIMUI_API void timui_draw_fill(TimuiCellBuffer *buf, TimuiRect r, TimuiStyle st){
     int xi, yi;
     if(!buf) return;
-    if(r.w < 0) r.w = 0;
-    if(r.h < 0) r.h = 0;
+    r = rect_clamp_buf(buf, r);
     for(yi = r.y; yi < r.y + r.h; yi++)
         for(xi = r.x; xi < r.x + r.w; xi++)
             put_glyph(buf, xi, yi, ' ', st);
@@ -289,8 +312,8 @@ static void emit_cup(TimuiTransport *t, int x, int y){
 static void emit_sgr(TimuiTransport *t, TimuiRenderer *r, const TimuiCell *c){
     if((int)c->fg == r->last_fg && (int)c->bg == r->last_bg && (int)c->attrs == r->last_attrs) return;
     R_EMIT(t, "\x1b[0m");                 /* reset, then re-apply the full style */
-    if(c->fg) emit_truecolor(t, 0, c->fg);
-    if(c->bg) emit_truecolor(t, 1, c->bg);
+    if(c->fg != TIMUI_COLOR_DEFAULT) emit_truecolor(t, 0, c->fg);   /* ADR 0001: 0x000000 is black */
+    if(c->bg != TIMUI_COLOR_DEFAULT) emit_truecolor(t, 1, c->bg);
     if(c->attrs & TIMUI_ATTR_BOLD)      R_EMIT(t, "\x1b[1m");
     if(c->attrs & TIMUI_ATTR_DIM)       R_EMIT(t, "\x1b[2m");
     if(c->attrs & TIMUI_ATTR_ITALIC)    R_EMIT(t, "\x1b[3m");
@@ -370,7 +393,7 @@ TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
             }
             gn = utf8_encode(cc->codepoint ? cc->codepoint : ' ', gb);
             r_emit(t, gb, (size_t)gn);
-            r->last_x = x + 1;
+            r->last_x = x + (cc->width >= 2 ? 2 : 1);   /* wide glyph advances cursor by 2 */
             r->last_y = y;
         }
     }

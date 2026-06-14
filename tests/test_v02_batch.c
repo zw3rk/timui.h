@@ -77,3 +77,27 @@ TIMUI_TEST(test_keymap_bind_overflow){
     for(i = 0; i < 40; i++) timui_keymap_bind(&km, TIMUI_KEY_F1, 0, i);
     TIMUI_CHECK(km.count == 32);   /* capped at the array size, no overrun */
 }
+
+/* Y4: an action bound to several keys must match on ANY of them, not
+ * short-circuit on the first binding. */
+TIMUI_TEST(test_keymap_hit_multi_binding){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiKeymap km;
+    int hit;
+    km.count = 0;
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_keymap_bind(&km, TIMUI_KEY_F1, 0, 100);     /* action 100, 1st binding */
+    timui_keymap_bind(&km, TIMUI_KEY_ENTER, 0, 100);  /* action 100, 2nd binding */
+    timui_fake_set_input(&fake, "\r", 1);             /* press Enter (the 2nd binding) */
+    timui_begin(ui, &f);
+    hit = timui_keymap_hit(f, &km, 100);
+    timui_end(f);
+    TIMUI_CHECK(hit);   /* the 2nd binding is reachable (old code returned 0 on F1) */
+    timui_close(ui);
+}

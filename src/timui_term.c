@@ -1,10 +1,12 @@
 /* ---- terminal transport + fake backend --------------------------------- */
 static int fake_write(TimuiTransport *t, const void *data, size_t len){
     TimuiFakeTransport *f = (TimuiFakeTransport *)t->ctx;
+    if(len > SIZE_MAX - f->out_len) return -1;        /* out_len+len would overflow */
     if(f->out_len + len > f->out_cap){
         size_t ncap = f->out_cap ? f->out_cap : 64;
+        size_t target = f->out_len + len;
         unsigned char *nb;
-        while(ncap < f->out_len + len) ncap *= 2;
+        while(ncap < target){ if(ncap > SIZE_MAX / 2) return -1; ncap *= 2; }
         nb = (unsigned char *)f->alloc.realloc(f->alloc.userdata, f->out, f->out_cap, ncap);
         if(!nb) return -1;
         f->out = nb;
@@ -200,9 +202,14 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         c->flags |= TIMUI_CAP_256_COLOR;
         c->colors = 256;
     }
-    /* multiplexers reduce capabilities unless explicit passthrough is known */
+    /* multiplexers reduce capabilities unless passthrough is likely. Probe via
+     * the OUTER terminal (TERM_PROGRAM is inherited into the session): if it's
+     * kitty-family, the session is very likely kitty+tmux with passthrough
+     * intended, so KEEP the Kitty caps; otherwise strip them (conservative).
+     * timui_force_cap overrides either way (W12). */
     if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
-        c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SYNC_OUTPUT);
+        if(!caps_is_kitty_family(term_program))
+            c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SYNC_OUTPUT);
         c->flags |= TIMUI_CAP_256_COLOR;
         if(c->colors < 256) c->colors = 256;
     }

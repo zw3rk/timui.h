@@ -21,7 +21,7 @@ TIMUI_TEST(test_render_diff_exact){
 
     timui_cells_init(&prev, 10, 5, &al);
     timui_cells_init(&curr, 10, 5, &al);
-    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("Hi"), timui_style_make(0xffffff, 0, 0));
+    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("Hi"), timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0));
     timui_fake_init(&f, &al);
     t = timui_fake_transport(&f);
     timui_renderer_reset(&r);
@@ -41,7 +41,7 @@ TIMUI_TEST(test_render_unchanged_emits_nothing){
     TimuiTransport t;
     TimuiRenderer r;
     TimuiStr out;
-    TimuiStyle s = timui_style_make(0xffffff, 0, 0);
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
     timui_cells_init(&prev, 10, 5, &al);
     timui_cells_init(&curr, 10, 5, &al);
     timui_draw_text(&prev, 0, 0, TIMUI_STR_LIT("Hi"), s);
@@ -67,7 +67,7 @@ TIMUI_TEST(test_render_diff_narrow_to_wide){
     TimuiTransport t;
     TimuiRenderer r;
     TimuiStr out;
-    TimuiStyle s = timui_style_make(0xffffff, 0, 0);
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
     timui_cells_init(&prev, 6, 1, &al);
     timui_cells_init(&curr, 6, 1, &al);
     timui_draw_text(&prev, 0, 0, TIMUI_STR_LIT("AB"), s);          /* narrow */
@@ -93,7 +93,7 @@ TIMUI_TEST(test_render_diff_wide_to_narrow){
     TimuiTransport t;
     TimuiRenderer r;
     TimuiStr out;
-    TimuiStyle s = timui_style_make(0xffffff, 0, 0);
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
     timui_cells_init(&prev, 6, 1, &al);
     timui_cells_init(&curr, 6, 1, &al);
     timui_draw_text(&prev, 0, 0, TIMUI_STR_LIT("\xE3\x81\x82"), s); /* あ (wide) */
@@ -115,6 +115,29 @@ static int r_contains(const char *h, size_t hl, const char *needle){
     return 0;
 }
 
+/* V27/ADR 0001: explicit black (0x000000) must emit a truecolor SGR
+ * (38;2;0;0;0), distinct from TIMUI_COLOR_DEFAULT which emits no fg SGR. */
+TIMUI_TEST(test_render_black_vs_default){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiCellBuffer prev, curr;
+    TimuiFakeTransport f;
+    TimuiTransport t;
+    TimuiRenderer r;
+    TimuiStr out;
+    timui_cells_init(&prev, 4, 1, &al);
+    timui_cells_init(&curr, 4, 1, &al);
+    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("X"),
+                    timui_style_make(0x000000, TIMUI_COLOR_DEFAULT, 0));
+    timui_fake_init(&f, &al);
+    t = timui_fake_transport(&f);
+    timui_renderer_reset(&r);
+    timui_render_diff(&t, &prev, &curr, &r);
+    out = timui_fake_output(&f);
+    TIMUI_CHECK(out.len > 0);
+    TIMUI_CHECK(r_contains(out.ptr, out.len, "38;2;0;0;0"));   /* black, not default */
+    timui_cells_destroy(&prev); timui_cells_destroy(&curr); timui_fake_destroy(&f);
+}
+
 /* W9: a hyperlink whose URI changes between frames (same id/glyph/style) must
  * be re-emitted with the new URI. ids are per-frame indices, so the renderer
  * must compare URIs, not ids. */
@@ -125,7 +148,7 @@ TIMUI_TEST(test_render_hyperlink_uri_change){
     TimuiTransport t;
     TimuiRenderer r;
     TimuiStr out;
-    TimuiStyle s = timui_style_make(0xffffff, 0, 0);
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
     uint32_t la, lb;
     timui_cells_init(&empty, 10, 1, &al);
     timui_cells_init(&bufA, 10, 1, &al);

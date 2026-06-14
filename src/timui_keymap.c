@@ -15,10 +15,13 @@ TIMUI_API int timui_keymap_hit(TimuiFrame *f, const TimuiKeymap *km, int action)
     if(!f || !f->ui || !km) return 0;
     for(i = 0; i < km->count; i++){
         if(km->bindings[i].action == action){
-            if(km->bindings[i].mods)
-                return timui_key_pressed_mods(f, km->bindings[i].key, km->bindings[i].mods);
-            else
-                return timui_key_pressed(f, km->bindings[i].key);
+            /* Y4: an action may be bound to several keys; test them all rather
+             * than short-circuiting on the first binding (which made the 2nd
+             * unreachable). */
+            int hit = km->bindings[i].mods
+                ? timui_key_pressed_mods(f, km->bindings[i].key, km->bindings[i].mods)
+                : timui_key_pressed(f, km->bindings[i].key);
+            if(hit) return 1;
         }
     }
     return 0;

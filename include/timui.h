@@ -71,12 +71,25 @@ typedef struct {
     int h;
 } TimuiRect;
 
+/* Colour model (ADR 0001): colours are packed 0xRRGGBB. The out-of-range
+ * sentinel TIMUI_COLOR_DEFAULT means "terminal default" (emit no colour SGR);
+ * 0x000000 is literal black. Use it for fg/bg where you want the default. */
+#define TIMUI_COLOR_DEFAULT 0xFFFFFFFFu
+
 typedef struct {
     uint32_t fg;
     uint32_t bg;
     uint32_t attrs;
 } TimuiStyle;
 
+/* All three functions are REQUIRED (the library resizes buffers, so a custom
+ * allocator with realloc==NULL would NULL-deref). timui_default_allocator()
+ * supplies all three.
+ *
+ * realloc MUST follow C realloc semantics: on failure return NULL and LEAVE
+ * *ptr unchanged (valid, unmoved). The library keeps the old buffer on a
+ * failed resize (e.g. timui_cells_resize, timui_ui_resize's rollback) and
+ * relies on this — an allocator that frees-on-failure would corrupt. */
 typedef struct {
     void  *userdata;
     void *(*alloc)(void *userdata, size_t size);
@@ -161,11 +174,15 @@ typedef struct {
 /* ---- Lifecycle (terminal backend lands in Phase 2) --------------------- */
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 TIMUI_API void        timui_close(Timui *ui);
+/* Restore the terminal (screen exit + termios) — used by the SIGTERM/SIGHUP/
+ * SIGQUIT handler timui_open installs, and callable directly (e.g. from an
+ * app's own signal handler or atexit hook). */
+TIMUI_API void        timui_restore_terminal(Timui *ui);
 TIMUI_API const char *timui_error_string(TimuiResult result);
 TIMUI_API const char *timui_version_string(void);
 
 TIMUI_API bool      timui_begin(Timui *ui, TimuiFrame **out_frame);
-TIMUI_API void      timui_end(TimuiFrame *frame);
+TIMUI_API void      timui_end(TimuiFrame *frame);   /* exactly once per begin; a second end re-renders + re-swaps */
 TIMUI_API TimuiRect timui_root(const TimuiFrame *frame);
 TIMUI_API int       timui_width(const TimuiFrame *frame);
 TIMUI_API int       timui_height(const TimuiFrame *frame);
@@ -685,14 +702,16 @@ typedef struct {
     int mouse_released;    /* edge: went up this frame */
     int tab_pressed;
     int activate_pressed;
-    TimuiId tab_order[64];
-    int tab_count;
+    TimuiId *tab_order;          /* dynamically grown (V24); NULL until first push */
+    int tab_count, tab_cap;
+    const TimuiAllocator *alloc; /* owning allocator, for growing tab_order */
     int focus_advance;
     int modal_active;
     TimuiRect modal_rect;
 } TimuiInteract;
 
-TIMUI_API void                timui_interact_init(TimuiInteract *ia);
+TIMUI_API void                timui_interact_init(TimuiInteract *ia, const TimuiAllocator *alloc);
+TIMUI_API void                timui_interact_destroy(TimuiInteract *ia);
 TIMUI_API void                timui_interact_set_mouse(TimuiInteract *ia, int x, int y, int down);
 TIMUI_API void                timui_interact_set_keys(TimuiInteract *ia, int tab, int activate);
 TIMUI_API void                timui_interact_begin(TimuiInteract *ia);

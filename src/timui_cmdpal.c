@@ -1,15 +1,16 @@
 /* ---- command palette (v0.2) ------------------------------------------- *
  * A popup with a filter input and a filtered command list. Returns the
  * activated command index, or -1. */
-static int cmd_matches(const char *cmd, const char *filter){
-    /* simple substring match (case-insensitive for ASCII) */
-    size_t cl = strlen(cmd), fl = strlen(filter);
+static int cmd_matches(TimuiStr cmd, const char *filter){
+    /* simple substring match (case-insensitive for ASCII); uses cmd.len so a
+     * non-NUL-terminated TimuiStr slice is honored (not strlen). */
+    size_t cl = cmd.len, fl = strlen(filter);
     size_t i, j;
     if(fl == 0) return 1;
     if(fl > cl) return 0;
     for(i = 0; i + fl <= cl; i++){
         for(j = 0; j < fl; j++){
-            char a = cmd[i + j], b = filter[j];
+            char a = cmd.ptr[i + j], b = filter[j];
             if(a >= 'A' && a <= 'Z') a += 32;
             if(b >= 'A' && b <= 'Z') b += 32;
             if(a != b) break;
@@ -33,8 +34,8 @@ TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
     timui_input_line_buf(f, id + 1, input_r, state->filter, sizeof state->filter);
     /* filter */
     for(i = 0; i < count && matched_count < 256; i++){
-        const char *s = commands[i].ptr ? commands[i].ptr : "";
-        if(cmd_matches(s, state->filter)) matched_idx[matched_count++] = i;
+        TimuiStr cmd = commands[i].ptr ? commands[i] : (TimuiStr){ "", 0 };
+        if(cmd_matches(cmd, state->filter)) matched_idx[matched_count++] = i;
     }
     if(state->selected < 0) state->selected = 0;
     if(state->selected >= matched_count) state->selected = matched_count > 0 ? matched_count - 1 : 0;

@@ -33,7 +33,7 @@ TIMUI_TEST(test_hyperlink_renders_osc8){
     id = timui_hyperlink_set(&curr, "https://example.com");
     TIMUI_CHECK(id == 1);
     timui_draw_text_linked(&curr, 0, 0, TIMUI_STR_LIT("link"),
-                           timui_style_make(0xFFFFFF, 0, 0), id);
+                           timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0), id);
 
     timui_renderer_reset(&r);
     timui_render_diff(&t, &prev, &curr, &r);

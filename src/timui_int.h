@@ -7,6 +7,7 @@
 #include <termios.h>
 #include <time.h>
 #include <poll.h>
+#include <signal.h>
 #ifndef TIMUI_NO_THREADS
 #include <pthread.h>
 #endif

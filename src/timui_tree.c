@@ -14,12 +14,15 @@ TIMUI_API void timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
     content = timui_scroll_begin(f, r, 0);
     for(i = 0; i < count; i++){
         int y = content.y + i;
-        char prefix[32];
+        char prefix[64];
         int pn = 0, j;
         TimuiStyle st = timui_theme_style(&ui->theme,
             i == *selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
-        /* indentation + expand marker */
-        for(j = 0; j < nodes[i].depth; j++){ prefix[pn++] = ' '; prefix[pn++] = ' '; }
+        /* indentation + expand marker. depth is app-supplied and unchecked, so
+         * bound the loop to the buffer (reserve marker + space + NUL). */
+        for(j = 0; j < nodes[i].depth && pn + 4 < (int)sizeof(prefix); j++){
+            prefix[pn++] = ' '; prefix[pn++] = ' ';
+        }
         if(nodes[i].has_children) prefix[pn++] = nodes[i].expanded ? '-' : '+';
         else prefix[pn++] = ' ';
         prefix[pn++] = ' ';

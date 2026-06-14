@@ -15,7 +15,7 @@ TIMUI_TEST(test_snapshot_row_eq){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;
     timui_cells_init(&b, 10, 3, &al);
-    timui_draw_text(&b, 0, 1, TIMUI_STR_LIT("Hello"), timui_style_make(0xFFFFFF, 0, 0));
+    timui_draw_text(&b, 0, 1, TIMUI_STR_LIT("Hello"), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
     TIMUI_CHECK(timui_snapshot_row_eq(&b, 1, "Hello     "));  /* 10 cells: Hello + 5 spaces */
     TIMUI_CHECK(!timui_snapshot_row_eq(&b, 1, "World     "));
     timui_cells_destroy(&b);
@@ -85,6 +85,47 @@ TIMUI_TEST(test_text_area_utf8_backspace){
     timui_fake_set_input(&fake, "\x7f", 1);
     timui_begin(ui, &f); timui_text_area(f, TIMUI_ID("tb"), r, &tas); timui_end(f);
     TIMUI_CHECK(strcmp(text, "") == 0);            /* whole é removed */
+    timui_close(ui);
+}
+
+/* Pass-3: cap==0 with a focused text_area must not write past the buffer
+ * (the guard mirrors input_line_buf's cap==0 check). */
+TIMUI_TEST(test_text_area_zero_cap_safe){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char storage[2] = { 'X', '\0' };
+    TimuiTextAreaState tas = { storage, 0, 0, 0 };   /* cap 0 */
+    TimuiRect r = TIMUI_RECT(0, 0, 10, 3);
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+    SETIN(&fake, "\x1b[<0;2;1M");                                   /* focus */
+    timui_begin(ui, &f); timui_text_area(f, TIMUI_ID("tz"), r, &tas); timui_end(f);
+    SETIN(&fake, "\x1b[<0;2;1m");
+    timui_begin(ui, &f); timui_text_area(f, TIMUI_ID("tz"), r, &tas); timui_end(f);
+    TIMUI_CHECK(storage[0] == 'X');              /* cap==0 guard -> no OOB NUL write */
+    timui_close(ui);
+}
+
+/* Pass-4 Y1: a caller-supplied cursor >= cap must be clamped, not written
+ * past the buffer. A guard byte just past cap survives. */
+TIMUI_TEST(test_text_area_cursor_overcap_safe){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char storage[11];
+    TimuiTextAreaState tas = { storage, 10, 10, 0 };   /* cursor == cap (overcap) */
+    TimuiRect r = TIMUI_RECT(0, 0, 10, 3);
+    storage[10] = 'G';                                 /* guard byte past cap */
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+    SETIN(&fake, "\x1b[<0;2;1M");                                   /* focus */
+    timui_begin(ui, &f); timui_text_area(f, TIMUI_ID("tc"), r, &tas); timui_end(f);
+    SETIN(&fake, "\x1b[<0;2;1m");
+    timui_begin(ui, &f); timui_text_area(f, TIMUI_ID("tc"), r, &tas); timui_end(f);
+    TIMUI_CHECK(storage[10] == 'G');               /* cursor clamped -> no OOB write */
     timui_close(ui);
 }
 

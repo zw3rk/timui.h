@@ -20,7 +20,7 @@ TIMUI_TEST(test_clip_restricts_drawing){
     buf = timui_frame_buffer(f);
 
     timui_push_clip(f, TIMUI_RECT(2, 2, 4, 2));   /* x in [2,6), y in [2,4) */
-    timui_draw_fill(buf, TIMUI_RECT(0, 0, 20, 10), timui_style_make(0xFFFFFF, 0, 0));
+    timui_draw_fill(buf, TIMUI_RECT(0, 0, 20, 10), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
     timui_pop_clip(f);
 
     TIMUI_CHECK(timui_cells_get(buf, 3, 3)->codepoint != 0);   /* inside -> filled */
@@ -44,7 +44,7 @@ TIMUI_TEST(test_clip_nested_intersect){
     buf = timui_frame_buffer(f);
     timui_push_clip(f, TIMUI_RECT(2, 2, 8, 4));    /* x[2,10) y[2,6) */
     timui_push_clip(f, TIMUI_RECT(4, 4, 8, 4));    /* intersect -> x[4,10) y[4,6) */
-    timui_draw_fill(buf, TIMUI_RECT(0, 0, 20, 10), timui_style_make(0xFFFFFF, 0, 0));
+    timui_draw_fill(buf, TIMUI_RECT(0, 0, 20, 10), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
     timui_pop_clip(f);
     timui_pop_clip(f);
     TIMUI_CHECK(timui_cells_get(buf, 5, 5)->codepoint != 0);   /* in intersection */

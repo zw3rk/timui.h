@@ -69,13 +69,13 @@ static void sb_cell(SnapBuf *s, const TimuiCell *c){
     }
     sb_put(s, '|');
     /* fg */
-    if(c->fg == 0) sb_put(s, '-');
+    if(c->fg == TIMUI_COLOR_DEFAULT) sb_put(s, '-');
     else { sb_putx(s, (c->fg >> 20) & 0xf, 0); sb_putx(s, (c->fg >> 16) & 0xf, 0);
            sb_putx(s, (c->fg >> 12) & 0xf, 0); sb_putx(s, (c->fg >> 8) & 0xf, 0);
            sb_putx(s, (c->fg >> 4) & 0xf, 0);  sb_putx(s, c->fg & 0xf, 0); }
     sb_put(s, '|');
     /* bg */
-    if(c->bg == 0) sb_put(s, '-');
+    if(c->bg == TIMUI_COLOR_DEFAULT) sb_put(s, '-');
     else { sb_putx(s, (c->bg >> 20) & 0xf, 0); sb_putx(s, (c->bg >> 16) & 0xf, 0);
            sb_putx(s, (c->bg >> 12) & 0xf, 0); sb_putx(s, (c->bg >> 8) & 0xf, 0);
            sb_putx(s, (c->bg >> 4) & 0xf, 0);  sb_putx(s, c->bg & 0xf, 0); }

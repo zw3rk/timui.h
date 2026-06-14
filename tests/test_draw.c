@@ -9,7 +9,7 @@
 TIMUI_TEST(test_draw_text){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;
-    TimuiStyle s = timui_style_make(0xffffff, 0, 0);
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
     TimuiCell *g;
     timui_cells_init(&b, 20, 5, &al);
     timui_draw_text(&b, 2, 1, TIMUI_STR_LIT("Hi"), s);
@@ -23,7 +23,7 @@ TIMUI_TEST(test_draw_text){
 TIMUI_TEST(test_draw_fill){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;
-    TimuiStyle s = timui_style_make(0, 0x0000ff, 0);
+    TimuiStyle s = timui_style_make(TIMUI_COLOR_DEFAULT, 0x0000ff, 0);
     timui_cells_init(&b, 10, 10, &al);
     timui_draw_fill(&b, TIMUI_RECT(1, 1, 4, 3), s);
     TIMUI_CHECK(timui_cells_get(&b, 1, 1)->bg == 0x0000ff);
@@ -35,7 +35,7 @@ TIMUI_TEST(test_draw_fill){
 TIMUI_TEST(test_draw_box_single){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;
-    TimuiStyle s = timui_style_make(0, 0, 0);
+    TimuiStyle s = timui_style_make(TIMUI_COLOR_DEFAULT, TIMUI_COLOR_DEFAULT, 0);
     timui_cells_init(&b, 10, 10, &al);
     timui_draw_box(&b, TIMUI_RECT(0, 0, 4, 3), TIMUI_BORDER_SINGLE, s);
     TIMUI_CHECK(timui_cells_get(&b, 0, 0)->codepoint == 0x250C);  /* TL */
@@ -50,7 +50,7 @@ TIMUI_TEST(test_draw_box_single){
 TIMUI_TEST(test_draw_box_ascii){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;
-    TimuiStyle s = timui_style_make(0, 0, 0);
+    TimuiStyle s = timui_style_make(TIMUI_COLOR_DEFAULT, TIMUI_COLOR_DEFAULT, 0);
     timui_cells_init(&b, 10, 10, &al);
     timui_draw_box(&b, TIMUI_RECT(0, 0, 3, 3), TIMUI_BORDER_ASCII, s);
     TIMUI_CHECK(timui_cells_get(&b, 0, 0)->codepoint == '+');

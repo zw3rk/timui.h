@@ -66,3 +66,23 @@ TIMUI_TEST(test_listbox_click_selects){
 
     timui_close(ui);
 }
+
+/* Y3: an out-of-range selected (e.g. left stale after a shrink) must self-heal
+ * into [0,count-1], like tree/table do. */
+TIMUI_TEST(test_listbox_selected_clamped){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiListState st = { 7, 0 };                 /* selected past a 3-item list */
+    TimuiListResult res;
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 8, &al);
+    timui_begin(ui, &f);
+    res = timui_listbox_mut(f, TIMUI_ID("L"), TIMUI_RECT(0, 0, 10, 3), &st, 3, lb_label, 0);
+    timui_end(f);
+    TIMUI_CHECK(res.selected == 2);               /* clamped to count-1 */
+    timui_close(ui);
+}

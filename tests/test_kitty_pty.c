@@ -192,3 +192,64 @@ TIMUI_TEST(test_pty_hello_exits_on_esc){
         else   printf("  SKIP pty Esc-quit: child did not exit in 6s (sandbox restriction)\n");
     }
 }
+
+/* W6: SIGTERM must restore the terminal. Fork a child that opens timui on a
+ * pty (enters alt screen), pause()s; the parent sends SIGTERM and checks the
+ * pty output for the alt-screen-exit sequence (the handler's screen_exit). */
+TIMUI_TEST(test_signal_restore){
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    pid_t pid;
+    if(master < 0){ return; }   /* skip if no pty support */
+    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); return; }
+    pid = fork();
+    if(pid < 0){ close(master); return; }
+    if(pid == 0){
+        /* child: slave becomes our controlling tty; enter alt screen; wait. */
+        char *name = ptsname(master);
+        int slave = open(name, O_RDWR);
+        struct winsize ws;
+        TimuiConfig cfg; Timui *ui = NULL;
+        setsid();
+        if(slave < 0) _exit(127);
+        memset(&ws, 0, sizeof ws); ws.ws_row = 24; ws.ws_col = 80;
+        ioctl(slave, TIOCSWINSZ, &ws);
+        dup2(slave, 0); dup2(slave, 1); dup2(slave, 2);
+        close(slave); close(master);
+        memset(&cfg, 0, sizeof cfg);
+        cfg.input_fd = 0; cfg.output_fd = 1;
+        cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_RESTORE_ON_EXIT;
+        cfg.title = ""; cfg.profile = TIMUI_PROFILE_AUTO;
+        if(timui_open(&cfg, &ui) != TIMUI_OK) _exit(127);
+        pause();   /* the W6 handler restores the terminal on SIGTERM, then dies */
+        _exit(127);
+    }
+    /* parent */
+    {
+        char out[2048]; ssize_t n; int status, retry; size_t total = 0;
+        struct timespec ts200 = { 0, 200 * 1000 * 1000 }, ts50 = { 0, 50 * 1000 * 1000 };
+        nanosleep(&ts200, NULL);   /* let the child enter the alt screen */
+        fcntl(master, F_SETFL, fcntl(master, F_GETFL, 0) | O_NONBLOCK);
+        n = read(master, out, sizeof out - 1);
+        if(!(n > 0 && bytes_contain(out, (size_t)n, "\x1b[?1049h"))){
+            close(master); kill(pid, SIGKILL); waitpid(pid, &status, 0); return;  /* skip */
+        }
+        kill(pid, SIGTERM);
+        /* Drain the master WHILE reaping: the child's handler writes screen_exit
+         * to the pty, and would block on a full buffer if the parent sat in
+         * waitpid without reading — a deadlock. Poll read + waitpid(WNOHANG). */
+        for(retry = 0; retry < 40; retry++){
+            ssize_t m = read(master, out + total, sizeof out - 1 - total);
+            if(m > 0) total += (size_t)m;
+            if(bytes_contain(out, total, "\x1b[?1049l")) break;
+            if(waitpid(pid, &status, WNOHANG) != 0){
+                m = read(master, out + total, sizeof out - 1 - total);
+                if(m > 0) total += (size_t)m;
+                break;
+            }
+            nanosleep(&ts50, NULL);
+        }
+        waitpid(pid, &status, 0);   /* reap if not already */
+        TIMUI_CHECK(bytes_contain(out, total, "\x1b[?1049l"));   /* W6: alt screen exited on SIGTERM */
+        close(master);
+    }
+}

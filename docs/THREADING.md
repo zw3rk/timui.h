@@ -30,6 +30,15 @@ UI thread: update model → render frame → terminal write
 Workers never touch `TimuiFrame` or the terminal; they communicate by posting
 messages, which the UI thread applies to its model between frames.
 
+## Shutdown ordering (W14)
+
+**All producers MUST be joined (or otherwise guaranteed stopped) before
+`timui_close`.** `timui_close` destroys the MPSC queue a worker posts to; a
+`timui_post` that races with `close` (a worker between the `if(!q)` check and
+the lock) locks/frees a destroyed mutex — UB. The UI thread owns the lifecycle:
+signal workers to stop, join them, then `timui_close`. `examples/async_scan.c`
+follows this (`pthread_join` before `timui_close`).
+
 ## `TIMUI_NO_THREADS`
 
 Define `TIMUI_NO_THREADS` for a single-threaded build: the MPSC queue drops its

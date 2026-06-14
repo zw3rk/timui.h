@@ -60,7 +60,7 @@ static TimuiResult timui_setup(Timui *ui, int w, int h){
         return r;
     }
     ui->have_ids = 1;
-    timui_interact_init(&ui->ia);
+    timui_interact_init(&ui->ia, &ui->alloc);
     ui->theme = timui_theme_builtin(ui->cfg.theme);
     ui->should_quit = 0;
     ui->event_count = 0;
@@ -85,6 +85,52 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     *out_ui = ui;
     return TIMUI_OK;
 }
+/* ---- terminal restoration on signal (W6) ------------------------------ *
+ * An external termination signal (SIGTERM/SIGHUP/SIGQUIT — kill, window
+ * close, Ctrl-\) must not leave the terminal in raw mode. timui_open installs
+ * a handler that restores the screen + termios before the process dies. This
+ * needs ONE piece of global state — a static Timui* — which is a documented
+ * carve-out from the "no global state" rule, justified by the safety
+ * requirement (a bricked terminal is the failure mode). Single-instance
+ * assumption: one controlling terminal per process.
+ *
+ * Async-signal-safety: the handler calls only write (screen_exit) and
+ * tcsetattr (termios_restore), both async-signal-safe; the process is about
+ * to die, so interleaving with in-flight I/O is acceptable. */
+static Timui *g_sig_restore_ui = NULL;
+
+TIMUI_API void timui_restore_terminal(Timui *ui){
+    if(!ui) return;
+    if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
+    if(ui->termios_active) timui_termios_restore(&ui->termios);
+}
+static void timui_sig_restore(int sig){
+    timui_restore_terminal(g_sig_restore_ui);
+    signal(sig, SIG_DFL);     /* default disposition, then re-raise to terminate */
+    raise(sig);
+}
+static void timui_install_sig_handlers(Timui *ui){
+    struct sigaction sa;
+    if(!ui || (!ui->termios_active && !ui->screen_active)) return;
+    g_sig_restore_ui = ui;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = timui_sig_restore;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGHUP,  &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
+}
+static void timui_remove_sig_handlers(void){
+    struct sigaction sa;
+    g_sig_restore_ui = NULL;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGHUP,  &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
+}
+
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     Timui *ui;
     TimuiAllocator al;
@@ -128,15 +174,18 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
         return r;
     }
     *out_ui = ui;
+    timui_install_sig_handlers(ui);   /* W6: restore the terminal on SIGTERM/SIGHUP/SIGQUIT */
     return TIMUI_OK;
 }
 TIMUI_API void timui_close(Timui *ui){
     TimuiAllocator al;
     if(!ui) return;
+    timui_remove_sig_handlers();      /* W6: stop intercepting (close restores itself) */
     if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
     if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
     if(ui->have_buffers){ timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); }
     if(ui->have_postq) timui_mpsc_destroy(&ui->postq);
+    timui_interact_destroy(&ui->ia);   /* V24: free the dynamic tab_order */
     if(ui->have_ids) timui_id_stack_destroy(&ui->ids);
     al = ui->alloc;
     al.free(al.userdata, ui, sizeof *ui);
@@ -318,8 +367,11 @@ TIMUI_API void timui_id_stack_push(TimuiIdStack *s, TimuiId id){
     if(!s) return;
     seed = id_compose(s->count ? s->seeds[s->count - 1] : s->root, id);
     if(s->count == s->cap){                     /* grow geometrically */
-        size_t ncap = s->cap * 2;
-        TimuiId *ns = (TimuiId *)s->alloc.realloc(
+        size_t ncap;
+        TimuiId *ns;
+        if(s->cap > SIZE_MAX / 2 / sizeof(TimuiId)) return;   /* grow would overflow */
+        ncap = s->cap * 2;
+        ns = (TimuiId *)s->alloc.realloc(
             s->alloc.userdata, s->seeds, s->cap * sizeof(TimuiId), ncap * sizeof(TimuiId));
         if(!ns) return;                         /* OOM: drop push, id unchanged */
         s->seeds = ns;

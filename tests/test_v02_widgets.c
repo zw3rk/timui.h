@@ -59,6 +59,24 @@ TIMUI_TEST(test_tree_renders){
     timui_close(ui);
 }
 
+/* Pass-3: a deeply-nested node (depth 20) must not overflow the prefix
+ * buffer; the label still renders. */
+TIMUI_TEST(test_tree_deep_safe){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL; TimuiCellBuffer *buf;
+    TimuiTreeNode nodes[1] = { { 20, "deep", 0, 0 } };
+    int sel = 0, x, found = 0;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 80, 5, &al);
+    timui_begin(ui, &f); buf = timui_frame_buffer(f);
+    timui_tree(f, TIMUI_ID("td"), TIMUI_RECT(0, 0, 80, 5), nodes, 1, &sel);
+    for(x = 0; x < 80; x++) if(timui_cells_get(buf, x, 0)->codepoint == 'd') found = 1;
+    TIMUI_CHECK(found);                 /* label rendered, no stack overflow */
+    timui_end(f);
+    timui_close(ui);
+}
+
 /* ---- command palette (#50) ---- */
 TIMUI_TEST(test_cmd_palette_filter){
     TimuiAllocator al = timui_default_allocator();

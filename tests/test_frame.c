@@ -24,7 +24,7 @@ TIMUI_TEST(test_frame_lifecycle){
     TIMUI_CHECK(timui_width(f) == 10 && timui_height(f) == 5);
     TIMUI_CHECK(timui_root(f).w == 10 && timui_root(f).h == 5);
     timui_draw_text(timui_frame_buffer(f), 0, 0, TIMUI_STR_LIT("Hi"),
-                    timui_style_make(0xffffff, 0, 0));
+                    timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0));
     timui_fake_clear_output(&fake);
     timui_end(f);
     out = timui_fake_output(&fake);
@@ -34,7 +34,7 @@ TIMUI_TEST(test_frame_lifecycle){
     timui_fake_clear_output(&fake);
     TIMUI_CHECK(timui_begin(ui, &f));
     timui_draw_text(timui_frame_buffer(f), 0, 0, TIMUI_STR_LIT("Hi"),
-                    timui_style_make(0xffffff, 0, 0));
+                    timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0));
     timui_end(f);
     out = timui_fake_output(&fake);
     TIMUI_CHECK(out.len == 0);

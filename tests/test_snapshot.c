@@ -20,7 +20,7 @@
 static void grid_scene(TimuiCellBuffer *b, const TimuiAllocator *al){
     timui_cells_init(b, 4, 2, al);
     timui_draw_text(b, 0, 0, TIMUI_STR_LIT("Hi"),
-                    timui_style_make(0xFFFFFF, 0, 0));
+                    timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
     timui_draw_text(b, 0, 1, TIMUI_STR_LIT("Yo"),
                     timui_style_make(0xFF8800, 0x102030, TIMUI_ATTR_BOLD));
 }

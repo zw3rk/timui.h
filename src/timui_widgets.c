@@ -1,14 +1,22 @@
 /* ---- interaction state ------------------------------------------------ */
-TIMUI_API void timui_interact_init(TimuiInteract *ia){
+TIMUI_API void timui_interact_init(TimuiInteract *ia, const TimuiAllocator *alloc){
     if(!ia) return;
     ia->hot = ia->active = ia->focus = 0;
     ia->mouse_x = ia->mouse_y = 0;
     ia->mouse_down = ia->mouse_down_prev = 0;
     ia->mouse_pressed = ia->mouse_released = 0;
     ia->tab_pressed = ia->activate_pressed = 0;
-    ia->tab_count = 0;
+    ia->tab_order = NULL;
+    ia->tab_count = ia->tab_cap = 0;
+    ia->alloc = alloc;          /* kept for growing tab_order on push (V24) */
     ia->focus_advance = 0;
     ia->modal_active = 0;
+}
+TIMUI_API void timui_interact_destroy(TimuiInteract *ia){
+    if(!ia || !ia->tab_order || !ia->alloc) return;
+    ia->alloc->free(ia->alloc->userdata, ia->tab_order, (size_t)ia->tab_cap * sizeof(TimuiId));
+    ia->tab_order = NULL;
+    ia->tab_cap = ia->tab_count = 0;
 }
 TIMUI_API void timui_interact_set_mouse(TimuiInteract *ia, int x, int y, int down){
     if(!ia) return;
@@ -60,10 +68,18 @@ TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId i
         res.clicked = 1;        /* Enter/Space activates the focused widget */
         ia->activate_pressed = 0;
     }
-    /* tab_order is a fixed-size array (64); widgets beyond the 64th focusable
-     * id in a frame are silently unreachable by Tab (V24 — documented cap). */
-    if(ia->tab_count < (int)(sizeof(ia->tab_order) / sizeof(ia->tab_order[0])))
-        ia->tab_order[ia->tab_count++] = id;
+    /* Register in the Tab cycle (dynamically grown, V24 — no fixed cap). */
+    if(ia->tab_count == ia->tab_cap){
+        int ncap = ia->tab_cap ? ia->tab_cap * 2 : 16;
+        TimuiId *n = NULL;
+        if(ia->alloc && (size_t)ncap <= SIZE_MAX / sizeof(TimuiId))
+            n = (TimuiId *)ia->alloc->realloc(ia->alloc->userdata, ia->tab_order,
+                (size_t)ia->tab_cap * sizeof(TimuiId), (size_t)ncap * sizeof(TimuiId));
+        if(!n) return res;             /* OOM or no allocator: skip (focus still works via click) */
+        ia->tab_order = n;
+        ia->tab_cap = ncap;
+    }
+    ia->tab_order[ia->tab_count++] = id;
     return res;
 }
 TIMUI_API void timui_interact_end(TimuiInteract *ia){
@@ -238,6 +254,10 @@ TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
     res.state = state; res.selected = state.selected;
     if(!f || !f->ui || count < 0) return res;
     ui = f->ui;
+    /* Y3: clamp selection into range (siblings tree/table do this) so a stale
+     * or mis-seeded selected (e.g. after the list shrinks) self-heals. */
+    if(count == 0) state.selected = 0;
+    else{ if(state.selected < 0) state.selected = 0; if(state.selected >= count) state.selected = count - 1; }
     orig = state.selected;
     ir = timui_interact_button(&ui->ia, id, r);
     res.focused = ir.focused;
@@ -250,6 +270,10 @@ TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
     if(state.selected < state.scroll) state.scroll = state.selected;
     if(visible > 0 && state.selected >= state.scroll + visible) state.scroll = state.selected - visible + 1;
     if(state.scroll < 0) state.scroll = 0;
+    /* upper-bound scroll so it can't outrun the list tail (keeps trailing
+     * viewport rows filled instead of leaving an unstyled gap). */
+    if(count <= visible) state.scroll = 0;
+    else if(state.scroll > count - visible) state.scroll = count - visible;
     if(ir.clicked){
         int my = ui->ia.mouse_y - r.y;
         int idx = state.scroll + my;
@@ -290,9 +314,9 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
     ui = f->ui;
     boxw = (int)message.len + 4;
     { int btnw = 0; for(i = 0; i < count; i++) btnw += (int)buttons[i].len + 4; if(btnw > boxw) boxw = btnw; }
-    if(boxw > parent.w - 2) boxw = parent.w - 2;
     if(boxw < 10) boxw = 10;
-    if(boxw > parent.w - 2) boxw = parent.w - 2;   /* W3: min-10 must not exceed parent */
+    if(boxw > parent.w - 2) boxw = parent.w - 2;   /* never exceed the parent */
+    if(boxw < 2) boxw = 2;                         /* floor: never a negative/zero width */
     boxh = 5;
     if(boxh > parent.h - 2) boxh = parent.h - 2;
     if(boxh < 3) boxh = 3;
@@ -303,7 +327,8 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
     timui_panel_begin(f, id, TIMUI_RECT(bx, by, boxw, boxh), title, TIMUI_BORDER_DOUBLE);
     timui_label(f, bx + 2, by + 1, message, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
     btnx = bx + 2;
-    for(i = 0; i < count; i++){
+    { int any_btn = 0;
+      for(i = 0; i < count; i++){
         int maxw = (bx + boxw) - btnx;            /* remaining width inside the box */
         int w = (int)buttons[i].len + 2;
         TimuiRect br;
@@ -312,6 +337,11 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
         br = TIMUI_RECT(btnx, by + boxh - 2, w, 1);
         if(timui_button(f, id + (TimuiId)(i + 1), br, buttons[i]).clicked){ clicked = i; ui->ia.modal_active = 0; }
         btnx += w + 1;
+        any_btn = 1;
+      }
+      /* W3 residual: if the parent is so narrow that NO button could render,
+       * don't pin modal_active — an undismissable modal would trap all input. */
+      if(!any_btn) ui->ia.modal_active = 0;
     }
     timui_panel_end(f);   /* pop the clip panel_begin pushed */
     return clicked;

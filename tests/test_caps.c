@@ -19,11 +19,22 @@ TIMUI_TEST(test_caps_modern_kitty_family){
 
 TIMUI_TEST(test_caps_multiplexer_reduces){
     TimuiCaps c;
-    timui_caps_detect(&c, "tmux-256color", "ghostty", "truecolor");
-    /* a multiplexer drops keyboard/sync/graphics even under a kitty-family TERM_PROGRAM */
+    /* a non-kitty modern outer under a multiplexer: SYNC is stripped, no Kitty
+     * caps (WezTerm is modern but not kitty-family, so passthrough isn't assumed). */
+    timui_caps_detect(&c, "tmux-256color", "WezTerm", "truecolor");
     TIMUI_CHECK(!timui_caps_has(&c, TIMUI_CAP_KITTY_KEYBOARD));
     TIMUI_CHECK(!timui_caps_has(&c, TIMUI_CAP_SYNC_OUTPUT));
     TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_SGR_MOUSE));   /* mouse still passes through */
+    TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_256_COLOR));
+}
+
+TIMUI_TEST(test_caps_multiplexer_kitty_passthrough){
+    TimuiCaps c;
+    /* W12: under a multiplexer, a kitty-family OUTER (TERM_PROGRAM inherited
+     * into the session) implies passthrough is intended -> KEEP Kitty caps. */
+    timui_caps_detect(&c, "tmux-256color", "kitty", "truecolor");
+    TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_KITTY_GRAPHICS));
+    TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_KITTY_KEYBOARD));
     TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_256_COLOR));
 }
 

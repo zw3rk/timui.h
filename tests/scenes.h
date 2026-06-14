@@ -20,9 +20,9 @@
  * (yellow bold), body text "Edit  Quit" (white). Exercises box-drawing
  * glyphs plus truecolor foregrounds and the BOLD attribute. */
 static void scene_panel(TimuiCellBuffer *b, const TimuiAllocator *al){
-    TimuiStyle border = timui_style_make(0x00C0FF, 0, 0);
-    TimuiStyle title  = timui_style_make(0xFFFF00, 0, TIMUI_ATTR_BOLD);
-    TimuiStyle body   = timui_style_make(0xFFFFFF, 0, 0);
+    TimuiStyle border = timui_style_make(0x00C0FF, TIMUI_COLOR_DEFAULT, 0);
+    TimuiStyle title  = timui_style_make(0xFFFF00, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_BOLD);
+    TimuiStyle body   = timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0);
     timui_cells_init(b, 12, 5, al);
     timui_draw_box(b, TIMUI_RECT(0, 0, 12, 5), TIMUI_BORDER_SINGLE, border);
     timui_draw_text(b, 2, 0, TIMUI_STR_LIT("Files"), title);
@@ -41,7 +41,7 @@ static void scene_rainbow(TimuiCellBuffer *b, const TimuiAllocator *al){
     timui_cells_init(b, 10, 1, al);
     for(i = 0; i < 10; i++)
         timui_draw_text(b, i, 0, (TimuiStr){ &text[i], 1 },
-                        timui_style_make(cols[i], 0, 0));
+                        timui_style_make(cols[i], TIMUI_COLOR_DEFAULT, 0));
 }
 
 /* 18x2 styled: row 0 is a run of single glyphs each carrying one attribute
@@ -49,12 +49,12 @@ static void scene_rainbow(TimuiCellBuffer *b, const TimuiAllocator *al){
  * Exercises attribute serialization (incl. compound attrs) and backgrounds. */
 static void scene_attrs(TimuiCellBuffer *b, const TimuiAllocator *al){
     timui_cells_init(b, 18, 2, al);
-    timui_draw_text(b, 0, 0, TIMUI_STR_LIT("B"),  timui_style_make(0xFFFFFF, 0, TIMUI_ATTR_BOLD));
-    timui_draw_text(b, 1, 0, TIMUI_STR_LIT("I"),  timui_style_make(0xFFFFFF, 0, TIMUI_ATTR_ITALIC));
-    timui_draw_text(b, 2, 0, TIMUI_STR_LIT("U"),  timui_style_make(0xFFFFFF, 0, TIMUI_ATTR_UNDERLINE));
-    timui_draw_text(b, 3, 0, TIMUI_STR_LIT("R"),  timui_style_make(0xFFFFFF, 0, TIMUI_ATTR_REVERSE));
-    timui_draw_text(b, 4, 0, TIMUI_STR_LIT("S"),  timui_style_make(0xFFFFFF, 0, TIMUI_ATTR_STRIKE));
-    timui_draw_text(b, 5, 0, TIMUI_STR_LIT("BD"), timui_style_make(0xFFFFFF, 0, TIMUI_ATTR_BOLD | TIMUI_ATTR_DIM));
+    timui_draw_text(b, 0, 0, TIMUI_STR_LIT("B"),  timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_BOLD));
+    timui_draw_text(b, 1, 0, TIMUI_STR_LIT("I"),  timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_ITALIC));
+    timui_draw_text(b, 2, 0, TIMUI_STR_LIT("U"),  timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_UNDERLINE));
+    timui_draw_text(b, 3, 0, TIMUI_STR_LIT("R"),  timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_REVERSE));
+    timui_draw_text(b, 4, 0, TIMUI_STR_LIT("S"),  timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_STRIKE));
+    timui_draw_text(b, 5, 0, TIMUI_STR_LIT("BD"), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_BOLD | TIMUI_ATTR_DIM));
     timui_draw_fill(b, TIMUI_RECT(0, 1, 18, 1), timui_style_make(0xFFFFFF, 0x0000A0, 0));
 }
 
@@ -64,7 +64,7 @@ static void scene_attrs(TimuiCellBuffer *b, const TimuiAllocator *al){
 static void scene_wide(TimuiCellBuffer *b, const TimuiAllocator *al){
     timui_cells_init(b, 6, 1, al);
     timui_draw_text(b, 0, 0, TIMUI_STR_LIT("A\xE3\x81\x82" "B"),
-                    timui_style_make(0xFFFFFF, 0, 0));
+                    timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
 }
 
 #endif /* TIMUI_SCENES_H */

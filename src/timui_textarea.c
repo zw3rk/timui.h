@@ -7,7 +7,8 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
     TimuiRect content;
     size_t i;
     int y = 0;
-    if(!f || !f->ui || !st || !st->text) return;
+    if(!f || !f->ui || !st || !st->text || st->cap == 0) return;
+    if(st->cursor >= st->cap) st->cursor = st->cap - 1;   /* Y1: untrusted cursor -> OOB */
     ui = f->ui;
     ir = timui_interact_button(&ui->ia, id, r);
     if(ir.focused){

@@ -42,7 +42,7 @@
 /* Decode a vterm color into a packed 0xRRGGBB timui value. Default colors
  * (fg or bg) map to 0, timui's "no SGR" sentinel. */
 static uint32_t vterm_color_to_timui(VTermScreen *s, const VTermColor *col){
-    if(VTERM_COLOR_IS_DEFAULT_FG(col) || VTERM_COLOR_IS_DEFAULT_BG(col)) return 0;
+    if(VTERM_COLOR_IS_DEFAULT_FG(col) || VTERM_COLOR_IS_DEFAULT_BG(col)) return TIMUI_COLOR_DEFAULT;
     { VTermColor c = *col;
       vterm_screen_convert_color_to_rgb(s, &c);   /* indexed/rgb -> rgb */
       return ((uint32_t)c.rgb.red << 16) | ((uint32_t)c.rgb.green << 8) | (uint32_t)c.rgb.blue;
@@ -187,7 +187,7 @@ TIMUI_TEST(test_vt_plain_text){
     TimuiCellBuffer prev, curr;
     timui_cells_init(&prev, 10, 3, &al);
     timui_cells_init(&curr, 10, 3, &al);
-    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("Hello"), timui_style_make(0xFFFFFF, 0, 0));
+    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("Hello"), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
     VT_RUN(&prev, &curr);
     timui_cells_destroy(&prev); timui_cells_destroy(&curr);
 }
@@ -239,7 +239,7 @@ TIMUI_TEST(test_vt_hyperlink){
      * (libvterm parses OSC 8 but does not store it, so only the glyph is checked.) */
     link = timui_hyperlink_set(&curr, "https://example.com");
     timui_draw_text_linked(&curr, 0, 0, TIMUI_STR_LIT("link"),
-                           timui_style_make(0x00FFFF, 0, TIMUI_ATTR_UNDERLINE), link);
+                           timui_style_make(0x00FFFF, TIMUI_COLOR_DEFAULT, TIMUI_ATTR_UNDERLINE), link);
     VT_RUN(&prev, &curr);
     timui_cells_destroy(&prev); timui_cells_destroy(&curr);
 }
@@ -247,7 +247,7 @@ TIMUI_TEST(test_vt_hyperlink){
 TIMUI_TEST(test_vt_partial_update){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer prev, curr;
-    TimuiStyle white = timui_style_make(0xFFFFFF, 0, 0);
+    TimuiStyle white = timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0);
     timui_cells_init(&prev, 10, 1, &al);
     timui_cells_init(&curr, 10, 1, &al);
     timui_draw_text(&prev, 0, 0, TIMUI_STR_LIT("Hello"), white);

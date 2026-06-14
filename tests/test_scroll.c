@@ -27,7 +27,7 @@ TIMUI_TEST(test_scroll_view_clips){
         for(i = 0; i < 5; i++){
             char label[2] = { (char)('A' + i), '\0' };
             timui_label(f, content.x, content.y + i, timui_str_from_cstr(label),
-                        timui_style_make(0xFFFFFF, 0, 0));
+                        timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
         }
         timui_scroll_end(f);
     }
