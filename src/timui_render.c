@@ -178,7 +178,15 @@ TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiS
             if(cell){
                 memset(cell, 0, sizeof *cell);
                 cell->codepoint = cp; cell->fg = st.fg; cell->bg = st.bg;
-                cell->attrs = st.attrs; cell->width = 1; cell->hyperlink_id = link;
+                cell->attrs = st.attrs; cell->width = (uint16_t)(w > 1 ? 2 : 1); cell->hyperlink_id = link;
+            }
+            /* wide glyph: blank continuation cell (consistent with put_glyph) */
+            if(w > 1){
+                TimuiCell *cont = timui_cells_get(buf, cx + 1, y);
+                if(cont && !(buf->has_clip && (cx + 1 < buf->clip.x || cx + 1 >= buf->clip.x + buf->clip.w))){
+                    memset(cont, 0, sizeof *cont);
+                    cont->flags = TIMUI_CELL_CONTINUATION;
+                }
             }
             cx += w;
         }

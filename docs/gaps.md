@@ -1,6 +1,6 @@
 # Known gaps and limitations — timui.h
 
-Tracked from the 2026-07-03 deep codebase review. Each entry is grounded in
+Tracked from the 2026-07-03 deep codebase review (two passes). Each entry is grounded in
 the source and has a concrete fix direction. Items are ordered by impact.
 
 ---

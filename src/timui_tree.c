@@ -29,6 +29,11 @@ TIMUI_API void timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
         timui_draw_text(&ui->curr, content.x + pn, y, timui_str_from_cstr(nodes[i].label), st);
     }
     timui_scroll_end(f);
-    if(timui_key_pressed(f, TIMUI_KEY_UP) && *selected > 0) (*selected)--;
-    else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && *selected < count - 1) (*selected)++;
+    /* keyboard nav only when focused */
+    { TimuiInteractResult ir2 = timui_interact_button(&ui->ia, id, r);
+      if(ir2.focused){
+        if(timui_key_pressed(f, TIMUI_KEY_UP) && *selected > 0) (*selected)--;
+        else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && *selected < count - 1) (*selected)++;
+      }
+    }
 }

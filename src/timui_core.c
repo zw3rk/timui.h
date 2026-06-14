@@ -148,7 +148,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         if(ui->termios_active){   /* real terminal: poll to avoid 100% CPU hot-spin */
             struct pollfd pfd;
             pfd.fd = ui->fd.read_fd; pfd.events = POLLIN; pfd.revents = 0;
-            poll(&pfd, 1, 16);   /* block up to 16ms (~60fps) */
+            while(poll(&pfd, 1, 16) == -1 && errno == EINTR){}  /* retry on signal */
         }
         n = ui->transport.read(&ui->transport, buf, sizeof buf);
         if(n > 0){
@@ -162,6 +162,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->text_in_len = 0;
     ui->key_in = 0;
     ui->key_pressed = TIMUI_KEY_UNKNOWN;
+    ui->key_mods = 0;
     {
         TimuiEvent ev;
         while(timui_poll_event(ui, &ev)){
