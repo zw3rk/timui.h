@@ -6,6 +6,8 @@
 #include "test.h"
 #include "timui.h"
 
+#include <stdlib.h>
+
 static TimuiId push_path(TimuiIdStack *s, const char *a, const char *b){
     timui_id_stack_push_cstr(s, a);
     timui_id_stack_push_cstr(s, b);
@@ -66,5 +68,42 @@ TIMUI_TEST(test_id_stack_empty_and_grow){
     timui_id_stack_push_cstr(&s, "z");                   /* forces realloc growth */
     TIMUI_CHECK(s.count == 3);
     TIMUI_CHECK(timui_id_stack_current(&s) != s.root);
+    timui_id_stack_destroy(&s);
+}
+
+/* G6: push returns TimuiResult — positive (grow succeeds) and negative (OOM). */
+typedef struct { int fail_at; int n; } FailAlloc;
+static void *fa_alloc(void *ud, size_t sz){ (void)ud; return malloc(sz); }
+static void *fa_realloc(void *ud, void *p, size_t os, size_t ns){
+    FailAlloc *fa = (FailAlloc *)ud; (void)os;
+    fa->n++;
+    if(fa->n == fa->fail_at) return NULL;          /* fail this realloc */
+    return realloc(p, ns);
+}
+static void fa_free(void *ud, void *p, size_t sz){ (void)ud; (void)sz; free(p); }
+
+TIMUI_TEST(test_id_stack_push_ok){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiIdStack s;
+    TIMUI_CHECK(timui_id_stack_init(&s, &al, 2) == TIMUI_OK);
+    TIMUI_CHECK(timui_id_stack_push(&s, TIMUI_ID("a")) == TIMUI_OK);
+    TIMUI_CHECK(timui_id_stack_push(&s, TIMUI_ID("b")) == TIMUI_OK);
+    TIMUI_CHECK(timui_id_stack_push(&s, TIMUI_ID("c")) == TIMUI_OK);   /* grow succeeds */
+    TIMUI_CHECK(s.count == 3);
+    timui_id_stack_destroy(&s);
+}
+
+TIMUI_TEST(test_id_stack_push_oom){
+    FailAlloc fa = { 1, 0 };   /* fail the 1st realloc (the grow) */
+    TimuiAllocator al = { &fa, fa_alloc, fa_realloc, fa_free };
+    TimuiIdStack s;
+    TIMUI_CHECK(timui_id_stack_init(&s, &al, 2) == TIMUI_OK);
+    TIMUI_CHECK(timui_id_stack_push(&s, TIMUI_ID("a")) == TIMUI_OK);   /* fits */
+    TIMUI_CHECK(timui_id_stack_push(&s, TIMUI_ID("b")) == TIMUI_OK);   /* fills cap 2 */
+    TIMUI_CHECK(timui_id_stack_push(&s, TIMUI_ID("c")) == TIMUI_ERR_OUT_OF_MEMORY);  /* grow fails */
+    TIMUI_CHECK(s.count == 2);   /* failed push didn't increment — no corruption */
+    /* pop works correctly (pops 'b', not a stale seed) */
+    timui_id_stack_pop(&s);
+    TIMUI_CHECK(s.count == 1);
     timui_id_stack_destroy(&s);
 }

@@ -61,3 +61,22 @@ TIMUI_TEST(test_frame_quit_flag){
     TIMUI_CHECK(timui_should_quit(ui));
     timui_close(ui);
 }
+
+/* G7: events beyond the 16-slot queue are dropped; timui_events_dropped
+ * reports the count (and resets on read). */
+TIMUI_TEST(test_events_dropped){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_fake_set_input(&fake, "abcdefghijklmnopq", 17);   /* 17 text events */
+    timui_begin(ui, &f);
+    TIMUI_CHECK(timui_events_dropped(ui) == 1);   /* 17 - 16 = 1 dropped */
+    TIMUI_CHECK(timui_events_dropped(ui) == 0);   /* reset after read */
+    timui_end(f);
+    timui_close(ui);
+}

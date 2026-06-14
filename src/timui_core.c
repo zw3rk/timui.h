@@ -309,6 +309,10 @@ TIMUI_API int timui_poll_event(Timui *ui, TimuiEvent *out_event){
     for(i = 0; i < ui->event_count; i++) ui->events[i] = ui->events[i + 1];
     return 1;
 }
+TIMUI_API int timui_events_dropped(Timui *ui){
+    if(!ui) return 0;
+    { int d = ui->events_dropped; ui->events_dropped = 0; return d; }   /* G7: read + reset */
+}
 TIMUI_API void timui_quit(Timui *ui){ if(ui) ui->should_quit = 1; }
 TIMUI_API bool timui_should_quit(const Timui *ui){ return ui ? (bool)ui->should_quit : false; }
 TIMUI_API int timui_key_pressed(TimuiFrame *f, TimuiKey key){
@@ -359,28 +363,29 @@ TIMUI_API TimuiResult timui_id_stack_init(TimuiIdStack *s, const TimuiAllocator 
     if(!s->seeds){ s->cap = 0; return TIMUI_ERR_OUT_OF_MEMORY; }
     return TIMUI_OK;
 }
-/* Note: on OOM during geometric grow, the push is silently dropped (void return).
- * The caller cannot detect this. If this matters, use a sufficiently large
- * initial capacity via timui_id_stack_init. See docs/gaps.md G6. */
-TIMUI_API void timui_id_stack_push(TimuiIdStack *s, TimuiId id){
+/* G6: push now returns TimuiResult so the caller can detect a grow-OOM and
+ * skip the corresponding pop (preventing id-hierarchy corruption). */
+TIMUI_API TimuiResult timui_id_stack_push(TimuiIdStack *s, TimuiId id){
     TimuiId seed;
-    if(!s) return;
+    if(!s) return TIMUI_ERR_INVALID_ARGUMENT;
     seed = id_compose(s->count ? s->seeds[s->count - 1] : s->root, id);
     if(s->count == s->cap){                     /* grow geometrically */
         size_t ncap;
         TimuiId *ns;
-        if(s->cap > SIZE_MAX / 2 / sizeof(TimuiId)) return;   /* grow would overflow */
+        if(s->cap > SIZE_MAX / 2 / sizeof(TimuiId)) return TIMUI_ERR_OUT_OF_MEMORY;
         ncap = s->cap * 2;
         ns = (TimuiId *)s->alloc.realloc(
             s->alloc.userdata, s->seeds, s->cap * sizeof(TimuiId), ncap * sizeof(TimuiId));
-        if(!ns) return;                         /* OOM: drop push, id unchanged */
+        if(!ns) return TIMUI_ERR_OUT_OF_MEMORY;  /* OOM: push not applied, caller must not pop */
         s->seeds = ns;
         s->cap   = ncap;
     }
     s->seeds[s->count++] = seed;
+    return TIMUI_OK;
 }
-TIMUI_API void timui_id_stack_push_cstr(TimuiIdStack *s, const char *str){
-    if(s && str) timui_id_stack_push(s, timui_id_from_cstr(str));
+TIMUI_API TimuiResult timui_id_stack_push_cstr(TimuiIdStack *s, const char *str){
+    if(!s || !str) return TIMUI_ERR_INVALID_ARGUMENT;
+    return timui_id_stack_push(s, timui_id_from_cstr(str));
 }
 TIMUI_API void timui_id_stack_pop(TimuiIdStack *s){
     if(s && s->count > 0) s->count--;

@@ -5,9 +5,9 @@ and X ([round 1](reports/2026-07-03-deep-review.md),
 [2](reports/2026-07-03-deep-review-pass2.md),
 [3](reports/2026-07-03-deep-review-pass3.md)); round 4 added **dynamic
 verification** (ASAN+UBSAN clean) and an adversarial/lifecycle/API lens, filing
-the Y-series ([round 4](reports/2026-07-03-deep-review-pass4.md)); round 5 was
-user-directed (W6/W11/W12/W14/V24). Most of all five sets are fixed; this file
-tracks what remains.
+the Y-series ([round 4](reports/2026-07-03-deep-review-pass4.md)); rounds 5–6
+were user-directed (round 5: W6/W11/W12/W14/V24; round 6: G6/G7/G13). Most of
+all sets are fixed; this file tracks what remains.
 
 ## Resolved (fixed in tree)
 
@@ -43,23 +43,25 @@ reserved-macro comment · V23 kitty write-all loop.
 
 - **W13** ConPTY `(DWORD)n` truncation for >4 GiB writes (latent behind the
   UNSUPPORTED stub).
-- **V27** colour model: `fg==0`/`bg==0` means "default" (no SGR), so pure black
-  (`0x000000`) is indistinguishable from default. Affects black-foreground
-  themes on non-black-default terminals. A proper fix needs a sentinel or
-  has-fg/has-bg flag (a model change; tracked for an ADR).
-- **G6** `id_stack_push` OOM is silently dropped (void return) — can corrupt
-  the widget id hierarchy. Changing the return type is an API break.
-- **G7** event-queue overflow beyond 16/frame is counted internally but not
-  exposed to the caller (no public getter).
 - **G10** ConPTY backend is a stub (returns UNSUPPORTED); no `_WIN32` skeleton.
-- **G13** theme coverage: DOS_GRAY / MODERN_* don't set MENU / BUTTON_ACTIVE /
-  TEXT_DIM explicitly (inherit defaults). Cosmetic.
 - **LOW (round 2, documented)**: L1 double-Esc resolution · L2 flush clock for
   direct feed callers · L3 cross-feed UTF-8 split dangling event ptr · L4
   put_glyph overwrites a wide-glyph continuation · L7 table column remainder
   gap · L8 cmdpal matched_idx[256] cap · L9 poll non-EINTR errors swallowed ·
   L11 127-byte title buffer truncation · L12 kitty partial-frame silent abort ·
   L13 async_scan recv size discipline · L15 MPSC destroy-vs-post contract.
+
+Round 6 (user-directed, all fixed): G6 id_stack_push returns TimuiResult (OOM
+is detectable; the caller skips the paired pop, so a failing grow no longer
+corrupts the id hierarchy) · G7 timui_events_dropped() exposes the per-frame
+queue-overflow count (read + reset) · G13 theme slot coverage — every builtin
+theme now gives the interactive-state slots (TEXT_DIM / SELECTION /
+BUTTON_FOCUSED / BUTTON_ACTIVE / MENU_ACTIVE) a style visually distinct from
+its resting base: MODERN_DARK/LIGHT fill the slots that used to inherit the
+plain fg-on-bg default, DOS_GRAY's BUTTON_ACTIVE (which equalled BUTTON) is now
+inverted, and MONO differentiates via SGR attrs (dim/bold/reverse) since it has
+no colour to spend. Guarded by a structural invariant test across all five
+themes plus an out-of-range/NULL slot-lookup negative test.
 
 Round 5 (user-directed, all fixed): W6 SIGTERM/SIGHUP/SIGQUIT terminal-
 restoration handler (single static Timui* carve-out; timui_restore_terminal is
@@ -90,6 +92,10 @@ realloc required).
 `nix develop -c make test` (unit + Tier-B goldens), `make vt-test` (Tier A
 libvterm round-trip — libvterm is Linux-only in nixpkgs; see
 [`docs/visual-tests.md`](visual-tests.md)), `make amalgamate` + `release-check`.
-148→154 unit + 8 libvterm round-trip green after round 5; UBSAN clean; ASAN
-clean (system clang); goldens clean; amalgamate + release-check pass;
-TIMUI_NO_THREADS compiles.
+148→160 unit + 8 libvterm round-trip green after round 6 (G6/G7/G13); UBSAN
+clean; ASAN clean (system clang); goldens clean; amalgamate + release-check
+pass; TIMUI_NO_THREADS compiles. V27 (colour-model sentinel) implemented: pure
+black (0x000000) is now representable, distinct from TIMUI_COLOR_DEFAULT.
+Round-6 note: G13 is static theme data (no allocation/pointer surface), so its
+gate is the unit invariant + negative tests and amalgamate/release-check; the
+ASAN/UBSAN clean state carries over from the round-5 memory-touching work.

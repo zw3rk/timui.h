@@ -448,24 +448,32 @@ TIMUI_API TimuiTheme timui_theme_builtin(TimuiBuiltinTheme t){
         th.slots[TIMUI_SLOT_BUTTON]        = th_mk(black, white);
         th.slots[TIMUI_SLOT_BUTTON_HOVERED]= th_mk(black, 0xDDDDDD);
         th.slots[TIMUI_SLOT_BUTTON_FOCUSED]= th_mk(white, 0x555555);
-        th.slots[TIMUI_SLOT_BUTTON_ACTIVE] = th_mk(black, 0xFFFFFF);
+        th.slots[TIMUI_SLOT_BUTTON_ACTIVE] = th_mk(white, black);   /* G13: pressed = inverted (was == BUTTON) */
         th.slots[TIMUI_SLOT_INPUT]         = th_mk(black, white);
         th.slots[TIMUI_SLOT_INPUT_FOCUSED] = th_mk(white, 0x555555);
         th.slots[TIMUI_SLOT_STATUS]        = th_mk(white, 0x555555);
         th.slots[TIMUI_SLOT_ERROR]         = th_mk(white, 0xAA0000);
         th.slots[TIMUI_SLOT_WARNING]       = th_mk(black, 0xAAAA00);
         th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(black, 0x00AA00);
+        th.slots[TIMUI_SLOT_SELECTION]     = th_mk(white, 0x555555);
+        th.slots[TIMUI_SLOT_MENU]          = th_mk(black, 0xCCCCCC);
+        th.slots[TIMUI_SLOT_MENU_ACTIVE]   = th_mk(black, white);
     } else if(t == TIMUI_THEME_MODERN_DARK){
         uint32_t bg = 0x1E1E2E, fg = 0xCDD6F4, accent = 0x89B4FA;
         for(i = 0; i < TIMUI_SLOT_COUNT; i++){ th.slots[i].fg = fg; th.slots[i].bg = bg; }
+        th.slots[TIMUI_SLOT_TEXT_DIM]      = th_mk(0x9399B2, bg);        /* G13: dimmer than body */
         th.slots[TIMUI_SLOT_PANEL_TITLE]   = th_mk(accent, bg);
         th.slots[TIMUI_SLOT_BORDER]        = th_mk(0x585B70, bg);
         th.slots[TIMUI_SLOT_BUTTON]        = th_mk(fg, 0x313244);
         th.slots[TIMUI_SLOT_BUTTON_HOVERED]= th_mk(fg, 0x45475A);
         th.slots[TIMUI_SLOT_BUTTON_FOCUSED]= th_mk(0x1E1E2E, accent);
+        th.slots[TIMUI_SLOT_BUTTON_ACTIVE] = th_mk(0x1E1E2E, 0xB4BEFE);  /* G13: brighter than focus */
         th.slots[TIMUI_SLOT_INPUT]         = th_mk(fg, 0x313244);
         th.slots[TIMUI_SLOT_INPUT_FOCUSED] = th_mk(fg, 0x45475A);
         th.slots[TIMUI_SLOT_SELECTION]     = th_mk(0x1E1E2E, accent);
+        th.slots[TIMUI_SLOT_MENU]          = th_mk(fg, 0x313244);        /* G13: menu-bar surface */
+        th.slots[TIMUI_SLOT_MENU_ACTIVE]   = th_mk(0x1E1E2E, accent);    /* G13: highlighted item */
+        th.slots[TIMUI_SLOT_STATUS]        = th_mk(fg, 0x45475A);        /* G13: status-bar surface */
         th.slots[TIMUI_SLOT_ERROR]         = th_mk(0xF38BA8, bg);
         th.slots[TIMUI_SLOT_WARNING]       = th_mk(0xFAB387, bg);
         th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(0xA6E3A1, bg);
@@ -473,19 +481,37 @@ TIMUI_API TimuiTheme timui_theme_builtin(TimuiBuiltinTheme t){
     else if(t == TIMUI_THEME_MODERN_LIGHT){
         uint32_t bg = 0xFFFFFF, fg = 0x2E2E2E, accent = 0x0066CC;
         for(i = 0; i < TIMUI_SLOT_COUNT; i++){ th.slots[i].fg = fg; th.slots[i].bg = bg; }
+        th.slots[TIMUI_SLOT_TEXT_DIM]      = th_mk(0x777777, bg);        /* G13: dimmer than body */
         th.slots[TIMUI_SLOT_PANEL_TITLE]   = th_mk(accent, bg);
         th.slots[TIMUI_SLOT_BORDER]        = th_mk(0xCCCCCC, bg);
         th.slots[TIMUI_SLOT_BUTTON]        = th_mk(fg, 0xE0E0E0);
         th.slots[TIMUI_SLOT_BUTTON_HOVERED]= th_mk(fg, 0xD0D0D0);
         th.slots[TIMUI_SLOT_BUTTON_FOCUSED]= th_mk(0xFFFFFF, accent);
+        th.slots[TIMUI_SLOT_BUTTON_ACTIVE] = th_mk(0xFFFFFF, 0x004C99);  /* G13: darker than focus */
         th.slots[TIMUI_SLOT_INPUT]         = th_mk(fg, 0xF0F0F0);
         th.slots[TIMUI_SLOT_INPUT_FOCUSED] = th_mk(fg, 0xE0E0E0);
         th.slots[TIMUI_SLOT_SELECTION]     = th_mk(0xFFFFFF, accent);
+        th.slots[TIMUI_SLOT_MENU]          = th_mk(fg, 0xF0F0F0);        /* G13: menu-bar surface */
+        th.slots[TIMUI_SLOT_MENU_ACTIVE]   = th_mk(0xFFFFFF, accent);    /* G13: highlighted item */
+        th.slots[TIMUI_SLOT_STATUS]        = th_mk(fg, 0xE0E0E0);        /* G13: status-bar surface */
         th.slots[TIMUI_SLOT_ERROR]         = th_mk(0xCC0000, bg);
         th.slots[TIMUI_SLOT_WARNING]       = th_mk(0xCC6600, bg);
         th.slots[TIMUI_SLOT_SUCCESS]       = th_mk(0x008800, bg);
     }
-    /* TIMUI_THEME_MONO: the white-on-black default set above */
+    else if(t == TIMUI_THEME_MONO){
+        /* Monochrome: no colour to spend, so interactive state is conveyed with
+         * SGR attributes (dim/bold/reverse) — the idiomatic mono-terminal cue,
+         * emitted by emit_sgr. G13: every state slot stays visually distinct
+         * from its resting base atop the white-on-black default set above. */
+        th.slots[TIMUI_SLOT_TEXT_DIM].attrs       = TIMUI_ATTR_DIM;
+        th.slots[TIMUI_SLOT_PANEL_TITLE].attrs    = TIMUI_ATTR_BOLD;
+        th.slots[TIMUI_SLOT_BUTTON_FOCUSED].attrs = TIMUI_ATTR_BOLD;
+        th.slots[TIMUI_SLOT_BUTTON_ACTIVE].attrs  = TIMUI_ATTR_REVERSE;
+        th.slots[TIMUI_SLOT_SELECTION].attrs      = TIMUI_ATTR_REVERSE;
+        th.slots[TIMUI_SLOT_MENU_ACTIVE].attrs    = TIMUI_ATTR_REVERSE;
+        th.slots[TIMUI_SLOT_STATUS].attrs         = TIMUI_ATTR_REVERSE;
+    }
+    /* An out-of-range enum falls through to the white-on-black default above. */
     return th;
 }
 TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot){

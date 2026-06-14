@@ -189,6 +189,10 @@ TIMUI_API int       timui_height(const TimuiFrame *frame);
 TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
 TIMUI_API void             timui_ui_resize(Timui *ui, int w, int h);
 TIMUI_API int              timui_poll_event(Timui *ui, TimuiEvent *out_event);
+/* G7: returns the count of events dropped this frame (queue holds 16) and
+ * resets the counter. Call after timui_begin to detect a burst that exceeded
+ * the queue (large paste, high-rate mouse drag). */
+TIMUI_API int              timui_events_dropped(Timui *ui);
 TIMUI_API void             timui_quit(Timui *ui);
 TIMUI_API bool             timui_should_quit(const Timui *ui);
 /* Test constructor: a Timui backed by an injected transport + fixed size
@@ -306,8 +310,8 @@ typedef struct {
 } TimuiIdStack;
 
 TIMUI_API TimuiResult timui_id_stack_init(TimuiIdStack *s, const TimuiAllocator *alloc, size_t cap);
-TIMUI_API void        timui_id_stack_push(TimuiIdStack *s, TimuiId id);
-TIMUI_API void        timui_id_stack_push_cstr(TimuiIdStack *s, const char *str);
+TIMUI_API TimuiResult timui_id_stack_push(TimuiIdStack *s, TimuiId id);        /* G6: returns OOM */
+TIMUI_API TimuiResult timui_id_stack_push_cstr(TimuiIdStack *s, const char *str);
 TIMUI_API void        timui_id_stack_pop(TimuiIdStack *s);
 TIMUI_API TimuiId     timui_id_stack_current(const TimuiIdStack *s);
 TIMUI_API void        timui_id_stack_destroy(TimuiIdStack *s);
