@@ -49,12 +49,16 @@ TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
       }
       timui_scroll_end(f);
     }
-    if(timui_key_pressed(f, TIMUI_KEY_UP) && state->selected > 0) state->selected--;
-    else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && state->selected < matched_count - 1) state->selected++;
-    if(timui_key_pressed(f, TIMUI_KEY_ENTER) && matched_count > 0){
-        activated = matched_idx[state->selected];
-        state->filter[0] = '\0';
-        state->selected = 0;
+    /* V18: only steer the palette when its filter input is focused, so drawing
+     * the palette without focusing it doesn't swallow arrow/Enter from siblings. */
+    if(ui->ia.focus == id + 1){
+        if(timui_key_pressed(f, TIMUI_KEY_UP) && state->selected > 0) state->selected--;
+        else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && state->selected < matched_count - 1) state->selected++;
+        if(timui_key_pressed(f, TIMUI_KEY_ENTER) && matched_count > 0){
+            activated = matched_idx[state->selected];
+            state->filter[0] = '\0';
+            state->selected = 0;
+        }
     }
     timui_panel_end(f);
     return activated;

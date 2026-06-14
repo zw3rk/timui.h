@@ -72,3 +72,12 @@ TIMUI_TEST(test_mpsc_multi_producer){
     for(i = 0; i < MPSC_WORKERS; i++) TIMUI_CHECK(counts[i] == MPSC_PER);
     timui_mpsc_destroy(&q);
 }
+
+/* V1: a wrapped size must be rejected, not allocated tiny then memcpy'd huge. */
+TIMUI_TEST(test_mpsc_overflow_guard){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiMpsc q;
+    TIMUI_CHECK(timui_mpsc_init(&q, &al) == TIMUI_OK);
+    TIMUI_CHECK(timui_mpsc_post(&q, 1, "x", (size_t)-1) == 0);   /* SIZE_MAX -> guard */
+    timui_mpsc_destroy(&q);
+}

@@ -73,6 +73,7 @@ int main(void){
         size_t sz = sizeof val;
         if(!timui_begin(ui, &f)) break;
         while(timui_recv(ui, &type, &val, &sz)) update(&mdl, type, &val, sz);
+        if(mdl.done) timui_quit(ui);          /* W2: terminate on completion */
         view(f, &mdl);
         if(timui_key_pressed(f, TIMUI_KEY_ESCAPE)) timui_quit(ui);
         sz = sizeof val;

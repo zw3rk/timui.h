@@ -47,7 +47,11 @@ static void emit_mouse(TimuiEventFn cb, void *ctx, const int *mp, unsigned char 
     ev.as.mouse.released = (final == 'm');
     ev.as.mouse.motion = 0;
     if(code & 0x40){
-        ev.as.mouse.wheel_y = (code == 64) ? 1 : (code == 65 ? -1 : 0);
+        /* wheel: button bits (0x03) give the direction; modifier bits
+         * (Shift/Alt/Ctrl) must not erase it. Old exact-match (==64/==65)
+         * dropped the delta for any modifier-tagged scroll. */
+        int btn = code & 0x03;
+        ev.as.mouse.wheel_y = (btn == 0) ? 1 : (btn == 1 ? -1 : 0);
     } else {
         ev.as.mouse.button = code & 0x03;
         ev.as.mouse.motion = (code & 0x20) ? 1 : 0;
@@ -168,9 +172,18 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             p->pasting = 0;             /* terminator completed across feeds */
             p->paste_tail_len = 0;
             b += need; len -= (size_t)need;
+        } else if(matched){
+            /* Still a prefix (terminator split across >2 feeds): every byte of
+             * this feed extends the deferred terminator, so keep deferring
+             * instead of flushing the tail as paste CONTENT (which would inject
+             * the literal terminator bytes). Consume the whole feed; nothing
+             * else to do. paste_tail has room (len < need = 6 - tail_len). */
+            for(j = 0; j < (int)len; j++)
+                p->paste_tail[p->paste_tail_len + j] = b[j];
+            p->paste_tail_len += (int)len;
+            return count;
         } else {
             /* not a terminator — emit deferred bytes as paste content */
-            { /* emit deferred bytes as paste content */
             if(p->paste_tail_len > 0){
                 emit_paste(cb, ctx, p->paste_tail, (size_t)p->paste_tail_len);
                 count++;
@@ -186,8 +199,10 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 size_t remaining = len - i;
                 if(remaining >= 6 &&
                    b[i+1] == '[' && b[i+2] == '2' && b[i+3] == '0' && b[i+4] == '1' && b[i+5] == '~'){
-                    emit_paste(cb, ctx, p->paste_ptr, (size_t)(&b[i] - p->paste_ptr));
-                    count++;
+                    if(&b[i] > p->paste_ptr){   /* skip empty payload (back-to-back START/END) */
+                        emit_paste(cb, ctx, p->paste_ptr, (size_t)(&b[i] - p->paste_ptr));
+                        count++;
+                    }
                     p->pasting = 0;
                     i += 5;
                 } else {
@@ -221,7 +236,9 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             if(c == '\t'){ emit_key(cb, ctx, TIMUI_KEY_TAB, 0, 0); count++; break; }
             if(c == 0x7f || c == 0x08){ emit_key(cb, ctx, TIMUI_KEY_BACKSPACE, 0, 0); count++; break; }
             if(c < 0x20){
-                uint32_t cp = (c >= 1 && c <= 26) ? (uint32_t)('a' + c - 1) : (uint32_t)c;
+                uint32_t cp;
+                if(c == 0) break;   /* NUL: ignore (no phantom Ctrl-@ event) */
+                cp = (c >= 1 && c <= 26) ? (uint32_t)('a' + c - 1) : (uint32_t)c;
                 emit_key(cb, ctx, TIMUI_KEY_UNKNOWN, TIMUI_MOD_CTRL, cp);
                 count++; break;
             }
@@ -254,7 +271,10 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             }
             emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0); count++;
             p->state = 0;
-            if(i > 0) i--;        /* reprocess the byte in ground */
+            i--;   /* reprocess this byte in ground. NB: when i==0 this wraps to
+                    * SIZE_MAX and the for-loop's i++ revisits b[0] — the old
+                    * `if(i>0)` guard skipped the reprocess exactly at a feed
+                    * boundary, silently dropping b[0]. */
             break;
         case 2: /* CSI */
             if(c == '<'){ p->csi_mouse = 1; p->mcount = 0; p->mparam[0] = p->mparam[1] = p->mparam[2] = 0; break; }
@@ -313,9 +333,15 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 }
                 break;
             }
-            emit_text(cb, ctx, (const char *)&b[i], 1, 0xFFFD);   /* invalid continuation */
+            /* invalid continuation: the partial lead sequence is ill-formed ->
+             * one U+FFFD for it (NOT for b[i]); the offending byte may start
+             * fresh input, so reprocess it in ground. The old code emitted
+             * U+FFFD for b[i] itself and then (for i>0) reprocessed b[i],
+             * double-emitting; at i==0 it dropped the reprocess entirely. */
+            emit_text(cb, ctx, p->utf8_ptr,
+                      p->utf8_ptr ? (size_t)(p->utf8_len - p->utf8_need) : 0, 0xFFFD);
             count++; p->state = 0;
-            if(i > 0) i--;
+            i--;   /* reprocess b[i] in ground (i==0 wraps; loop i++ revisits) */
             break;
         }
     }

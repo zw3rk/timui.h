@@ -1,5 +1,9 @@
 /* ---- optional functional runner --------------------------------------- *
  * UI-thread message queue (emit during view, recv into update) + the runner. */
+/* timui_run delivers each posted message via a fixed internal buffer. Messages
+ * larger than TIMUI_RUN_BUF are truncated (W5) — keep posts small, or call
+ * timui_recv directly with your own buffer for large payloads. */
+#define TIMUI_RUN_BUF 4096
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size){
     return f && f->ui && timui_mpsc_post(&f->ui->postq, type, data, size) != 0;
 }
@@ -18,7 +22,7 @@ TIMUI_API int timui_run(const TimuiConfig *cfg, TimuiApp *app){
     while(!timui_should_quit(ui)){
         TimuiFrame *f = NULL;
         uint32_t type = 0;
-        unsigned char buf[256];
+        unsigned char buf[TIMUI_RUN_BUF];
         size_t sz;
         if(!timui_begin(ui, &f)) break;
         app->view(f, app->model);

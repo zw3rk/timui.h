@@ -39,6 +39,22 @@ TIMUI_TEST(test_clipboard_osc52){
     timui_fake_destroy(&fake);
 }
 
+/* V22: a payload so large its base64 length would overflow size_t must be
+ * rejected up front, not allocated undersized and encoded into. */
+TIMUI_TEST(test_clipboard_huge_len_safe){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    TimuiStr out;
+    TimuiStr huge = { "x", (SIZE_MAX / 4) + 5 };
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_clipboard_set(&t, huge);             /* guard fires; no crash, no emit */
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(out.len == 0);
+    timui_fake_destroy(&fake);
+}
+
 /* ---- keymaps (#52) ---- */
 TIMUI_TEST(test_keymap_bind){
     TimuiKeymap km;
@@ -50,4 +66,14 @@ TIMUI_TEST(test_keymap_bind){
     TIMUI_CHECK(km.bindings[0].key == TIMUI_KEY_F1);
     TIMUI_CHECK(km.bindings[1].key == TIMUI_KEY_ENTER);
     TIMUI_CHECK(km.bindings[1].mods == TIMUI_MOD_CTRL);
+}
+
+/* S6: bindings[] is a fixed [32] array; binding past the cap must stop, not
+ * overrun. */
+TIMUI_TEST(test_keymap_bind_overflow){
+    TimuiKeymap km;
+    int i;
+    km.count = 0;
+    for(i = 0; i < 40; i++) timui_keymap_bind(&km, TIMUI_KEY_F1, 0, i);
+    TIMUI_CHECK(km.count == 32);   /* capped at the array size, no overrun */
 }

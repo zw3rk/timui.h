@@ -108,3 +108,90 @@ TIMUI_TEST(test_input_invalid_safe){
     TIMUI_CHECK(s.n == 2);
     TIMUI_CHECK(s.ev[0].as.text.codepoint == 0xFFFD);
 }
+
+/* V2: a byte at a feed boundary must not be lost when ESC/UTF-8 resyncs. */
+TIMUI_TEST(test_input_esc_resync_no_loss){
+    TimuiInputParser p;
+    Sink s;
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\x1b", 1, sink_cb, &s);          /* ESC at end of feed */
+    timui_input_feed(&p, "\xc3\xa9", 2, sink_cb, &s);       /* invalid ESC-2nd-byte lead */
+    /* ESC key, then the bytes reprocessed in ground as é (U+00E9) — not dropped. */
+    TIMUI_CHECK(s.n == 2);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_KEY && s.ev[0].as.key.key == TIMUI_KEY_ESCAPE);
+    TIMUI_CHECK(s.ev[1].kind == TIMUI_EVENT_TEXT && s.ev[1].as.text.codepoint == 0xE9);
+}
+
+TIMUI_TEST(test_input_utf8_resync_no_loss){
+    TimuiInputParser p;
+    Sink s;
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\xc3", 1, sink_cb, &s);           /* 2-byte lead, partial */
+    TIMUI_CHECK(s.n == 0);
+    timui_input_feed(&p, "A", 1, sink_cb, &s);              /* invalid continuation */
+    /* one U+FFFD for the abandoned \xc3, then 'A' reprocessed in ground (not
+     * mis-emitted as U+FFFD, and not dropped). */
+    TIMUI_CHECK(s.n == 2);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == 0xFFFD);
+    TIMUI_CHECK(s.ev[1].kind == TIMUI_EVENT_TEXT && s.ev[1].as.text.codepoint == 'A');
+}
+
+/* V5: modifier-tagged mouse wheel must keep its direction. Shift+wheel-up is
+ * SGR code 0x40|0x04 = 68; old exact-match (==64) zeroed the delta. */
+TIMUI_TEST(test_mouse_wheel_with_mods){
+    TimuiInputParser p;
+    Sink s;
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[<68;10;5M", 11, sink_cb, &s);  /* Shift + wheel-up */
+    TIMUI_CHECK(s.n == 1 && s.ev[0].kind == TIMUI_EVENT_MOUSE);
+    TIMUI_CHECK(s.ev[0].as.mouse.wheel_y == 1);
+    TIMUI_CHECK(s.ev[0].as.mouse.mods == TIMUI_MOD_SHIFT);
+}
+
+/* V14: NUL must be ignored (no phantom Ctrl-@ key event with codepoint 0). */
+TIMUI_TEST(test_input_nul_ignored){
+    TimuiInputParser p;
+    Sink s;
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\x00", 1, sink_cb, &s);
+    TIMUI_CHECK(s.n == 0);
+}
+
+/* paste sink: concatenates PASTE payloads so we can assert no terminator leak. */
+typedef struct { char buf[64]; size_t len; int events; } PasteSink;
+static void paste_cb(void *ctx, const TimuiEvent *ev){
+    PasteSink *s = (PasteSink *)ctx;
+    if(ev->kind != TIMUI_EVENT_PASTE) return;
+    s->events++;
+    if(ev->as.paste.len && s->len + ev->as.paste.len < sizeof s->buf){
+        memcpy(s->buf + s->len, ev->as.paste.ptr, ev->as.paste.len);
+        s->len += ev->as.paste.len;
+    }
+}
+
+/* V12: a paste terminator split across 3+ feeds must not inject the literal
+ * terminator bytes ("201...") into the paste content. */
+TIMUI_TEST(test_paste_cross_feed_three_fragments){
+    TimuiInputParser p;
+    PasteSink s; s.len = 0; s.events = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[200~AB", 8, paste_cb, &s);   /* start + payload "AB" */
+    timui_input_feed(&p, "\x1b[", 2, paste_cb, &s);          /* partial terminator (2/6) */
+    timui_input_feed(&p, "2", 1, paste_cb, &s);              /* still a prefix (3/6) */
+    timui_input_feed(&p, "01~", 3, paste_cb, &s);            /* completes terminator */
+    TIMUI_CHECK(s.len == 2 && memcmp(s.buf, "AB", 2) == 0);  /* no terminator leakage */
+}
+
+/* V13: back-to-back paste START/END must not emit an empty paste event. */
+TIMUI_TEST(test_paste_empty_no_event){
+    TimuiInputParser p;
+    PasteSink s; s.len = 0; s.events = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[200~\x1b[201~", 12, paste_cb, &s);
+    TIMUI_CHECK(s.events == 0);                               /* no empty paste */
+}
+

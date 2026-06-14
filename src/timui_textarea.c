@@ -11,12 +11,21 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
     ui = f->ui;
     ir = timui_interact_button(&ui->ia, id, r);
     if(ir.focused){
-        int j;
-        for(j = 0; j < ui->text_in_len && st->cursor + 1 < st->cap; j++)
-            st->text[st->cursor++] = ui->text_in[j];
+        int j = 0;
+        /* append whole UTF-8 codepoints (utf8_lead_len/utf8_drop_last live in
+         * the widgets section, in scope via the unity build); skip one that
+         * won't fit intact rather than splitting it at the cap boundary. */
+        while(j < ui->text_in_len){
+            int n = utf8_lead_len((unsigned char)ui->text_in[j]);
+            size_t m = (size_t)(n > 0 ? n : 1);     /* defensive: treat stray byte as 1 */
+            if(st->cursor + m >= st->cap) break;
+            while(m-- > 0 && j < ui->text_in_len) st->text[st->cursor++] = ui->text_in[j++];
+        }
         st->text[st->cursor] = '\0';
-        if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st->cursor > 0)
-            st->text[--st->cursor] = '\0';
+        if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st->cursor > 0){
+            st->cursor = utf8_drop_last(st->text, st->cursor);  /* delete a whole codepoint */
+            st->text[st->cursor] = '\0';
+        }
         ui->text_in_len = 0;
         ui->key_in = 0;
     }

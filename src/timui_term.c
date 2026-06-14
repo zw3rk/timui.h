@@ -76,11 +76,23 @@ static void emit_lit(TimuiTransport *t, const char *s, size_t n){
 TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_t flags, TimuiStr title){
     if(m) m->flags = flags;
     if(title.ptr && title.len){
-        /* Sanitize: strip BEL/ESC, build buffer, single write */
+        /* Sanitize at the codepoint level: decode UTF-8 and drop C0/DEL/C1
+         * control CODEPOINTS — incl. U+009C (the C1 String Terminator, UTF-8
+         * C2 9C) that closes an OSC like BEL or ESC \ — re-encoding printable
+         * codepoints. A byte-level reject of 0x80-0x9f (an earlier attempt)
+         * stripped VALID UTF-8 continuation bytes (Ü = C3 9C, 字 = E5 AD 97);
+         * filtering by decoded codepoint keeps multibyte text intact while
+         * still removing only control codepoints. Single buffered write. */
         char clean[128];
-        size_t cn = 0, j;
-        for(j = 0; j < title.len && cn < sizeof(clean) - 1; j++)
-            if(title.ptr[j] != 0x07 && title.ptr[j] != 0x1b) clean[cn++] = title.ptr[j];
+        size_t cn = 0, i = 0;
+        while(i < title.len && cn + 4 < sizeof(clean)){
+            uint32_t cp = 0;
+            int adv = timui_utf8_decode(title.ptr + i, title.len - i, &cp);
+            if(adv <= 0){ i++; continue; }                  /* incomplete lead: skip */
+            if(cp >= 0x20 && cp != 0x7f && !(cp >= 0x80 && cp <= 0x9f))
+                cn += (size_t)utf8_encode(cp, clean + cn);  /* keep printable cp */
+            i += (size_t)adv;
+        }
         if(cn > 0){   /* skip OSC entirely if all chars were stripped */
             TIMUI_EMIT(t, "\x1b]0;");
             if(t && t->write) (void)t->write(t, clean, cn);
@@ -120,7 +132,7 @@ TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd){
     raw.c_cflag |= CS8;
     raw.c_cc[VMIN]  = 1;
     raw.c_cc[VTIME] = 0;
-    if(tcsetattr(fd, TCSAFLUSH, &raw) != 0){ free(orig); t->have_saved = 0; return TIMUI_ERR_OS; }
+    if(tcsetattr(fd, TCSAFLUSH, &raw) != 0){ free(orig); t->saved = NULL; t->have_saved = 0; return TIMUI_ERR_OS; }
     return TIMUI_OK;
 }
 TIMUI_API TimuiResult timui_termios_restore(TimuiTermios *t){

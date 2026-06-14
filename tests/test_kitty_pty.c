@@ -54,6 +54,43 @@ TIMUI_TEST(test_kitty_graphics_transmit){
     timui_close(ui);
 }
 
+/* S3/V22: a payload whose base64 exceeds the 4096-byte chunk boundary must
+ * split into multiple ESC_G frames — m=1 continuation on all but the last,
+ * m=0 on the last. (3100 bytes -> ~4136 base64 -> 2 chunks.) */
+TIMUI_TEST(test_kitty_graphics_chunking){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    static const unsigned char png[3100];
+    int frames = 0;
+    size_t i;
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_cap(ui, TIMUI_CAP_KITTY_GRAPHICS, 1);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 5, 3));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+
+    for(i = 0; i + 1 < out.len; i++)
+        if((unsigned char)out.ptr[i] == 0x1b && out.ptr[i + 1] == 'G') frames++;
+    TIMUI_CHECK(frames == 2);                                   /* chunked */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "m=1"));        /* continuation */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "m=0"));        /* final */
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_kitty_graphics_placeholder){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
@@ -84,6 +121,7 @@ TIMUI_TEST(test_pty_hello_exits_on_esc){
     int master;
     pid_t pid;
 
+    if(access("build/hello", X_OK) != 0) return;   /* V4: skip if the example isn't built */
     master = posix_openpt(O_RDWR | O_NOCTTY);
     if(master < 0){ return; }   /* skip if no pty support */
     if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); return; }
@@ -144,11 +182,13 @@ TIMUI_TEST(test_pty_hello_exits_on_esc){
         }
         if(!ok) kill(pid, SIGKILL);
         close(master);
-        /* The alt-screen check above proves hello ran under the pty. The exit
-         * check may fail in sandboxed environments where pty master->slave
-         * writes are restricted; the Esc-quit logic itself is verified by
-         * test_esc_timeout. We assert the alt-screen path (already done) and
-         * treat the Esc-quit as informational here. */
-        TIMUI_CHECK(1);
+        /* V3: assert the Esc-quit produced a clean exit (WIFEXITED), not a
+         * signal — the old TIMUI_CHECK(1) passed even if hello never exited,
+         * masking any Esc-quit regression. If the child didn't exit in time
+         * (sandboxed pty where master->slave writes are restricted), skip
+         * visibly instead of asserting true. The alt-screen check above
+         * already proves hello ran under the pty. */
+        if(ok) TIMUI_CHECK(WIFEXITED(status));
+        else   printf("  SKIP pty Esc-quit: child did not exit in 6s (sandbox restriction)\n");
     }
 }

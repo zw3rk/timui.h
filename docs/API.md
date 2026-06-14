@@ -10,7 +10,7 @@ translation unit before including it (or link the dev build's `src/timui.c`).
   `Timui*`. Opaque handles: `Timui`, `TimuiFrame`.
 - **Ownership:** `TimuiStr` is a non-owning `{ptr, len}` view (valid for the
   call). Strings returned by the library (e.g. `timui_error_string`) are static.
-- **Threading:** only `timui_post` / `timui_wakeup` are thread-safe; everything
+- **Threading:** only `timui_post` is thread-safe; everything
   else is UI-thread-only. See [THREADING.md](THREADING.md).
 - **Errors:** fallible APIs return `TimuiResult` (`TIMUI_OK` on success);
   stringify with `timui_error_string`.
@@ -98,7 +98,6 @@ Apps usually react through widget results + `timui_key_pressed`.
 
 ```c
 bool timui_post(Timui *, uint32_t type, const void *data, size_t size);  /* any thread */
-void timui_wakeup(Timui *);
 ```
 
 ## Feature macros

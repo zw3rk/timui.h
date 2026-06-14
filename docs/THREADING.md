@@ -8,7 +8,7 @@ the terminal.
 
 | Function class | Safety |
 |---|---|
-| `timui_post`, `timui_wakeup` (the MPSC queue) | **thread-safe** — any thread |
+| `timui_post` (the MPSC queue) | **thread-safe** — any thread |
 | `timui_*` widget / drawing / style / frame APIs | **UI-thread only** |
 | `timui_begin`, `timui_end`, `timui_poll_event`, `timui_recv` | UI-thread only |
 | `timui_close` | UI-thread only |

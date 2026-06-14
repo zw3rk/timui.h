@@ -78,6 +78,7 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     ui->alloc = *alloc;
     ui->transport = transport;
     ui->have_transport = 1;
+    ui->fd.read_fd = -1;   /* no real fd behind a test/fake transport (W7) */
     timui_caps_detect(&ui->caps, NULL, NULL, NULL);
     r = timui_setup(ui, w, h);
     if(r != TIMUI_OK){ alloc->free(alloc->userdata, ui, sizeof *ui); return r; }
@@ -109,10 +110,15 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     if(timui_term_size(cfg->output_fd, &w, &h) != TIMUI_OK){ w = 80; h = 24; }
     if(isatty(cfg->input_fd)){
         int flags = fcntl(cfg->input_fd, F_GETFL, 0);
-        if(flags >= 0) (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);  /* nonblocking input */
+        if(flags >= 0) (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);  /* nonblocking tty input */
         if(timui_termios_enter(&ui->termios, cfg->input_fd) == TIMUI_OK) ui->termios_active = 1;
         timui_screen_enter(&ui->transport, &ui->screen, cfg->flags, timui_str_from_cstr(cfg->title));
         ui->screen_active = 1;
+    }else{
+        /* non-tty real fd (piped/headless input): make it non-blocking so a read
+         * with no data returns EAGAIN instead of blocking (W7 hot-spin fix). */
+        int flags = fcntl(cfg->input_fd, F_GETFL, 0);
+        if(flags >= 0) (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);
     }
     r = timui_setup(ui, w, h);
     if(r != TIMUI_OK){
@@ -154,6 +160,12 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         if(n > 0){
             timui_input_set_now(&ui->input, timui_now_ms());
             timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
+        }else if(ui->fd.read_fd >= 0 && !ui->termios_active){
+            /* non-tty real fd with no data (piped/headless input, incl. EOF):
+             * the tty poll above doesn't run, so throttle explicitly to avoid a
+             * 100% CPU hot-spin (W7). Test/fake transports have read_fd = -1. */
+            struct timespec ts = { 0, 16 * 1000 * 1000 };
+            nanosleep(&ts, NULL);
         }
         timui_input_flush_esc(&ui->input, timui_now_ms(), ui_event_cb, ui);
     }
@@ -225,11 +237,17 @@ TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame){
 }
 TIMUI_API void timui_ui_resize(Timui *ui, int w, int h){
     TimuiResult r;
+    int ow, oh;
     if(!ui || w <= 0 || h <= 0) return;
-    r = timui_cells_resize(&ui->curr, w, h, &ui->alloc);
-    if(r != TIMUI_OK) return;
+    ow = ui->w; oh = ui->h;
+    /* Resize prev first; if curr then fails, roll prev back. The old order
+     * (curr then prev) left curr at the new size but ui->w/h and prev at the
+     * old — a divergence where layout used stale dims while the cell buffer
+     * had grown. ui->w/h commit only when both buffers succeed. */
     r = timui_cells_resize(&ui->prev, w, h, &ui->alloc);
     if(r != TIMUI_OK) return;
+    r = timui_cells_resize(&ui->curr, w, h, &ui->alloc);
+    if(r != TIMUI_OK){ (void)timui_cells_resize(&ui->prev, ow, oh, &ui->alloc); return; }
     ui->w = w;
     ui->h = h;
     timui_renderer_reset(&ui->renderer);   /* cursor/SGR tracking invalidated */
@@ -385,6 +403,7 @@ TIMUI_API int timui_msgq_emit(TimuiMsgQueue *q, uint32_t type, const void *data,
     size_t need;
     unsigned char *p;
     if(!q || size > SIZE_MAX - hdr) return 0;   /* overflow guard */
+    if(size > 0 && !data) return 0;             /* would record payload with no bytes */
     need = hdr + size;
     if(need > q->cap) return 0;   /* never fits */
     if(q->tail + need > q->cap){
@@ -466,6 +485,7 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
 TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
     TimuiMpscNode *n;
     if(!q) return 0;
+    if(size > SIZE_MAX - sizeof(*n)) return 0;   /* overflow guard (cf. msgq_emit) */
     n = (TimuiMpscNode *)q->alloc.alloc(q->alloc.userdata, sizeof(*n) + size);
     if(!n) return 0;
     n->next = NULL; n->type = type; n->size = size;
@@ -540,6 +560,7 @@ TIMUI_API TimuiResult timui_arena_init(TimuiArena *a, const TimuiAllocator *allo
 TIMUI_API void *timui_arena_alloc(TimuiArena *a, size_t size, size_t align){
     size_t mask, aligned;
     if(!a || align == 0) return NULL;
+    if(align & (align - 1)) return NULL;     /* alignment must be a power of two */
     if(size == 0) size = 1;
     mask    = align - 1;
     aligned = (a->off + mask) & ~mask;

@@ -88,3 +88,14 @@ TIMUI_TEST(test_arena_invalid_args){
     TIMUI_CHECK(timui_arena_alloc(NULL, 4, 8)     == NULL);
     TIMUI_CHECK(timui_arena_alloc(&ar, 4, 0)      == NULL);  /* align 0 invalid */
 }
+
+/* V20: a non-power-of-two alignment silently misaligns (mask = align-1 is
+ * wrong); reject it. */
+TIMUI_TEST(test_arena_non_pow2_align){
+    TimuiArena ar;
+    TimuiAllocator a = timui_default_allocator();
+    TIMUI_CHECK(timui_arena_init(&ar, &a, 64) == TIMUI_OK);
+    TIMUI_CHECK(timui_arena_alloc(&ar, 4, 3) == NULL);   /* 3 is not a power of two */
+    TIMUI_CHECK(timui_arena_alloc(&ar, 4, 4) != NULL);   /* 4 is */
+    timui_arena_free(&ar);
+}

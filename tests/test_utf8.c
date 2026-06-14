@@ -26,3 +26,10 @@ TIMUI_TEST(test_utf8_width){
     TIMUI_CHECK(timui_utf8_width(0xFFFD) == 1);    /* replacement */
     TIMUI_CHECK(timui_utf8_width(0x1b) == 0);      /* control */
 }
+
+/* V16: a 4-byte sequence decoding above U+10FFFF must yield U+FFFD. */
+TIMUI_TEST(test_utf8_decode_above_max){
+    uint32_t cp = 0;
+    static const unsigned char above[] = { 0xF4, 0x90, 0x80, 0x80 };  /* U+110000 */
+    TIMUI_CHECK(timui_utf8_decode((const char *)above, sizeof above, &cp) == 1 && cp == 0xFFFD);
+}

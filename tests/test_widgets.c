@@ -77,3 +77,26 @@ TIMUI_TEST(test_panel_body_rect){
     TIMUI_CHECK(body.x == 2 && body.y == 2 && body.w == 8 && body.h == 3);
     timui_close(ui);
 }
+
+/* W10: a panel title longer than the panel must be clipped to the panel rect,
+ * not bleed past the right border onto neighbouring cells. */
+TIMUI_TEST(test_panel_title_clipped){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_panel_begin(f, TIMUI_ID("p"), TIMUI_RECT(1, 1, 6, 3),
+                      TIMUI_STR_LIT("LongTitle"), TIMUI_BORDER_SINGLE);
+    timui_panel_end(f);
+    /* panel spans x[1,7); "LongTitle" (9 chars from x=2) must not reach x=7. */
+    TIMUI_CHECK(timui_cells_get(buf, 7, 1)->codepoint == 0);   /* past panel, untouched */
+    timui_end(f);
+    timui_close(ui);
+}

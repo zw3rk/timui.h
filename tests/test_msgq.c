@@ -67,3 +67,13 @@ TIMUI_TEST(test_msgq_variable_sizes){
 
     timui_msgq_destroy(&q);
 }
+
+/* V21: size>0 with NULL data would record a payload of uninitialised slab
+ * bytes; reject it. */
+TIMUI_TEST(test_msgq_null_data_rejected){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiMsgQueue q;
+    TIMUI_CHECK(timui_msgq_init(&q, &al, 256) == TIMUI_OK);
+    TIMUI_CHECK(timui_msgq_emit(&q, 1, NULL, 10) == 0);
+    timui_msgq_destroy(&q);
+}

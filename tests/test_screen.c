@@ -56,3 +56,30 @@ TIMUI_TEST(test_screen_exit_reverses){
     TIMUI_CHECK(memcmp(out.ptr, expected, sizeof(expected) - 1) == 0);
     timui_fake_destroy(&f);
 }
+
+/* V9/W4: the title sanitizer filters at the codepoint level. Ü (U+00DC = C3 9C)
+ * must SURVIVE — a byte-level reject of 0x80-0x9f would strip its 0x9C
+ * continuation byte (the pass-1 V9 regression). U+009C (the C1 String
+ * Terminator, UTF-8 C2 9C) and BEL must be dropped. */
+TIMUI_TEST(test_title_rejects_controls){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport f;
+    TimuiTransport t;
+    TimuiScreenMode m;
+    TimuiStr out;
+    TIMUI_CHECK(timui_fake_init(&f, &al) == TIMUI_OK);
+    t = timui_fake_transport(&f);
+
+    timui_screen_enter(&t, &m, 0, TIMUI_STR_LIT("\xC3\x9C"));   /* Ü */
+    out = timui_fake_output(&f);
+    TIMUI_CHECK(out.len == 7);
+    TIMUI_CHECK(memcmp(out.ptr, "\x1b]0;\xC3\x9C\x07", 7) == 0);
+
+    timui_fake_clear_output(&f);
+    timui_screen_enter(&t, &m, 0, TIMUI_STR_LIT("a\xC2\x9C\x07" "b"));  /* a, U+009C, BEL, b */
+    out = timui_fake_output(&f);
+    TIMUI_CHECK(out.len == 7);
+    TIMUI_CHECK(memcmp(out.ptr, "\x1b]0;ab\x07", 7) == 0);       /* U+009C + BEL dropped */
+
+    timui_fake_destroy(&f);
+}
