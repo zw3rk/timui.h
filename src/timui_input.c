@@ -134,7 +134,7 @@ static int utf8_lead(unsigned char b, uint32_t *cp){
 TIMUI_API void timui_input_init(TimuiInputParser *p){
     if(!p) return;
     p->state = 0; p->param = 0; p->nparams = 0;
-    p->mod_param = 0; p->has_mod = 0;
+    p->mod_param = 0; p->has_mod = 0; p->sub_param = 0;
     p->csi_mouse = 0; p->mcount = 0;
     p->mparam[0] = p->mparam[1] = p->mparam[2] = 0;
     p->pasting = 0; p->paste_ptr = NULL;
@@ -258,7 +258,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
         case 1: /* ESC */
             if(c == '['){
                 p->state = 2; p->param = 0; p->nparams = 0;
-                p->mod_param = 0; p->has_mod = 0;
+                p->mod_param = 0; p->has_mod = 0; p->sub_param = 0;
                 p->csi_mouse = 0; p->mcount = 0;
                 p->mparam[0] = p->mparam[1] = p->mparam[2] = 0;
                 break;
@@ -277,9 +277,19 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                     * boundary, silently dropping b[0]. */
             break;
         case 2: /* CSI */
+            /* Z3: an ESC mid-CSI aborts the pending sequence and restarts a
+             * fresh escape (ECMA-48), rather than resyncing to ground and
+             * leaking the interrupted tail as text. */
+            if(c == 0x1b){ p->state = 1; p->esc_since_ms = p->now_ms; break; }
             if(c == '<'){ p->csi_mouse = 1; p->mcount = 0; p->mparam[0] = p->mparam[1] = p->mparam[2] = 0; break; }
             if(c == '?' || c == '>' || c == '='){ break; }              /* private marker */
+            /* Z4: ':' opens a sub-parameter (Kitty event-type / alternate-key
+             * reports). timui does not use sub-parameters, so ignore their
+             * digits until the next ';' or final byte — but stay in CSI state
+             * so the base key is not dropped and the tail is not leaked. */
+            if(c == ':'){ p->sub_param = 1; break; }
             if(c >= '0' && c <= '9'){
+                if(p->sub_param){ break; }                              /* discard sub-parameter digits */
                 if(p->csi_mouse){
                     if(p->mcount < 3 && p->mparam[p->mcount] < 99999)
                         p->mparam[p->mcount] = p->mparam[p->mcount] * 10 + (c - '0');
@@ -289,6 +299,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 break;
             }
             if(c == ';'){
+                p->sub_param = 0;                                       /* ';' ends any sub-parameter */
                 if(p->csi_mouse){ if(p->mcount < 2) p->mcount++; }
                 else { p->has_mod = 1; p->mod_param = 0; }
                 break;
@@ -317,6 +328,9 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             p->state = 0;          /* unexpected: resync */
             break;
         case 3: /* SS3 (ESC O X) */
+            /* Z3: an ESC here aborts the truncated SS3 and restarts a fresh
+             * escape rather than being swallowed as a bogus final byte. */
+            if(c == 0x1b){ p->state = 1; p->esc_since_ms = p->now_ms; break; }
             {
                 TimuiKey k = ss3_final(c);
                 if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, 0, 0); count++; }
@@ -328,6 +342,18 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 p->utf8_cp = (p->utf8_cp << 6) | (uint32_t)(c & 0x3F);
                 p->utf8_need--;
                 if(p->utf8_need == 0){
+                    /* Z2: reject overlong / surrogate / above-max exactly as the
+                     * render decoder (timui_utf8_decode) does — otherwise an
+                     * overlong C0 80 would emit codepoint 0 (a NUL injected into
+                     * the app buffer, bypassing the V14 NUL guard). utf8_len is
+                     * the total byte count (need+1). */
+                    if((p->utf8_len == 2 && p->utf8_cp < 0x80) ||
+                       (p->utf8_len == 3 && p->utf8_cp < 0x800) ||
+                       (p->utf8_len == 4 && p->utf8_cp < 0x10000) ||
+                       (p->utf8_cp >= 0xD800 && p->utf8_cp <= 0xDFFF) ||
+                       p->utf8_cp > 0x10FFFF){
+                        p->utf8_cp = 0xFFFD;
+                    }
                     emit_text(cb, ctx, p->utf8_ptr, p->utf8_ptr ? (size_t)p->utf8_len : 0, p->utf8_cp);
                     count++; p->state = 0;
                 }

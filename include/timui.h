@@ -657,6 +657,7 @@ typedef struct {
     int         nparams;   /* any parameter seen */
     int         mod_param; /* second CSI parameter (kitty modifiers) */
     int         has_mod;   /* a second parameter was given */
+    int         sub_param; /* inside a ':' sub-parameter — ignore its digits (Z4) */
     int         csi_mouse; /* '<' introducer seen — SGR mouse */
     int         mparam[3]; /* mouse params: button-code, x, y */
     int         mcount;    /* mouse param index */

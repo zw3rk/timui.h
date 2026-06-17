@@ -1,13 +1,15 @@
 # Known gaps and limitations — timui.h
 
-Status after four review rounds (2026-07-03). Rounds 1–3 (static) fixed G/V, W,
+Status after seven review rounds. Rounds 1–3 (static) fixed G/V, W,
 and X ([round 1](reports/2026-07-03-deep-review.md),
 [2](reports/2026-07-03-deep-review-pass2.md),
 [3](reports/2026-07-03-deep-review-pass3.md)); round 4 added **dynamic
 verification** (ASAN+UBSAN clean) and an adversarial/lifecycle/API lens, filing
 the Y-series ([round 4](reports/2026-07-03-deep-review-pass4.md)); rounds 5–6
-were user-directed (round 5: W6/W11/W12/W14/V24; round 6: G6/G7/G13). Most of
-all sets are fixed; this file tracks what remains.
+were user-directed (round 5: W6/W11/W12/W14/V24; round 6: G6/G7/G13). Round 7
+(2026-07-05) fanned six independent lenses and filed the **Z-series**
+([round 7](reports/2026-07-05-deep-review-pass7.md)). Most of all sets are
+fixed; this file tracks what remains.
 
 ## Resolved (fixed in tree)
 
@@ -86,6 +88,40 @@ huge-rect signed-overflow UB + CPU burn (rect clamped to buffer) · Y3 listbox
 selected clamp (mirrors tree/table) · Y4 keymap_hit multi-binding reachability
 · Y7 cmdpal matcher respects TimuiStr.len · Y5/Y6 docs (end single-use,
 realloc required).
+
+## Round 7 (Z-series, 2026-07-05) — filed; fixes in progress
+
+Six-lens parallel review ([pass 7](reports/2026-07-05-deep-review-pass7.md)).
+Memory surface confirmed clean; yield is input correctness + honesty + coverage.
+
+- **Z1** false "Phase 0 scaffold" header banner (HIGH — the header is the docs).
+- **Z2** input UTF-8 decoder skips overlong/surrogate/range guards → NUL &
+  invalid-UTF-8 injection into app buffers (defeats V14). *Independent decoder
+  from the render one that G12/V16 fixed.*
+- **Z3** ESC mid-CSI/SS3 resyncs to ground and drops the ESC → next sequence
+  leaks as text (ECMA-48 says ESC aborts+restarts).
+- **Z4** CSI `:` sub-parameter (Kitty event-type/alternate-key) hits the same
+  resync → key dropped, sub-param tail injected.
+- **Z5** `release-check` regenerates instead of verifying `release/timui.h` →
+  amalgamation drift invisible to CI (release/ in sync today; the guard is weak).
+- **Z6** fourth hand-inlined UTF-8 encoder in `timui_begin` (DRY).
+- **Z7** `put_glyph`/`draw_text`/`draw_text_linked` triplicate wide-glyph logic.
+- **Z8** dead/half-wired `TIMUI_KEYIN_LEFT/RIGHT/HOME/END/DELETE` + misleading
+  comment (no widget consumes them; input_line/text_area are append-only).
+- **Z9** `draw_box`/`hline`/`vline` lack the Y2 rect-clamp → signed-overflow UB +
+  unbounded loop on extreme geometry (sibling of Y2; not a write overrun).
+- **Z10** impl-only macros (`R_EMIT`, …) leak into the consumer TU (no `#undef`).
+- **Z11** un-prefixed internal typedefs `SnapBuf`/`ConptyCtx` leak.
+- **Z12** `timui_ui_resize` returns void → resize OOM unsignalable (G6/G7 class).
+- **Z13** orphaned public API: `TimuiDialogResult`, `Cell.image_id`, unused cell
+  flags.
+- **Z14** rect-cut `cut_*` mislabeled "pure" (mutate `*r`).
+- **Z15–Z25** coverage: lifecycle-OOM rollback, message API, hline/vline, layout
+  siblings, label_hyperlink, function_bar, tab-grow OOM, hyperlink_set neg/OOM,
+  `timui_run` negatives, str_len/now_ms, termios-failure guard (V11).
+- **Z26** *(rec, breaking)* tree/table/command_palette are mutation-only, no
+  value/`_mut` twin (unlike listbox). **Z27** *(rec)* menu is uncontrolled +
+  hidden layout cursor. **Z28** *(opt)* list-widget scaffolding duplication.
 
 ## Verification
 

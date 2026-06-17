@@ -195,3 +195,81 @@ TIMUI_TEST(test_paste_empty_no_event){
     TIMUI_CHECK(s.events == 0);                               /* no empty paste */
 }
 
+/* Z2: the input UTF-8 decoder must apply the same overlong / surrogate /
+ * above-max rejection as the render decoder (timui_utf8_decode), substituting
+ * U+FFFD. Otherwise `C0 80` decodes to codepoint 0 and injects a real NUL byte
+ * into the app's text buffer — bypassing the V14 ground-state NUL guard. */
+TIMUI_TEST(test_input_utf8_overlong_rejected){
+    TimuiInputParser p;
+    Sink s;
+    static const unsigned char overlong_nul[] = { 0xC0, 0x80 };            /* overlong U+0000 */
+    static const unsigned char overlong_slash[] = { 0xE0, 0x80, 0xAF };    /* overlong U+002F */
+    static const unsigned char surrogate[]     = { 0xED, 0xA0, 0x80 };     /* U+D800 (half)   */
+    static const unsigned char above_max[]     = { 0xF4, 0x90, 0x80, 0x80 };/* U+110000        */
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, overlong_nul, sizeof overlong_nul, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1 && s.ev[0].kind == TIMUI_EVENT_TEXT);
+    TIMUI_CHECK(s.ev[0].as.text.codepoint == 0xFFFD);   /* must NOT be 0 */
+
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, overlong_slash, sizeof overlong_slash, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1 && s.ev[0].as.text.codepoint == 0xFFFD);   /* not '/' */
+
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, surrogate, sizeof surrogate, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1 && s.ev[0].as.text.codepoint == 0xFFFD);
+
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, above_max, sizeof above_max, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1 && s.ev[0].as.text.codepoint == 0xFFFD);
+
+    /* a legitimate 2-byte rune (U+00E9) must still pass unchanged */
+    { static const unsigned char e_acute[] = { 0xC3, 0xA9 };
+      s.n = 0; timui_input_init(&p);
+      timui_input_feed(&p, e_acute, sizeof e_acute, sink_cb, &s);
+      TIMUI_CHECK(s.n == 1 && s.ev[0].as.text.codepoint == 0xE9); }
+}
+
+/* Z3: an ESC arriving mid-sequence must abort the pending CSI/SS3 and begin a
+ * fresh escape (ECMA-48), not resync to ground and leak the interrupted
+ * sequence's tail as injected text. */
+TIMUI_TEST(test_input_esc_mid_csi_restarts){
+    TimuiInputParser p;
+    Sink s;
+    /* CSI case: "ESC[3" (truncated Delete) then "ESC[A" (Up). The Up must
+     * survive; no literal "[A" text may be injected. */
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[3\x1b[A", 6, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_KEY && s.ev[0].as.key.key == TIMUI_KEY_UP);
+
+    /* SS3 case: "ESC O" (truncated) then "ESC[A" (Up) — same guarantee. */
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, "\x1bO\x1b[A", 5, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_KEY && s.ev[0].as.key.key == TIMUI_KEY_UP);
+}
+
+/* Z4: a CSI ':' sub-parameter (Kitty "report event types" / "report alternate
+ * keys") is a legal ECMA-48 parameter-substring separator. It must not resync
+ * the parser to ground: the base key survives and no sub-param tail leaks as
+ * text. */
+TIMUI_TEST(test_input_csi_subparam_ignored){
+    TimuiInputParser p;
+    Sink s;
+    /* event-type form: "ESC[97;1:3u" — Kitty 'a' (code 97), mods from param 1
+     * (none), event-type 3 in a sub-param that must be discarded. */
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[97;1:3u", 9, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1 && s.ev[0].kind == TIMUI_EVENT_KEY);
+    TIMUI_CHECK(s.ev[0].as.key.codepoint == 97);
+
+    /* alternate-key form: "ESC[97:65;2u" — base 'a' with a shifted-key sub-param
+     * before the modifier; base survives, Shift (param 2) decoded. */
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[97:65;2u", 10, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1 && s.ev[0].kind == TIMUI_EVENT_KEY);
+    TIMUI_CHECK(s.ev[0].as.key.codepoint == 97);
+    TIMUI_CHECK(s.ev[0].as.key.mods == TIMUI_MOD_SHIFT);
+}
+

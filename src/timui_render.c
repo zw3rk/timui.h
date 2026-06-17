@@ -233,17 +233,31 @@ TIMUI_API void timui_draw_fill(TimuiCellBuffer *buf, TimuiRect r, TimuiStyle st)
 TIMUI_API void timui_draw_hline(TimuiCellBuffer *buf, int x, int y, int w, TimuiStyle st){
     int i;
     if(!buf || w <= 0) return;
+    /* Z9: clamp the run to the buffer so an extreme width can't overflow x+i or
+     * spin the loop ~INT_MAX times (put_glyph already bounds-checks each cell,
+     * so this is about loop bounds + UB, not write safety — same as draw_fill). */
+    if(x < 0){ w += x; x = 0; }
+    if(x >= buf->w || w <= 0) return;
+    if(w > buf->w - x) w = buf->w - x;
     for(i = 0; i < w; i++) put_glyph(buf, x + i, y, 0x2500, st);
 }
 TIMUI_API void timui_draw_vline(TimuiCellBuffer *buf, int x, int y, int h, TimuiStyle st){
     int i;
     if(!buf || h <= 0) return;
+    if(y < 0){ h += y; y = 0; }                 /* Z9: clamp — see draw_hline */
+    if(y >= buf->h || h <= 0) return;
+    if(h > buf->h - y) h = buf->h - y;
     for(i = 0; i < h; i++) put_glyph(buf, x, y + i, 0x2502, st);
 }
 TIMUI_API void timui_draw_box(TimuiCellBuffer *buf, TimuiRect r, uint32_t border_flags, TimuiStyle st){
     uint32_t horiz, vert, tl, tr, bl, br;
     int i;
-    if(!buf || r.w < 2 || r.h < 2) return;
+    if(!buf) return;
+    /* Z9: clamp the rect to the buffer first, mirroring draw_fill — kills the
+     * r.x+r.w-1 signed-overflow UB and the ~INT_MAX edge loops on extreme
+     * geometry; the box is clipped to the viewport (borders at the edge). */
+    r = rect_clamp_buf(buf, r);
+    if(r.w < 2 || r.h < 2) return;
     if(border_flags & TIMUI_BORDER_DOUBLE){ horiz=0x2550; vert=0x2551; tl=0x2554; tr=0x2557; bl=0x255A; br=0x255D; }
     else if(border_flags & TIMUI_BORDER_ASCII){ horiz='-'; vert='|'; tl='+'; tr='+'; bl='+'; br='+'; }
     else if(border_flags & TIMUI_BORDER_ROUND){ horiz=0x2500; vert=0x2502; tl=0x256D; tr=0x256E; bl=0x2570; br=0x256F; }
