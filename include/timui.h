@@ -9,10 +9,12 @@
  *   Split build: src/timui_core.c defines TIMUI_IMPLEMENTATION and includes
  *   this header; everything else compiles against the declarations only.
  *
- * Phase 0 scaffold: the foundational types and the pure leaf helpers (rect
- * layout, ids, strings) are implemented and unit-tested. The terminal /
- * render / widget stack lands in later phases, so the lifecycle functions
- * below currently report TIMUI_ERR_UNSUPPORTED.
+ * Status (v0.1): a working immediate-mode TUI, not a scaffold. The POSIX
+ * raw-mode terminal backend, the incremental input parser (legacy + Kitty
+ * keyboard, SGR mouse, bracketed paste, focus), the truecolour diff renderer,
+ * and the themed widget set are all implemented and unit-tested. The only
+ * lifecycle stub is the Win32 ConPTY backend, which returns
+ * TIMUI_ERR_UNSUPPORTED (see docs/gaps.md, G10).
  *
  * SPDX-License-Identifier: Apache-2.0
  * Copyright 2026 Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd.
@@ -171,7 +173,7 @@ typedef struct {
 #define TIMUI_RECT(x, y, w, h) ((TimuiRect){ (x), (y), (w), (h) })
 #define TIMUI_ID(s)          timui_id_from_cstr(s)
 
-/* ---- Lifecycle (terminal backend lands in Phase 2) --------------------- */
+/* ---- Lifecycle (POSIX terminal backend; Win32 ConPTY is a stub) -------- */
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 TIMUI_API void        timui_close(Timui *ui);
 /* Restore the terminal (screen exit + termios) — used by the SIGTERM/SIGHUP/
@@ -187,7 +189,10 @@ TIMUI_API TimuiRect timui_root(const TimuiFrame *frame);
 TIMUI_API int       timui_width(const TimuiFrame *frame);
 TIMUI_API int       timui_height(const TimuiFrame *frame);
 TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
-TIMUI_API void             timui_ui_resize(Timui *ui, int w, int h);
+/* Resize both cell buffers. Returns TIMUI_OK, TIMUI_ERR_INVALID_ARGUMENT for a
+ * NULL ui / non-positive size, or TIMUI_ERR_OUT_OF_MEMORY if a buffer can't grow
+ * (dimensions are left unchanged in that case — see V10 rollback). */
+TIMUI_API TimuiResult      timui_ui_resize(Timui *ui, int w, int h);
 TIMUI_API int              timui_poll_event(Timui *ui, TimuiEvent *out_event);
 /* G7: returns the count of events dropped this frame (queue holds 16) and
  * resets the counter. Call after timui_begin to detect a burst that exceeded
@@ -225,15 +230,19 @@ TIMUI_API bool       timui_checkbox_mut(TimuiFrame *f, TimuiId id, TimuiRect r, 
 TIMUI_API TimuiBoolEdit timui_radio(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool selected);
 TIMUI_API void       timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text);
 
-/* Cursor/edit key flags accumulated per frame for the focused input. */
+/* Edit/navigation key flags accumulated per frame for the focused widget.
+ * Live (consumed by widgets): BACKSPACE (input line / text area), UP / DOWN
+ * (listbox). LEFT/RIGHT/HOME/END/DELETE are reserved (not yet wired) — the
+ * current input widgets are append-at-end with no in-line cursor, so no widget
+ * reads them yet; they are kept for a future cursor-editing pass. */
 #define TIMUI_KEYIN_BACKSPACE 1u
-#define TIMUI_KEYIN_LEFT      2u
-#define TIMUI_KEYIN_RIGHT     4u
-#define TIMUI_KEYIN_HOME      8u
-#define TIMUI_KEYIN_END       16u
-#define TIMUI_KEYIN_DELETE    32u
 #define TIMUI_KEYIN_UP        64u
 #define TIMUI_KEYIN_DOWN      128u
+#define TIMUI_KEYIN_LEFT      2u    /* reserved (not yet wired) */
+#define TIMUI_KEYIN_RIGHT     4u    /* reserved (not yet wired) */
+#define TIMUI_KEYIN_HOME      8u    /* reserved (not yet wired) */
+#define TIMUI_KEYIN_END       16u   /* reserved (not yet wired) */
+#define TIMUI_KEYIN_DELETE    32u   /* reserved (not yet wired) */
 
 /* Mutable single-line input: click to focus, type to append (bounded by cap),
  * backspace deletes the last rune, Enter submits. Returns true on submit. */
@@ -254,6 +263,8 @@ TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
 TIMUI_API TimuiListResult timui_listbox_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
                                             TimuiListState *state, int count, TimuiLabelFn label, void *userdata);
 
+/* Reserved for a future typed-dialog helper. NOTE: timui_message_box currently
+ * returns a raw 0-based button index, NOT a TimuiDialogResult. */
 typedef enum {
     TIMUI_DIALOG_NONE = 0,
     TIMUI_DIALOG_OK,
@@ -369,7 +380,9 @@ TIMUI_API size_t   timui_str_copy(char *dst, size_t cap, TimuiStr src);
 TIMUI_API TimuiStr timui_str_slice(TimuiStr s, size_t start, size_t len);
 TIMUI_API int      timui_str_eq_cstr(TimuiStr a, const char *b);
 
-/* ---- Rect-split layout (pure; clamps to non-negative) ------------------ */
+/* ---- Rect-split layout (clamps to non-negative) ------------------------ *
+ * cut_* carve a strip off *r IN PLACE (the RectCut idiom) and return it;
+ * inset/pad/split_* are pure — they take a rect by value and never mutate it. */
 TIMUI_API TimuiRect timui_cut_top(TimuiRect *r, int h);
 TIMUI_API TimuiRect timui_cut_bottom(TimuiRect *r, int h);
 TIMUI_API TimuiRect timui_cut_left(TimuiRect *r, int w);
@@ -382,11 +395,13 @@ TIMUI_API void      timui_split_rows(TimuiRect r, float ratio, TimuiRect *a, Tim
 /* ---- Cell buffer (rendering surface) ---------------------------------- */
 typedef enum {
     TIMUI_CELL_EMPTY        = 0,
-    TIMUI_CELL_CONTINUATION = 1u << 0,
-    TIMUI_CELL_DIRTY        = 1u << 1,
-    TIMUI_CELL_WIDE         = 1u << 2,
-    TIMUI_CELL_IMAGE        = 1u << 3,
-    TIMUI_CELL_LINK         = 1u << 4
+    TIMUI_CELL_CONTINUATION = 1u << 0,  /* live: wide-glyph trailing cell */
+    /* Reserved (not yet used): the renderer derives width from TimuiCell.width
+     * and links from hyperlink_id, so these flags are forward-looking only. */
+    TIMUI_CELL_DIRTY        = 1u << 1,  /* reserved */
+    TIMUI_CELL_WIDE         = 1u << 2,  /* reserved */
+    TIMUI_CELL_IMAGE        = 1u << 3,  /* reserved */
+    TIMUI_CELL_LINK         = 1u << 4   /* reserved */
 } TimuiCellFlags;
 
 typedef struct {
@@ -397,7 +412,7 @@ typedef struct {
     uint16_t width;
     uint16_t flags;
     uint32_t hyperlink_id;
-    uint32_t image_id;
+    uint32_t image_id;    /* reserved for kitty-graphics cell placement (unused) */
 } TimuiCell;
 
 typedef struct { char uri[256]; } TimuiHyperlink;

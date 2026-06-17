@@ -7,16 +7,16 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-typedef struct { HANDLE hPC; HANDLE hPipeIn; HANDLE hPipeOut; } ConptyCtx;
+typedef struct { HANDLE hPC; HANDLE hPipeIn; HANDLE hPipeOut; } TimuiConptyCtx;
 
 static int conpty_write(TimuiTransport *t, const void *d, size_t n){
-    ConptyCtx *c = (ConptyCtx *)t->ctx;
+    TimuiConptyCtx *c = (TimuiConptyCtx *)t->ctx;
     DWORD written = 0;
     WriteFile(c->hPipeIn, d, (DWORD)n, &written, NULL);
     return (int)written;
 }
 static int conpty_read(TimuiTransport *t, void *b, size_t cap){
-    ConptyCtx *c = (ConptyCtx *)t->ctx;
+    TimuiConptyCtx *c = (TimuiConptyCtx *)t->ctx;
     DWORD got = 0;
     ReadFile(c->hPipeOut, b, (DWORD)cap, &got, NULL);
     return (int)got;

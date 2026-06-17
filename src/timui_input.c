@@ -377,4 +377,5 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
     }
     return count;
 }
+#undef TIMUI_ESC_TIMEOUT_MS   /* Z10: impl-only macro must not leak into the consumer TU */
 

@@ -88,10 +88,17 @@ TIMUI_TEST(test_resize_oom_keeps_dims){
     t = timui_fake_transport(&fake);
     timui_open_for_test(&ui, t, 30, 10, &al);
     fc.armed = 1; fc.fail_on = 2;             /* fail curr's resize (2nd armed realloc) */
-    timui_ui_resize(ui, 40, 12);
+    /* Z12: the OOM is now reported to the caller (was void). */
+    TIMUI_CHECK(timui_ui_resize(ui, 40, 12) == TIMUI_ERR_OUT_OF_MEMORY);
     timui_begin(ui, &f);
     TIMUI_CHECK(timui_width(f) == 30 && timui_height(f) == 10);          /* ui->w/h unchanged */
     TIMUI_CHECK(timui_frame_buffer(f)->w == 30);                         /* curr not diverged */
     timui_end(f);
+    /* Z12: a subsequent unarmed resize succeeds and reports TIMUI_OK; NULL/0 args
+     * report TIMUI_ERR_INVALID_ARGUMENT. */
+    fc.armed = 0;
+    TIMUI_CHECK(timui_ui_resize(ui, 40, 12) == TIMUI_OK);
+    TIMUI_CHECK(timui_ui_resize(NULL, 40, 12) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_ui_resize(ui, 0, 12) == TIMUI_ERR_INVALID_ARGUMENT);
     timui_close(ui);
 }

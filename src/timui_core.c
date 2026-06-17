@@ -235,18 +235,16 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 if(ev.as.key.key == TIMUI_KEY_TAB) timui_interact_set_keys(&ui->ia, 1, 0);
                 else if(ev.as.key.key == TIMUI_KEY_ENTER) timui_interact_set_keys(&ui->ia, 0, 1);
                 else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
-                else if(ev.as.key.key == TIMUI_KEY_LEFT) ui->key_in |= TIMUI_KEYIN_LEFT;
-                else if(ev.as.key.key == TIMUI_KEY_RIGHT) ui->key_in |= TIMUI_KEYIN_RIGHT;
+                /* LEFT/RIGHT/HOME/END/DELETE are reserved (no widget consumes
+                 * them yet); don't accumulate dead flags. See TIMUI_KEYIN_*. */
                 else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
                 else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
             } else if(ev.kind == TIMUI_EVENT_TEXT){
-                /* UTF-8 encode the codepoint into text_in (supports international input) */
+                /* UTF-8 encode the codepoint into text_in (supports international
+                 * input) via the single shared encoder (Z6). */
                 uint32_t cp = ev.as.text.codepoint;
-                char enc[4]; int enclen = 0;
-                if(cp < 0x80){ enc[0] = (char)cp; enclen = 1; }
-                else if(cp < 0x800){ enc[0] = (char)(0xC0 | (cp >> 6)); enc[1] = (char)(0x80 | (cp & 0x3F)); enclen = 2; }
-                else if(cp < 0x10000){ enc[0] = (char)(0xE0 | (cp >> 12)); enc[1] = (char)(0x80 | ((cp >> 6) & 0x3F)); enc[2] = (char)(0x80 | (cp & 0x3F)); enclen = 3; }
-                else { enc[0] = (char)(0xF0 | (cp >> 18)); enc[1] = (char)(0x80 | ((cp >> 12) & 0x3F)); enc[2] = (char)(0x80 | ((cp >> 6) & 0x3F)); enc[3] = (char)(0x80 | (cp & 0x3F)); enclen = 4; }
+                char enc[4];
+                int enclen = timui_utf8_encode_(cp, enc);
                 if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
                     int ei;
                     for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
@@ -284,22 +282,23 @@ TIMUI_API int timui_height(const TimuiFrame *frame){ return (frame && frame->ui)
 TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame){
     return (frame && frame->ui) ? &frame->ui->curr : NULL;
 }
-TIMUI_API void timui_ui_resize(Timui *ui, int w, int h){
+TIMUI_API TimuiResult timui_ui_resize(Timui *ui, int w, int h){
     TimuiResult r;
     int ow, oh;
-    if(!ui || w <= 0 || h <= 0) return;
+    if(!ui || w <= 0 || h <= 0) return TIMUI_ERR_INVALID_ARGUMENT;
     ow = ui->w; oh = ui->h;
     /* Resize prev first; if curr then fails, roll prev back. The old order
      * (curr then prev) left curr at the new size but ui->w/h and prev at the
      * old — a divergence where layout used stale dims while the cell buffer
      * had grown. ui->w/h commit only when both buffers succeed. */
     r = timui_cells_resize(&ui->prev, w, h, &ui->alloc);
-    if(r != TIMUI_OK) return;
+    if(r != TIMUI_OK) return r;                                         /* Z12: report OOM */
     r = timui_cells_resize(&ui->curr, w, h, &ui->alloc);
-    if(r != TIMUI_OK){ (void)timui_cells_resize(&ui->prev, ow, oh, &ui->alloc); return; }
+    if(r != TIMUI_OK){ (void)timui_cells_resize(&ui->prev, ow, oh, &ui->alloc); return r; }
     ui->w = w;
     ui->h = h;
     timui_renderer_reset(&ui->renderer);   /* cursor/SGR tracking invalidated */
+    return TIMUI_OK;
 }
 TIMUI_API int timui_poll_event(Timui *ui, TimuiEvent *out_event){
     int i;
@@ -699,4 +698,10 @@ TIMUI_API void timui_split_rows(TimuiRect r, float ratio, TimuiRect *a, TimuiRec
     if(a){ a->x = r.x; a->y = r.y;      a->w = r.w; a->h = ah; }
     if(b){ b->x = r.x; b->y = r.y + ah; b->w = r.w; b->h = r.h - ah; }
 }
+
+/* Z10: undo the section's implementation-only macros so they can't leak into
+ * the consumer's translation unit in the amalgamated single header. */
+#undef TIMUI_ID_ROOT
+#undef TIMUI_MPSC_LOCK
+#undef TIMUI_MPSC_UNLOCK
 

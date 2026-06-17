@@ -92,7 +92,7 @@ TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_
             int adv = timui_utf8_decode(title.ptr + i, title.len - i, &cp);
             if(adv <= 0){ i++; continue; }                  /* incomplete lead: skip */
             if(cp >= 0x20 && cp != 0x7f && !(cp >= 0x80 && cp <= 0x9f))
-                cn += (size_t)utf8_encode(cp, clean + cn);  /* keep printable cp */
+                cn += (size_t)timui_utf8_encode_(cp, clean + cn);  /* keep printable cp */
             i += (size_t)adv;
         }
         if(cn > 0){   /* skip OSC entirely if all chars were stripped */
@@ -228,4 +228,5 @@ TIMUI_API void timui_sync_begin(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?2026h")
 TIMUI_API void timui_sync_end(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?2026l"); }
 TIMUI_API void timui_hide_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25l"); }
 TIMUI_API void timui_show_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25h"); }
+#undef TIMUI_EMIT   /* Z10: impl-only macro must not leak into the consumer TU */
 

@@ -41,22 +41,22 @@ TIMUI_API int timui_snapshot_row_eq(const TimuiCellBuffer *buf, int row, const c
 /* Minimal bounds-checked append cursor: writes a byte only when it fits
  * (reserving room for the terminating NUL) but always advances len, giving
  * snprintf-style "would-be length" semantics. */
-typedef struct { char *p; size_t cap; size_t len; } SnapBuf;
-static void sb_put(SnapBuf *s, char c){
+typedef struct { char *p; size_t cap; size_t len; } TimuiSnapBuf;
+static void sb_put(TimuiSnapBuf *s, char c){
     if(s->cap && s->len + 1 < s->cap) s->p[s->len] = c;
     s->len++;
 }
-static void sb_puts(SnapBuf *s, const char *str){ if(str) while(*str) sb_put(s, *str++); }
-static void sb_putx(SnapBuf *s, uint32_t v, int upper){   /* one hex nibble */
+static void sb_puts(TimuiSnapBuf *s, const char *str){ if(str) while(*str) sb_put(s, *str++); }
+static void sb_putx(TimuiSnapBuf *s, uint32_t v, int upper){   /* one hex nibble */
     sb_put(s, (char)((v < 10 ? '0' + v : (upper ? 'A' : 'a') + (v - 10))));
 }
-static void sb_uint(SnapBuf *s, unsigned v){   /* decimal via the shared formatter */
+static void sb_uint(TimuiSnapBuf *s, unsigned v){   /* decimal via the shared formatter */
     char nb[16]; int n = fmt_uint(nb, v), i;
     for(i = 0; i < n; i++) sb_put(s, nb[i]);
 }
 
 /* Serialize one cell's five fields into s (no trailing separator). */
-static void sb_cell(SnapBuf *s, const TimuiCell *c){
+static void sb_cell(TimuiSnapBuf *s, const TimuiCell *c){
     /* codepoint */
     if(c->codepoint == 0){ sb_put(s, '.'); }
     else if(c->codepoint >= 0x20 && c->codepoint < 0x7f){ sb_put(s, (char)c->codepoint); }
@@ -99,7 +99,7 @@ static void sb_cell(SnapBuf *s, const TimuiCell *c){
 }
 
 TIMUI_API size_t timui_snapshot_grid(const TimuiCellBuffer *buf, char *out, size_t cap){
-    SnapBuf s;
+    TimuiSnapBuf s;
     int x, y;
     if(!buf || !buf->cells) return 0;
     /* The (NULL,0) size-query form still returns the would-be length: sb_put
@@ -131,7 +131,7 @@ TIMUI_API int timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b,
     if(!a || !b) return 0;
     if(a->w != b->w || a->h != b->h){
         if(diff_out && diff_cap){
-            SnapBuf s = { diff_out, diff_cap, 0 };
+            TimuiSnapBuf s = { diff_out, diff_cap, 0 };
             sb_puts(&s, "dimension mismatch: ");
             sb_uint(&s, (unsigned)a->w); sb_put(&s, 'x'); sb_uint(&s, (unsigned)a->h);
             sb_puts(&s, " vs ");
@@ -149,7 +149,7 @@ TIMUI_API int timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b,
                ca->bg != cb->bg || ca->attrs != cb->attrs ||
                ca->width != cb->width){
                 if(diff_out && diff_cap){
-                    SnapBuf s = { diff_out, diff_cap, 0 };
+                    TimuiSnapBuf s = { diff_out, diff_cap, 0 };
                     sb_puts(&s, "mismatch at (");
                     sb_uint(&s, (unsigned)x); sb_put(&s, ','); sb_uint(&s, (unsigned)y);
                     sb_puts(&s, "): expected ");

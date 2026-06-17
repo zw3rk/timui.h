@@ -108,7 +108,12 @@ TIMUI_API int timui_utf8_width(uint32_t cp){
 }
 
 /* ---- drawing primitives ----------------------------------------------- */
-static void put_glyph(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyle st){
+/* Z7: the single glyph-emit primitive. Writes cp at (x,y) with style st and an
+ * optional hyperlink id, and blanks the continuation cell for a wide glyph.
+ * This is the one place the subtle wide-glyph continuation logic lives (the
+ * site of the prior V6/X2 bugs) — draw_text, draw_text_linked, and the box/
+ * fill/line primitives all route through it. */
+static void put_glyph_link(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyle st, uint32_t link){
     TimuiCell c;
     int w;
     if(buf->has_clip && (x < buf->clip.x || y < buf->clip.y ||
@@ -120,6 +125,7 @@ static void put_glyph(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyl
     c.bg = st.bg;
     c.attrs = st.attrs;
     c.width = (uint16_t)(w > 1 ? 2 : 1);
+    c.hyperlink_id = link;
     timui_cells_put(buf, x, y, &c);
     /* wide glyph: blank the continuation cell so stale content isn't left behind */
     if(w > 1 && !(buf->has_clip && (x + 1 < buf->clip.x || x + 1 >= buf->clip.x + buf->clip.w))){
@@ -131,6 +137,10 @@ static void put_glyph(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyl
         timui_cells_put(buf, x + 1, y, &c);
     }
 }
+/* Unlinked convenience for the drawing primitives (box/fill/lines). */
+static void put_glyph(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyle st){
+    put_glyph_link(buf, x, y, cp, st, 0);
+}
 TIMUI_API TimuiStyle timui_style_make(uint32_t fg, uint32_t bg, uint32_t attrs){
     TimuiStyle s;
     s.fg = fg;
@@ -139,21 +149,7 @@ TIMUI_API TimuiStyle timui_style_make(uint32_t fg, uint32_t bg, uint32_t attrs){
     return s;
 }
 TIMUI_API void timui_draw_text(TimuiCellBuffer *buf, int x, int y, TimuiStr text, TimuiStyle st){
-    size_t i = 0;
-    int cx = x;
-    if(!buf || !text.ptr) return;
-    while(i < text.len){
-        uint32_t cp = 0;
-        int adv = timui_utf8_decode(text.ptr + i, text.len - i, &cp);
-        int w;
-        if(adv <= 0) adv = 1;
-        w = timui_utf8_width(cp);
-        if(w > 0){
-            put_glyph(buf, cx, y, cp, st);
-            cx += w;
-        }
-        i += (size_t)adv;
-    }
+    timui_draw_text_linked(buf, x, y, text, st, 0);   /* Z7: unlinked == linked with id 0 */
 }
 TIMUI_API uint32_t timui_hyperlink_set(TimuiCellBuffer *buf, const char *uri){
     size_t n;
@@ -181,28 +177,10 @@ TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiS
         uint32_t cp = 0;
         int adv = timui_utf8_decode(text.ptr + i, text.len - i, &cp);
         int w;
-        TimuiCell *cell;
         if(adv <= 0) adv = 1;
         w = timui_utf8_width(cp);
         if(w > 0){
-            if(buf->has_clip && (cx < buf->clip.x || y < buf->clip.y ||
-               cx >= buf->clip.x + buf->clip.w || y >= buf->clip.y + buf->clip.h)){ i += (size_t)adv; cx += w; continue; }
-            cell = timui_cells_get(buf, cx, y);
-            if(cell){
-                memset(cell, 0, sizeof *cell);
-                cell->codepoint = cp; cell->fg = st.fg; cell->bg = st.bg;
-                cell->attrs = st.attrs; cell->width = (uint16_t)(w > 1 ? 2 : 1); cell->hyperlink_id = link;
-            }
-            /* wide glyph: blank continuation cell (consistent with put_glyph) */
-            if(w > 1){
-                TimuiCell *cont = timui_cells_get(buf, cx + 1, y);
-                if(cont && !(buf->has_clip && (cx + 1 < buf->clip.x || cx + 1 >= buf->clip.x + buf->clip.w))){
-                    memset(cont, 0, sizeof *cont);
-                    cont->fg = TIMUI_COLOR_DEFAULT;   /* ADR 0001: blanked = default */
-                    cont->bg = TIMUI_COLOR_DEFAULT;
-                    cont->flags = TIMUI_CELL_CONTINUATION;
-                }
-            }
+            put_glyph_link(buf, cx, y, cp, st, link);
             cx += w;
         }
         i += (size_t)adv;
@@ -287,21 +265,6 @@ static int fmt_uint(char *buf, unsigned v){
     while(v){ tmp[n++] = (char)('0' + v % 10); v /= 10; }
     for(i = 0; i < n; i++) buf[i] = tmp[n - 1 - i];
     return n;
-}
-static int utf8_encode(uint32_t cp, char *out){
-    if(cp < 0x80){ out[0] = (char)cp; return 1; }
-    if(cp < 0x800){ out[0] = (char)(0xC0 | (cp >> 6)); out[1] = (char)(0x80 | (cp & 0x3F)); return 2; }
-    if(cp < 0x10000){
-        out[0] = (char)(0xE0 | (cp >> 12));
-        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        out[2] = (char)(0x80 | (cp & 0x3F));
-        return 3;
-    }
-    out[0] = (char)(0xF0 | (cp >> 18));
-    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    out[3] = (char)(0x80 | (cp & 0x3F));
-    return 4;
 }
 static void r_emit(TimuiTransport *t, const char *s, size_t n){ if(t && t->write) (void)t->write(t, s, n); }
 #define R_EMIT(t, lit) r_emit((t), (lit), sizeof(lit) - 1)
@@ -405,7 +368,7 @@ TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
                     }else r->last_link_uri[0] = '\0';
                 }
             }
-            gn = utf8_encode(cc->codepoint ? cc->codepoint : ' ', gb);
+            gn = timui_utf8_encode_(cc->codepoint ? cc->codepoint : ' ', gb);
             r_emit(t, gb, (size_t)gn);
             r->last_x = x + (cc->width >= 2 ? 2 : 1);   /* wide glyph advances cursor by 2 */
             r->last_y = y;
@@ -535,4 +498,5 @@ TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot
     }
     return th->slots[slot];
 }
+#undef R_EMIT   /* Z10: impl-only macro must not leak into the consumer TU */
 

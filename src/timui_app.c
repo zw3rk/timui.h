@@ -37,3 +37,4 @@ TIMUI_API int timui_run(const TimuiConfig *cfg, TimuiApp *app){
     timui_close(ui);
     return 0;
 }
+#undef TIMUI_RUN_BUF   /* Z10: impl-only macro must not leak into the consumer TU */

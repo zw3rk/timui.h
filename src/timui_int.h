@@ -56,3 +56,25 @@ struct Timui {
     TimuiFrame        frame;
 };
 
+/* Z6: the single shared UTF-8 encoder. Encodes an already-validated codepoint
+ * into `out` and returns the byte count (1..4). Defined in the first-included
+ * internal header so every section — the frame text buffer (core), the diff
+ * renderer (render), and the title sanitizer (term) — uses one copy, rather
+ * than each hand-inlining its own because the amalgamation include order put
+ * the previous static out of scope. */
+static int timui_utf8_encode_(uint32_t cp, char *out){
+    if(cp < 0x80){ out[0] = (char)cp; return 1; }
+    if(cp < 0x800){ out[0] = (char)(0xC0 | (cp >> 6)); out[1] = (char)(0x80 | (cp & 0x3F)); return 2; }
+    if(cp < 0x10000){
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = (char)(0xF0 | (cp >> 18));
+    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+}
+
