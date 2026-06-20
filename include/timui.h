@@ -231,22 +231,30 @@ TIMUI_API TimuiBoolEdit timui_radio(TimuiFrame *f, TimuiId id, TimuiRect r, Timu
 TIMUI_API void       timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text);
 
 /* Edit/navigation key flags accumulated per frame for the focused widget.
- * Live (consumed by widgets): BACKSPACE (input line / text area), UP / DOWN
- * (listbox). LEFT/RIGHT/HOME/END/DELETE are reserved (not yet wired) — the
- * current input widgets are append-at-end with no in-line cursor, so no widget
- * reads them yet; they are kept for a future cursor-editing pass. */
+ * BACKSPACE / LEFT / RIGHT / HOME / END / DELETE drive in-line cursor editing in
+ * text_area and input_field (one step per frame — a bitmask can't count repeats);
+ * UP / DOWN drive listbox selection. */
 #define TIMUI_KEYIN_BACKSPACE 1u
+#define TIMUI_KEYIN_LEFT      2u
+#define TIMUI_KEYIN_RIGHT     4u
+#define TIMUI_KEYIN_HOME      8u
+#define TIMUI_KEYIN_END       16u
+#define TIMUI_KEYIN_DELETE    32u
 #define TIMUI_KEYIN_UP        64u
 #define TIMUI_KEYIN_DOWN      128u
-#define TIMUI_KEYIN_LEFT      2u    /* reserved (not yet wired) */
-#define TIMUI_KEYIN_RIGHT     4u    /* reserved (not yet wired) */
-#define TIMUI_KEYIN_HOME      8u    /* reserved (not yet wired) */
-#define TIMUI_KEYIN_END       16u   /* reserved (not yet wired) */
-#define TIMUI_KEYIN_DELETE    32u   /* reserved (not yet wired) */
 
 /* Mutable single-line input: click to focus, type to append (bounded by cap),
- * backspace deletes the last rune, Enter submits. Returns true on submit. */
+ * backspace deletes the last rune, Enter submits. Returns true on submit.
+ * Append-only (no in-line cursor) — for full cursor editing use timui_input_field. */
 TIMUI_API bool       timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char *buf, size_t cap);
+
+/* Single-line editable field with an in-line cursor (F1.5). The caller owns the
+ * text buffer and the cursor/scroll state, mirroring TimuiTextAreaState. Click
+ * to focus; Left/Right/Home/End move, Backspace/Delete edit at the cursor, typing
+ * inserts mid-string, and the view scrolls horizontally to keep the cursor
+ * visible. Returns true on Enter. `cursor`/`scroll_x` are byte-index and column. */
+typedef struct { char *text; size_t cap; size_t cursor; int scroll_x; } TimuiInputState;
+TIMUI_API bool       timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st);
 
 typedef struct { int selected; int scroll; } TimuiListState;
 typedef const char *(*TimuiLabelFn)(void *userdata, int index);

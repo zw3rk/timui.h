@@ -235,8 +235,11 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 if(ev.as.key.key == TIMUI_KEY_TAB) timui_interact_set_keys(&ui->ia, 1, 0);
                 else if(ev.as.key.key == TIMUI_KEY_ENTER) timui_interact_set_keys(&ui->ia, 0, 1);
                 else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
-                /* LEFT/RIGHT/HOME/END/DELETE are reserved (no widget consumes
-                 * them yet); don't accumulate dead flags. See TIMUI_KEYIN_*. */
+                else if(ev.as.key.key == TIMUI_KEY_LEFT)   ui->key_in |= TIMUI_KEYIN_LEFT;
+                else if(ev.as.key.key == TIMUI_KEY_RIGHT)  ui->key_in |= TIMUI_KEYIN_RIGHT;
+                else if(ev.as.key.key == TIMUI_KEY_HOME)   ui->key_in |= TIMUI_KEYIN_HOME;
+                else if(ev.as.key.key == TIMUI_KEY_END)    ui->key_in |= TIMUI_KEYIN_END;
+                else if(ev.as.key.key == TIMUI_KEY_DELETE) ui->key_in |= TIMUI_KEYIN_DELETE;
                 else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
                 else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
             } else if(ev.kind == TIMUI_EVENT_TEXT){
@@ -253,6 +256,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         }
     }
     timui_interact_begin(&ui->ia);
+    ui->cursor_visible = 0;           /* F1.4: focused input re-requests each frame */
     ui->curr.has_clip = 0;            /* fresh clip stack each frame */
     ui->clip_count = 0;
     timui_cells_clear(&ui->curr);
@@ -268,6 +272,19 @@ TIMUI_API void timui_end(TimuiFrame *frame){
     ui = frame->ui;
     timui_interact_end(&ui->ia);
     timui_render_diff(&ui->transport, &ui->prev, &ui->curr, &ui->renderer);
+    /* F1.4: render_diff left the physical cursor at the last drawn cell, so
+     * reposition it for the focused input every visible frame; emit a hide once
+     * when focus leaves. render_diff already flushed, so flush the cursor bytes
+     * too. */
+    if(ui->cursor_visible){
+        timui_render_cursor(&ui->transport, ui->cursor_x, ui->cursor_y, 1);
+        ui->cursor_shown = 1;
+        if(ui->transport.flush) ui->transport.flush(&ui->transport);
+    } else if(ui->cursor_shown){
+        timui_render_cursor(&ui->transport, -1, -1, 0);
+        ui->cursor_shown = 0;
+        if(ui->transport.flush) ui->transport.flush(&ui->transport);
+    }
     tmp = ui->prev; ui->prev = ui->curr; ui->curr = tmp;   /* swap for next diff */
 }
 TIMUI_API TimuiRect timui_root(const TimuiFrame *frame){

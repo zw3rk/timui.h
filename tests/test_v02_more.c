@@ -88,6 +88,67 @@ TIMUI_TEST(test_text_area_utf8_backspace){
     timui_close(ui);
 }
 
+/* F1.3: text_area in-line cursor editing — LEFT/RIGHT/HOME/END/DELETE move and
+ * edit at st->cursor (mid-string), not just append-at-end. */
+TIMUI_TEST(test_text_area_cursor_edit){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[16] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+#define TA_FRAME() do{ timui_begin(ui,&f); timui_text_area(f, TIMUI_ID("ta"), r, &tas); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TA_FRAME();       /* click to focus (press) */
+    SETIN(&fake, "\x1b[<0;2;1m"); TA_FRAME();       /* release */
+    SETIN(&fake, "abc"); TA_FRAME();
+    TIMUI_CHECK(strcmp(text, "abc") == 0 && tas.cursor == 3);
+    SETIN(&fake, "\x1b[D"); TA_FRAME();             /* LEFT (one move/frame) */
+    TIMUI_CHECK(tas.cursor == 2);
+    SETIN(&fake, "X"); TA_FRAME();                  /* insert mid-string */
+    TIMUI_CHECK(strcmp(text, "abXc") == 0 && tas.cursor == 3);
+    SETIN(&fake, "\x1b[H"); TA_FRAME();             /* HOME */
+    TIMUI_CHECK(tas.cursor == 0);
+    SETIN(&fake, "\x1b[3~"); TA_FRAME();            /* DELETE forward -> "bXc" */
+    TIMUI_CHECK(strcmp(text, "bXc") == 0 && tas.cursor == 0);
+    SETIN(&fake, "\x7f"); TA_FRAME();               /* backspace at 0: no-op */
+    TIMUI_CHECK(strcmp(text, "bXc") == 0 && tas.cursor == 0);
+    SETIN(&fake, "\x1b[F"); TA_FRAME();             /* END */
+    TIMUI_CHECK(tas.cursor == 3);
+    SETIN(&fake, "\x1b[C"); TA_FRAME();             /* RIGHT at end: no-op */
+    TIMUI_CHECK(tas.cursor == 3);
+    SETIN(&fake, "\x7f"); TA_FRAME();               /* backspace at end -> "bX" */
+    TIMUI_CHECK(strcmp(text, "bX") == 0 && tas.cursor == 2);
+#undef TA_FRAME
+    timui_close(ui);
+}
+
+/* F1.3: cursor movement and DELETE step whole UTF-8 codepoints. */
+TIMUI_TEST(test_text_area_cursor_utf8){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[16] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+#define TA_FRAME() do{ timui_begin(ui,&f); timui_text_area(f, TIMUI_ID("tu"), r, &tas); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TA_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TA_FRAME();
+    SETIN(&fake, "a\xC3\xA9""b"); TA_FRAME();       /* "aéb" — é is C3 A9, cursor=4 */
+    TIMUI_CHECK(tas.cursor == 4);
+    SETIN(&fake, "\x1b[D"); TA_FRAME();             /* LEFT past 'b' -> 3 */
+    TIMUI_CHECK(tas.cursor == 3);
+    SETIN(&fake, "\x1b[D"); TA_FRAME();             /* LEFT past é (2 bytes) -> 1 */
+    TIMUI_CHECK(tas.cursor == 1);
+    SETIN(&fake, "\x1b[3~"); TA_FRAME();            /* DELETE whole é -> "ab" */
+    TIMUI_CHECK(strcmp(text, "ab") == 0 && tas.cursor == 1);
+#undef TA_FRAME
+    timui_close(ui);
+}
+
 /* Pass-3: cap==0 with a focused text_area must not write past the buffer
  * (the guard mirrors input_line_buf's cap==0 check). */
 TIMUI_TEST(test_text_area_zero_cap_safe){

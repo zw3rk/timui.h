@@ -64,16 +64,32 @@ convenience wrappers:
 TimuiButtonResult timui_button(TimuiFrame *, TimuiId, TimuiRect, TimuiStr label);
 TimuiBoolEdit     timui_checkbox(...);   bool timui_checkbox_mut(..., bool *value);
 TimuiBoolEdit     timui_radio(...);
-bool              timui_input_line_buf(..., char *buf, size_t cap);   /* true on submit */
+bool              timui_input_line_buf(..., char *buf, size_t cap);   /* append-only, true on submit */
+bool              timui_input_field(..., TimuiInputState *st);        /* in-line cursor editing */
+void              timui_text_area(..., TimuiTextAreaState *st);       /* multi-line editor */
 TimuiListResult   timui_listbox(...);    TimuiListResult timui_listbox_mut(..., TimuiListState *);
+TimuiTreeResult   timui_tree(...);       TimuiTreeResult timui_tree_mut(..., int *selected);
+TimuiTableResult  timui_table(...);      TimuiTableResult timui_table_mut(..., TimuiTableState *);
 TimuiRect         timui_panel_begin(...);  void timui_panel_end(...);
 void              timui_label(...);  void timui_function_bar(...);
 int               timui_message_box(...);  /* clicked button index, or -1 */
 ```
 
 Results carry `clicked` / `changed` / `hovered` / `focused` / `pressed` as
-appropriate. Persistent widget state (list selection, input cursor) is
-caller-owned (`TimuiListState`, the `char *buf`).
+appropriate. Persistent widget state (list selection, edit cursor) is
+caller-owned: `TimuiListState`, `TimuiTreeResult.selected`, `TimuiTableState`,
+and — for text editing — `TimuiInputState { char *text; size_t cap; size_t
+cursor; int scroll_x; }` / `TimuiTextAreaState`.
+
+### Text editing
+
+`timui_input_field` (single line) and `timui_text_area` (multi-line) support
+full in-line cursor editing when focused: Left/Right move by whole codepoints,
+Home/End jump to the line bounds, Backspace/Delete remove the codepoint
+before/at the cursor, and typing inserts mid-string. The focused field shows a
+hardware cursor at the edit position; `input_field` scrolls horizontally to keep
+it visible. `timui_input_line_buf` remains the append-only convenience with no
+cursor.
 
 ## Styling & themes
 

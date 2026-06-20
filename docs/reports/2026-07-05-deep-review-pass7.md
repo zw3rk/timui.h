@@ -247,14 +247,20 @@ re-runs `amalgamate` + `release-check`.
 - [x] **Z15–Z24** coverage: lifecycle-OOM, message API, hline/vline (Z17), layout
       siblings, label_hyperlink, function_bar, tab-grow OOM, hyperlink_set
       neg/OOM, `timui_run` negatives, getters
-- [~] **Z25** DEFERRED — termios `tcsetattr`-failure needs syscall mocking (no
-      portable injection point); happy-path round-trip stays covered
-- [ ] **Z26/Z27** decide with maintainer (breaking widget/menu API); **Z28**
-      optional list-widget helper extraction
+- [x] **Z25** DONE — added an inert-in-production test seam
+      (`timui_termios_fail_tcsetattr_for_test`) since there's no portable way to
+      fail a real fd's `tcsetattr` while `tcgetattr` succeeds; regression guards
+      the V11 double-free invariant
+- [x] **Z26** DONE (breaking, pre-release) — tree/table/command_palette now have
+      value-returning controlled forms + `_mut` twins (fixes the tree aliasing)
+- [x] **Z27** DONE (breaking, pre-release) — menu bar is controlled via a
+      caller-owned `TimuiMenuBar`; 6 hidden fields removed from `Timui`
+- [x] **Z28** DONE — shared `timui_draw_row_` / `timui_updown_nav_` helpers
 
-Net: 174 unit tests (was 160), +14 (4 regression, 10 coverage). ASAN + UBSAN
-clean (system clang on darwin — nix-clang's ASAN hangs there, per pass 4; CI
-runs both on Linux); `amalgamate` + `release-check` green.
+Net: **176 unit tests** (was 160), +16. ASAN + UBSAN clean (system clang on
+darwin — nix-clang's ASAN hangs there, per pass 4; CI runs both on Linux);
+goldens byte-identical; `amalgamate` + `release-check` green. Z26/Z27 were
+maintainer-approved breaking changes (no release cut yet).
 
 ## Verification (to hold after fixes)
 

@@ -13,6 +13,7 @@ int main(void){
     bool enable = true;
     int choice = 0, show_msg = 0;
     char name[64] = {0};
+    TimuiInputState name_state = { name, sizeof name, 0, 0 };   /* cursor + scroll persist */
 
     cfg.title     = "timui.h form";
     cfg.input_fd  = 0;
@@ -38,7 +39,9 @@ int main(void){
         if(timui_radio(f, TIMUI_ID("ra"), TIMUI_RECT(2, 3, 24, 1), TIMUI_STR_LIT("Option A"), choice == 0).changed) choice = 0;
         if(timui_radio(f, TIMUI_ID("rb"), TIMUI_RECT(2, 4, 24, 1), TIMUI_STR_LIT("Option B"), choice == 1).changed) choice = 1;
         timui_label(f, 2, 6, TIMUI_STR_LIT("Name:"), timui_style_make(0xFFFFFF, 0x0000AA, 0));
-        timui_input_line_buf(f, TIMUI_ID("name"), TIMUI_RECT(9, 6, 30, 1), name, sizeof name);
+        /* input_field: full in-line cursor editing (Left/Right/Home/End, mid-string
+         * insert/delete) with a visible cursor when focused. */
+        timui_input_field(f, TIMUI_ID("name"), TIMUI_RECT(9, 6, 30, 1), &name_state);
 
         if(timui_button(f, TIMUI_ID("submit"), TIMUI_RECT(2, 8, 10, 1), TIMUI_STR_LIT("Submit")).clicked) show_msg = 1;
         if(show_msg){

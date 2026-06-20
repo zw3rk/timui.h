@@ -207,6 +207,49 @@ static size_t utf8_drop_last(const char *buf, size_t len){
     if(i > 0) i--;
     return i;
 }
+/* ---- in-line editing primitives (F1.2) --------------------------------- *
+ * All operate on a NUL-terminated buffer; utf8_drop_last(buf, cursor) already
+ * gives the previous codepoint boundary (Left / Backspace). */
+
+/* Byte offset after the codepoint at `cursor`, clamped to len (Right / Delete). */
+static size_t utf8_next_(const char *buf, size_t cursor, size_t len){
+    size_t step;
+    if(cursor >= len) return len;
+    step = (size_t)utf8_lead_len((unsigned char)buf[cursor]);
+    if(step == 0) step = 1;                       /* stray byte: advance one */
+    return (cursor + step > len) ? len : cursor + step;
+}
+/* Start of the line containing `pos` (after the preceding \n/\r, or 0). */
+static size_t line_start_(const char *buf, size_t pos){
+    while(pos > 0 && buf[pos - 1] != '\n' && buf[pos - 1] != '\r') pos--;
+    return pos;
+}
+/* End of the line containing `pos` (before the next \n/\r, or end). */
+static size_t line_end_(const char *buf, size_t pos){
+    size_t len = strlen(buf);
+    while(pos < len && buf[pos] != '\n' && buf[pos] != '\r') pos++;
+    return pos;
+}
+/* Insert `n` bytes at byte offset `at`. Returns 1 on success, 0 if it won't fit
+ * (len + n + 1 > cap). The tail (incl. the NUL) is shifted right. Callers pass
+ * whole codepoints so nothing is split at the cap boundary. */
+static int text_insert_(char *buf, size_t cap, size_t at, const char *bytes, size_t n){
+    size_t len = strlen(buf);
+    if(at > len) at = len;
+    if(len + n + 1 > cap) return 0;
+    memmove(buf + at + n, buf + at, len - at + 1);   /* +1 also moves the NUL */
+    memcpy(buf + at, bytes, n);
+    return 1;
+}
+/* Erase byte range [from, to). Returns the new cursor (= clamped `from`). */
+static size_t text_erase_(char *buf, size_t from, size_t to){
+    size_t len = strlen(buf);
+    if(from > len) from = len;
+    if(to > len) to = len;
+    if(to <= from) return from;
+    memmove(buf + from, buf + to, len - to + 1);     /* +1 also moves the NUL */
+    return from;
+}
 
 TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char *buf, size_t cap){
     Timui *ui;
@@ -242,6 +285,95 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
     st = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
     timui_draw_fill(&ui->curr, r, st);
     timui_draw_text(&ui->curr, r.x, r.y, timui_str_from_cstr(buf), st);
+    return submitted;
+}
+/* Display column of the cursor: sum of glyph widths over buf[0..upto) (F1.5). */
+static int display_col_(const char *buf, size_t upto){
+    size_t i = 0, len = strlen(buf);
+    int col = 0;
+    if(upto > len) upto = len;
+    while(i < upto){
+        uint32_t cp = 0;
+        int adv = timui_utf8_decode(buf + i, len - i, &cp);
+        if(adv <= 0) adv = 1;
+        col += timui_utf8_width(cp);
+        i += (size_t)adv;
+    }
+    return col;
+}
+/* Row (0-based, split on \n / \r / \r\n) and display column of the cursor,
+ * for placing the hardware cursor in a multi-line editor (F1.4). */
+static void text_pos_(const char *buf, size_t cursor, int *out_row, int *out_col){
+    size_t i = 0, len = strlen(buf), line_start = 0;
+    int row = 0;
+    if(cursor > len) cursor = len;
+    while(i < cursor){
+        if(buf[i] == '\n' || buf[i] == '\r'){
+            if(buf[i] == '\r' && i + 1 < cursor && buf[i + 1] == '\n') i++;
+            row++; i++; line_start = i;
+        } else i++;
+    }
+    *out_row = row;
+    *out_col = display_col_(buf + line_start, cursor - line_start);
+}
+TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st){
+    Timui *ui;
+    TimuiInteractResult ir;
+    TimuiStyle style;
+    bool submitted = false;
+    if(!f || !f->ui || !st || !st->text || st->cap == 0) return false;
+    ui = f->ui;
+    if(st->cursor >= st->cap) st->cursor = st->cap - 1;   /* Y1-style: distrust caller cursor */
+    {
+        int submit = ui->ia.activate_pressed;             /* capture before interact consumes it */
+        ir = timui_interact_button(&ui->ia, id, r);
+        if(ir.focused){
+            int j = 0;
+            size_t len;
+            /* insert typed codepoints at the cursor (mid-string), whole ones only */
+            while(j < ui->text_in_len){
+                int n = utf8_lead_len((unsigned char)ui->text_in[j]);
+                size_t m = (size_t)(n > 0 ? n : 1);
+                if(j + (int)m > ui->text_in_len) m = (size_t)(ui->text_in_len - j);
+                if(!text_insert_(st->text, st->cap, st->cursor, ui->text_in + j, m)) break;
+                st->cursor += m; j += (int)m;
+            }
+            len = strlen(st->text);
+            if(ui->key_in & TIMUI_KEYIN_LEFT)  st->cursor = utf8_drop_last(st->text, st->cursor);
+            if(ui->key_in & TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, len);
+            if(ui->key_in & TIMUI_KEYIN_HOME)  st->cursor = 0;              /* single line */
+            if(ui->key_in & TIMUI_KEYIN_END)   st->cursor = len;
+            if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st->cursor > 0){
+                size_t prev = utf8_drop_last(st->text, st->cursor);
+                st->cursor = text_erase_(st->text, prev, st->cursor);
+            }
+            if(ui->key_in & TIMUI_KEYIN_DELETE){
+                size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
+                (void)text_erase_(st->text, st->cursor, nxt);
+            }
+            if(submit) submitted = true;
+            ui->text_in_len = 0;
+            ui->key_in = 0;
+        }
+    }
+    /* horizontal scroll: keep the cursor column within [scroll_x, scroll_x+w) */
+    { int ccol = display_col_(st->text, st->cursor);
+      if(ccol < st->scroll_x) st->scroll_x = ccol;
+      if(r.w > 0 && ccol >= st->scroll_x + r.w) st->scroll_x = ccol - r.w + 1;
+      if(st->scroll_x < 0) st->scroll_x = 0;
+      if(ir.focused){                                 /* F1.4: request the hardware cursor */
+          ui->cursor_x = r.x + (ccol - st->scroll_x);
+          ui->cursor_y = r.y;
+          ui->cursor_visible = 1;
+      }
+    }
+    style = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    timui_draw_fill(&ui->curr, r, style);
+    /* clip to the field and shift the text left by scroll_x so the visible
+     * window tracks the cursor (put_glyph drops the clipped leading columns). */
+    timui_push_clip(f, r);
+    timui_draw_text(&ui->curr, r.x - st->scroll_x, r.y, timui_str_from_cstr(st->text), style);
+    timui_pop_clip(f);
     return submitted;
 }
 TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,

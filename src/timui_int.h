@@ -44,6 +44,10 @@ struct Timui {
     unsigned          key_in;
     TimuiKey          key_pressed;
     uint32_t          key_mods;     /* modifiers of the last key event */
+    /* F1.4: hardware cursor request for the focused input. cursor_visible is a
+     * per-frame request (reset in timui_begin, set by the focused input);
+     * cursor_shown tracks what's on the terminal so a hide is emitted once. */
+    int               cursor_x, cursor_y, cursor_visible, cursor_shown;
     int               events_dropped;
     int               w, h;
     int               should_quit;

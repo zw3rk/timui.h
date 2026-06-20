@@ -122,15 +122,20 @@ artifact, never committed), so there is no tracked copy to drift and a
 `git diff` guard would be a no-op. `release-check`'s regenerate-and-compile is
 the correct guard.
 
-**Deferred:** Z25 — the V11 termios `tcsetattr`-failure double-free branch has no
-portable syscall-injection point; the happy-path round-trip stays covered.
+**Also fixed (maintainer-approved follow-up, breaking changes OK pre-release):**
+Z25 termios `tcsetattr`-failure branch now exercised via an inert-in-production
+test seam (`timui_termios_fail_tcsetattr_for_test`), guarding the V11 double-free
+invariant — there is no portable way to fail a real fd's tcsetattr while
+tcgetattr succeeds · **Z26** tree/table/command_palette gained value-returning
+controlled forms + `_mut` twins mirroring listbox (fixes the tree unconditional
+`*selected` write-back aliasing) · **Z27** the menu bar is now controlled via a
+caller-owned `TimuiMenuBar` — `open` persists and is observable, and 6 hidden
+fields were removed from `Timui` · **Z28** the "fill row + draw text" and
+"focused up/down nav" scaffolding is factored into `timui_draw_row_` /
+`timui_updown_nav_` in `timui_int.h`.
 
-**Open recommendations (breaking / optional — maintainer decision):** Z26 *(rec,
-breaking)* tree/table/command_palette are mutation-only with no value/`_mut`
-twin (unlike listbox); tree clamps `*selected` unconditionally each frame ·
-Z27 *(rec)* the menu bar is the only uncontrolled widget (framework-owned
-`open_menu` + hidden layout cursor) · Z28 *(opt)* list-widget "fill row + focused
-up/down" scaffolding duplicated ~9× — extractable to two helpers.
+Round-7 total: 160→176 unit tests; ASAN/UBSAN clean; goldens byte-identical;
+amalgamate + release-check green.
 
 ## Verification
 
