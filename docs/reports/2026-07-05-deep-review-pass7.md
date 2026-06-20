@@ -84,16 +84,17 @@ evidence lived in the per-lens agent reports. `[fix]` = actionable this pass;
 
 ### Medium — code quality / CI
 
-- **Z5 `[fix]` — `release-check` regenerates the shipped header instead of
-  verifying it; amalgamation drift is invisible to CI.** `Makefile:113`
-  (`release-check: amalgamate`) overwrites `release/timui.h` from current `src/`
-  then compiles it; `.github/workflows/ci.yml` runs it with **no** follow-up
-  diff — unlike the golden guard two steps below (`git diff --exit-code --
-  tests/golden/`). A contributor who edits `src/` but forgets `make amalgamate`
-  ships a stale `release/timui.h` (the file consumers `#include`) with CI green.
-  (`release/` is in sync *today* — verified byte-identical — the *guard* is the
-  defect.) **Fix:** add `git diff --exit-code -- release/timui.h` after the
-  `release-check` step in `ci.yml`.
+- **Z5 `[REJECTED on verification]` — "release-check regenerates instead of
+  verifying; drift invisible to CI".** The API lens assumed `release/timui.h` is
+  a *committed* file that could go stale. It is **not**: `.gitignore:2` ignores
+  `/release/`, so the amalgamated header is a generated artifact that is never
+  committed — there is no tracked copy that can drift, and a
+  `git diff --exit-code -- release/timui.h` guard would be a no-op (the path is
+  ignored). `release-check`'s regenerate-and-compile is the correct and
+  sufficient guard for a generated single header (it proves the amalgamation
+  produces a compilable drop-in). The lens's "byte-identical to the committed
+  copy" was a comparison against a stale local build artifact, not a tracked
+  file. No change made; `ci.yml` left as-is.
 
 - **Z6 `[fix]` — fourth hand-inlined UTF-8 encoder.** `src/timui_core.c:246-249`
   re-implements `utf8_encode` (`src/timui_render.c:277`) byte-for-byte because
@@ -229,25 +230,31 @@ Each `[fix]` bugfix lands red-first in a `regression/`-named test before its fix
 (TDD gate); each keeps `make check` + `test-san SAN=address,undefined` green and
 re-runs `amalgamate` + `release-check`.
 
-- [ ] **Z2** input UTF-8 overlong/surrogate/range validation (+ regression)
-- [ ] **Z3** ESC-mid-CSI/SS3 abort-and-restart (+ regression)
-- [ ] **Z4** CSI `:` sub-parameter handling (+ struct field + regression)
-- [ ] **Z9** clamp `draw_box`/`hline`/`vline` geometry (+ Z17 regression)
-- [ ] **Z1** rewrite the false header banner
-- [ ] **Z8** honest `TIMUI_KEYIN_*` reserved marking + drop dead stores
-- [ ] **Z14** correct the rect-cut "pure" banner
-- [ ] **Z5** CI `git diff --exit-code -- release/timui.h`
-- [ ] **Z6** hoist shared `timui_utf8_encode_` into `timui_int.h`
-- [ ] **Z7** unify glyph emit via `put_glyph(..., link)`
-- [ ] **Z10** `#undef` leaking impl macros (`R_EMIT`, …)
-- [ ] **Z11** prefix `TimuiSnapBuf` / `TimuiConptyCtx`
-- [ ] **Z12** `timui_ui_resize` → `TimuiResult`
-- [ ] **Z13** mark/remove orphaned `TimuiDialogResult` / cell flags / `image_id`
-- [ ] **Z15–Z25** coverage: lifecycle-OOM, message API, hline/vline, layout
+- [x] **Z2** input UTF-8 overlong/surrogate/range validation (+ regression)
+- [x] **Z3** ESC-mid-CSI/SS3 abort-and-restart (+ regression)
+- [x] **Z4** CSI `:` sub-parameter handling (+ struct field + regression)
+- [x] **Z9** clamp `draw_box`/`hline`/`vline` geometry (+ Z17 regression)
+- [x] **Z1** rewrite the false header banner
+- [x] **Z8** honest `TIMUI_KEYIN_*` reserved marking + drop dead stores
+- [x] **Z14** correct the rect-cut "pure" banner
+- [~] **Z5** REJECTED — `release/` is gitignored; no committed copy can drift
+- [x] **Z6** hoist shared `timui_utf8_encode_` into `timui_int.h`
+- [x] **Z7** unify glyph emit via `put_glyph_link(..., link)`
+- [x] **Z10** `#undef` leaking impl macros (`R_EMIT`, …)
+- [x] **Z11** prefix `TimuiSnapBuf` / `TimuiConptyCtx`
+- [x] **Z12** `timui_ui_resize` → `TimuiResult`
+- [x] **Z13** mark orphaned `TimuiDialogResult` / cell flags / `image_id` reserved
+- [x] **Z15–Z24** coverage: lifecycle-OOM, message API, hline/vline (Z17), layout
       siblings, label_hyperlink, function_bar, tab-grow OOM, hyperlink_set
-      neg/OOM, `timui_run` negatives, getters, termios-failure guard
+      neg/OOM, `timui_run` negatives, getters
+- [~] **Z25** DEFERRED — termios `tcsetattr`-failure needs syscall mocking (no
+      portable injection point); happy-path round-trip stays covered
 - [ ] **Z26/Z27** decide with maintainer (breaking widget/menu API); **Z28**
       optional list-widget helper extraction
+
+Net: 174 unit tests (was 160), +14 (4 regression, 10 coverage). ASAN + UBSAN
+clean (system clang on darwin — nix-clang's ASAN hangs there, per pass 4; CI
+runs both on Linux); `amalgamate` + `release-check` green.
 
 ## Verification (to hold after fixes)
 

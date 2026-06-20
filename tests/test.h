@@ -82,6 +82,7 @@ void test_input_utf8_overlong_rejected(void);
 void test_input_esc_mid_csi_restarts(void);
 void test_input_csi_subparam_ignored(void);
 void test_termios_raw_and_restore(void);
+void test_termios_setattr_failure(void);
 void test_term_size_query(void);
 void test_term_size_not_a_tty(void);
 void test_caps_modern_kitty_family(void);
@@ -165,6 +166,7 @@ void test_keymap_hit_multi_binding(void);
 void test_table_renders(void);
 void test_tree_renders(void);
 void test_tree_deep_safe(void);
+void test_tree_controlled_no_write_without_change(void);
 void test_cmd_palette_filter(void);
 void test_snapshot_row_eq(void);
 void test_snapshot_grid_full(void);
@@ -198,5 +200,15 @@ void test_pty_hello_exits_on_esc(void);
 void test_paste_cross_feed_terminator(void);
 void test_esc_timeout_zero_now(void);
 void test_msgq_overflow_guard(void);
+/* Round-7 (Z-series) coverage — tests/test_coverage_z7.c */
+void test_open_oom_cleanup(void);
+void test_message_api_roundtrip(void);
+void test_layout_siblings(void);
+void test_label_hyperlink_wrapper(void);
+void test_function_bar_widget(void);
+void test_interact_tab_grow_oom(void);
+void test_hyperlink_set_edges(void);
+void test_run_negative_guards(void);
+void test_getters(void);
 
 #endif /* TIMUI_TEST_H */

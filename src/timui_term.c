@@ -117,6 +117,13 @@ TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m){
 }
 
 /* ---- terminal raw mode (POSIX) ---------------------------------------- */
+/* Z25 test seam: when armed, timui_termios_enter takes its tcsetattr-failure
+ * branch without calling tcsetattr (no portable way to fail a real fd's
+ * tcsetattr while tcgetattr succeeds). This is a documented, test-only static —
+ * inert (0) in production, the only mutable static here besides the SIGTERM
+ * restore carve-out. */
+static int g_tcsetattr_fail_for_test = 0;
+TIMUI_API void timui_termios_fail_tcsetattr_for_test(int on){ g_tcsetattr_fail_for_test = on; }
 TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd){
     struct termios *orig, raw;
     if(!t) return TIMUI_ERR_INVALID_ARGUMENT;
@@ -134,7 +141,10 @@ TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd){
     raw.c_cflag |= CS8;
     raw.c_cc[VMIN]  = 1;
     raw.c_cc[VTIME] = 0;
-    if(tcsetattr(fd, TCSAFLUSH, &raw) != 0){ free(orig); t->saved = NULL; t->have_saved = 0; return TIMUI_ERR_OS; }
+    /* short-circuit keeps the real tcsetattr un-called when the seam is armed */
+    if(g_tcsetattr_fail_for_test || tcsetattr(fd, TCSAFLUSH, &raw) != 0){
+        free(orig); t->saved = NULL; t->have_saved = 0; return TIMUI_ERR_OS;
+    }
     return TIMUI_OK;
 }
 TIMUI_API TimuiResult timui_termios_restore(TimuiTermios *t){

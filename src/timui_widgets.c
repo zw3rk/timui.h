@@ -288,8 +288,7 @@ TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
         s = label ? label(userdata, idx) : "";
         slot = (idx == state.selected) ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT;
         st = timui_theme_style(&ui->theme, slot);
-        timui_draw_fill(&ui->curr, TIMUI_RECT(r.x, r.y + i, r.w, 1), st);
-        timui_draw_text(&ui->curr, r.x, r.y + i, timui_str_from_cstr(s), st);
+        timui_draw_row_(&ui->curr, TIMUI_RECT(r.x, r.y + i, r.w, 1), 0, timui_str_from_cstr(s), st);
     }
     if(state.selected != orig) res.state_changed = 1;
     res.state = state;

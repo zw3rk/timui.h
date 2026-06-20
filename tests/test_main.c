@@ -71,6 +71,7 @@ int main(void){
         test_input_esc_mid_csi_restarts,
         test_input_csi_subparam_ignored,
         test_termios_raw_and_restore,
+        test_termios_setattr_failure,
         test_term_size_query,
         test_term_size_not_a_tty,
         test_caps_modern_kitty_family,
@@ -154,6 +155,7 @@ int main(void){
         test_table_renders,
         test_tree_renders,
         test_tree_deep_safe,
+        test_tree_controlled_no_write_without_change,
         test_cmd_palette_filter,
         test_snapshot_row_eq,
         test_snapshot_grid_full,
@@ -189,6 +191,16 @@ int main(void){
         test_paste_cross_feed_terminator,
         test_esc_timeout_zero_now,
         test_msgq_overflow_guard,
+        /* round-7 (Z-series) coverage */
+        test_open_oom_cleanup,
+        test_message_api_roundtrip,
+        test_layout_siblings,
+        test_label_hyperlink_wrapper,
+        test_function_bar_widget,
+        test_interact_tab_grow_oom,
+        test_hyperlink_set_edges,
+        test_run_negative_guards,
+        test_getters,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

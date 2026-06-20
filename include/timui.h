@@ -279,12 +279,22 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
                                 TimuiStr title, TimuiStr message,
                                 const TimuiStr *buttons, int count);
 
-/* ---- Menu bar + popups (T5.7) ----------------------------------------- */
-TIMUI_API void timui_menu_bar_begin(TimuiFrame *f, TimuiRect r);
-TIMUI_API int  timui_menu_begin(TimuiFrame *f, TimuiId id, TimuiStr label);   /* 1 if open */
-TIMUI_API int  timui_menu_item(TimuiFrame *f, TimuiId id, TimuiStr label);    /* 1 if clicked */
+/* ---- Menu bar + popups (T5.7) ----------------------------------------- *
+ * Caller-owned state (Z27): `open` — the id of the open menu (0 = none) —
+ * persists across frames, so the app can observe / snapshot / drive which menu
+ * is open. The remaining fields are a frame-scoped layout cursor that
+ * timui_menu_bar_begin resets; callers just pass the same TimuiMenuBar through
+ * begin → each menu_begin/menu_item → bar_end. */
+typedef struct {
+    TimuiId open;                         /* caller-owned: which menu is open */
+    int bar_x, bar_y, item_x, item_y;     /* frame-scoped layout cursor */
+    int clicked;                          /* internal: a press hit a header/item */
+} TimuiMenuBar;
+TIMUI_API void timui_menu_bar_begin(TimuiFrame *f, TimuiMenuBar *bar, TimuiRect r);
+TIMUI_API int  timui_menu_begin(TimuiFrame *f, TimuiMenuBar *bar, TimuiId id, TimuiStr label); /* 1 if open */
+TIMUI_API int  timui_menu_item(TimuiFrame *f, TimuiMenuBar *bar, TimuiId id, TimuiStr label);  /* 1 if clicked */
 TIMUI_API void timui_menu_end(TimuiFrame *f);
-TIMUI_API void timui_menu_bar_end(TimuiFrame *f);                             /* outside-click closes */
+TIMUI_API void timui_menu_bar_end(TimuiFrame *f, TimuiMenuBar *bar);          /* outside-click closes */
 
 /* ---- Optional functional runner (T6) ---------------------------------- *
  * view() describes the frame from an immutable model; update() is the only
@@ -578,6 +588,11 @@ typedef struct {
 TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd);
 TIMUI_API TimuiResult timui_termios_restore(TimuiTermios *t);
 TIMUI_API void        timui_termios_destroy(TimuiTermios *t);
+/* Test seam (Z25): force the tcsetattr call inside timui_termios_enter to fail,
+ * so the enter-time failure/rollback branch (V11) can be exercised — there is no
+ * portable way to make a real fd's tcsetattr fail while tcgetattr succeeds. Inert
+ * (off) in production; pass non-zero to arm, zero to disarm. Test-only. */
+TIMUI_API void        timui_termios_fail_tcsetattr_for_test(int on);
 
 /* Query the terminal size (cols x rows) via TIOCGWINSZ. Resize is detected
  * by polling (the frame re-queries each tick), avoiding signal-handler state.
@@ -746,19 +761,33 @@ typedef struct { TimuiKeyBinding bindings[32]; int count; } TimuiKeymap;
 TIMUI_API void timui_keymap_bind(TimuiKeymap *km, TimuiKey key, uint32_t mods, int action);
 TIMUI_API int  timui_keymap_hit(TimuiFrame *f, const TimuiKeymap *km, int action);
 
-/* ---- v0.2 widgets: table, tree, command palette ----------------------- */
+/* ---- v0.2 widgets: table, tree, command palette ----------------------- *
+ * Controlled by default (state in by value, new state out in the result), with
+ * a _mut convenience twin that writes changes back through a pointer — the same
+ * shape as timui_listbox / timui_listbox_mut. The plain forms never touch caller
+ * memory; the _mut forms write back only on an actual change. */
 typedef const char *(*TimuiCellFn)(void *ud, int row, int col);
 typedef struct { int selected; int scroll; } TimuiTableState;
-TIMUI_API void timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
+typedef struct { TimuiTableState state; int state_changed; int focused; } TimuiTableResult;
+TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *headers, int ncols, int nrows, TimuiCellFn cell_fn, void *ud,
+    TimuiTableState state);
+TIMUI_API TimuiTableResult timui_table_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *headers, int ncols, int nrows, TimuiCellFn cell_fn, void *ud,
     TimuiTableState *state);
 
 typedef struct { int depth; const char *label; int has_children; int expanded; } TimuiTreeNode;
-TIMUI_API void timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
+typedef struct { int selected; int state_changed; int focused; } TimuiTreeResult;
+TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiTreeNode *nodes, int count, int selected);
+TIMUI_API TimuiTreeResult timui_tree_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiTreeNode *nodes, int count, int *selected);
 
 typedef struct { char filter[64]; int selected; } TimuiCmdPaletteState;
-TIMUI_API int timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
+typedef struct { TimuiCmdPaletteState state; int activated; int state_changed; } TimuiCmdPaletteResult;
+TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *commands, int count, TimuiCmdPaletteState state);
+TIMUI_API TimuiCmdPaletteResult timui_command_palette_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *commands, int count, TimuiCmdPaletteState *state);
 
 /* ---- v0.2: snapshot testing + text-area + ConPTY ---------------------- */

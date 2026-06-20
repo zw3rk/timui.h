@@ -51,8 +51,7 @@ struct Timui {
     int               event_count;
     struct { TimuiRect clip; int has_clip; } clip_stack[8];
     int               clip_count;
-    TimuiId           open_menu;
-    int               menu_bar_x, menu_bar_y, menu_item_x, menu_item_y, menu_clicked;
+    /* Z27: menu state moved out of Timui into the caller-owned TimuiMenuBar. */
     TimuiFrame        frame;
 };
 
@@ -76,5 +75,24 @@ static int timui_utf8_encode_(uint32_t cp, char *out){
     out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
     out[3] = (char)(0x80 | (cp & 0x3F));
     return 4;
+}
+
+/* Z28: shared list-widget scaffolding used by listbox / tree / table / command
+ * palette / menu. Defined here (first-included) so every section can call them;
+ * they only reference already-declared public primitives. */
+
+/* Fill a one-row rect with style `st`, then draw `text` at column offset `xoff`
+ * within it (draw_text ignores a NULL/empty str, so callers can pass either). */
+static void timui_draw_row_(TimuiCellBuffer *buf, TimuiRect row, int xoff, TimuiStr text, TimuiStyle st){
+    timui_draw_fill(buf, row, st);
+    timui_draw_text(buf, row.x + xoff, row.y, text, st);
+}
+
+/* Move a selection index by one on Up/Down (mutually exclusive), clamped to
+ * [0, count-1]. Callers gate this on focus. */
+static int timui_updown_nav_(TimuiFrame *f, int selected, int count){
+    if(timui_key_pressed(f, TIMUI_KEY_UP) && selected > 0) selected--;
+    else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && selected < count - 1) selected++;
+    return selected;
 }
 

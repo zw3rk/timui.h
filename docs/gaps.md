@@ -89,39 +89,48 @@ selected clamp (mirrors tree/table) · Y4 keymap_hit multi-binding reachability
 · Y7 cmdpal matcher respects TimuiStr.len · Y5/Y6 docs (end single-use,
 realloc required).
 
-## Round 7 (Z-series, 2026-07-05) — filed; fixes in progress
+## Round 7 (Z-series, 2026-07-05) — resolved
 
 Six-lens parallel review ([pass 7](reports/2026-07-05-deep-review-pass7.md)).
-Memory surface confirmed clean; yield is input correctness + honesty + coverage.
+Memory surface confirmed clean; yield was input correctness + honesty + coverage.
+160→174 unit tests.
 
-- **Z1** false "Phase 0 scaffold" header banner (HIGH — the header is the docs).
-- **Z2** input UTF-8 decoder skips overlong/surrogate/range guards → NUL &
-  invalid-UTF-8 injection into app buffers (defeats V14). *Independent decoder
-  from the render one that G12/V16 fixed.*
-- **Z3** ESC mid-CSI/SS3 resyncs to ground and drops the ESC → next sequence
-  leaks as text (ECMA-48 says ESC aborts+restarts).
-- **Z4** CSI `:` sub-parameter (Kitty event-type/alternate-key) hits the same
-  resync → key dropped, sub-param tail injected.
-- **Z5** `release-check` regenerates instead of verifying `release/timui.h` →
-  amalgamation drift invisible to CI (release/ in sync today; the guard is weak).
-- **Z6** fourth hand-inlined UTF-8 encoder in `timui_begin` (DRY).
-- **Z7** `put_glyph`/`draw_text`/`draw_text_linked` triplicate wide-glyph logic.
-- **Z8** dead/half-wired `TIMUI_KEYIN_LEFT/RIGHT/HOME/END/DELETE` + misleading
-  comment (no widget consumes them; input_line/text_area are append-only).
-- **Z9** `draw_box`/`hline`/`vline` lack the Y2 rect-clamp → signed-overflow UB +
-  unbounded loop on extreme geometry (sibling of Y2; not a write overrun).
-- **Z10** impl-only macros (`R_EMIT`, …) leak into the consumer TU (no `#undef`).
-- **Z11** un-prefixed internal typedefs `SnapBuf`/`ConptyCtx` leak.
-- **Z12** `timui_ui_resize` returns void → resize OOM unsignalable (G6/G7 class).
-- **Z13** orphaned public API: `TimuiDialogResult`, `Cell.image_id`, unused cell
-  flags.
-- **Z14** rect-cut `cut_*` mislabeled "pure" (mutate `*r`).
-- **Z15–Z25** coverage: lifecycle-OOM rollback, message API, hline/vline, layout
-  siblings, label_hyperlink, function_bar, tab-grow OOM, hyperlink_set neg/OOM,
-  `timui_run` negatives, str_len/now_ms, termios-failure guard (V11).
-- **Z26** *(rec, breaking)* tree/table/command_palette are mutation-only, no
-  value/`_mut` twin (unlike listbox). **Z27** *(rec)* menu is uncontrolled +
-  hidden layout cursor. **Z28** *(opt)* list-widget scaffolding duplication.
+**Fixed in tree:** Z1 false "Phase 0 scaffold" header banner (the header is the
+docs) · Z2 input UTF-8 decoder now rejects overlong/surrogate/>U+10FFFF →
+U+FFFD (was NUL/invalid injection defeating V14; the input decoder is
+independent of the render one G12/V16 fixed) · Z3 ESC mid-CSI/SS3 aborts and
+restarts (ECMA-48) instead of resyncing to ground and leaking the tail as text ·
+Z4 CSI `:` sub-parameter (Kitty event-type/alternate-key) discarded via a new
+`sub_param` field instead of resyncing · Z6 single shared `timui_utf8_encode_`
+in `timui_int.h` (was a fourth inlined copy) · Z7 glyph emit unified through
+`put_glyph_link` (killed the triplicated wide-glyph continuation logic) · Z8
+`TIMUI_KEYIN_LEFT/RIGHT/HOME/END/DELETE` marked reserved + dead stores dropped
+(no widget consumes them; inputs are append-at-end) · Z9 `draw_box`/`hline`/
+`vline` clamp extreme geometry (sibling of Y2's draw_fill guard; UB + unbounded
+loop, not a write overrun) · Z10 impl-only macros (`R_EMIT`, …) `#undef`'d at
+each section end · Z11 `SnapBuf`/`ConptyCtx` → `TimuiSnapBuf`/`TimuiConptyCtx` ·
+Z12 `timui_ui_resize` → `TimuiResult` (resize OOM now signalable, G6/G7 class) ·
+Z13 orphaned `TimuiDialogResult` / unused cell flags / `Cell.image_id` annotated
+reserved · Z14 rect-cut `cut_*` no longer mislabeled "pure" · **Z15–Z24**
+coverage added (lifecycle-OOM rollback with a net-byte allocator, message API,
+hline/vline [Z17], layout siblings, label_hyperlink, function_bar, tab-grow OOM,
+hyperlink_set NULL/OOM/truncation, `timui_run` negatives, str_len/now_ms).
+
+**Rejected:** Z5 — "release-check regenerates instead of verifying → CI drift"
+was based on a false premise: `release/` is **gitignored** (a generated
+artifact, never committed), so there is no tracked copy to drift and a
+`git diff` guard would be a no-op. `release-check`'s regenerate-and-compile is
+the correct guard.
+
+**Deferred:** Z25 — the V11 termios `tcsetattr`-failure double-free branch has no
+portable syscall-injection point; the happy-path round-trip stays covered.
+
+**Open recommendations (breaking / optional — maintainer decision):** Z26 *(rec,
+breaking)* tree/table/command_palette are mutation-only with no value/`_mut`
+twin (unlike listbox); tree clamps `*selected` unconditionally each frame ·
+Z27 *(rec)* the menu bar is the only uncontrolled widget (framework-owned
+`open_menu` + hidden layout cursor) · Z28 *(opt)* list-widget "fill row + focused
+up/down" scaffolding duplicated ~9× — extractable to two helpers.
 
 ## Verification
 
