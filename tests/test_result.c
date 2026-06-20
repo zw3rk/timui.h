@@ -20,5 +20,5 @@ TIMUI_TEST(test_error_string){
 }
 
 TIMUI_TEST(test_version){
-    TIMUI_CHECK(strcmp(timui_version_string(), "0.1.0") == 0);
+    TIMUI_CHECK(strcmp(timui_version_string(), "0.2.0") == 0);
 }
