@@ -60,6 +60,7 @@ help: ## Show this help
 	@printf "$(C_CYAN)usage: nix develop -c make <target>$(C_RESET)\n\n"
 	@printf "  $(C_BOLD)targets$(C_RESET)\n"
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(C_GREEN)%-14s$(C_RESET) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "run-<name>" "run one example: editor procmon todo chat file_manager"
 
 build: $(EXAMPLES) ## Build all examples (single-header mode)
 	@printf "$(C_GREEN)✓ build complete$(C_RESET)\n"
@@ -80,6 +81,11 @@ $(TEST_BIN): $(TEST_SRCS) $(HEADER) $(LIB_SECTIONS)
 
 run: build ## Build and run the hello example
 	@./$(BLDDIR)/hello
+
+# Run one example by name (builds just that target first), e.g. `make run-editor`.
+# Demos: editor procmon todo chat file_manager (plus hello counter form mini_commander).
+run-%: $(BLDDIR)/%
+	@./$(BLDDIR)/$*
 
 test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=address
 	@mkdir -p $(BLDDIR)

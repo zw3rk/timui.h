@@ -17,7 +17,11 @@ tests green; ASAN/UBSAN clean). See [CHANGELOG.md](CHANGELOG.md):
   **`input_field`/`text_area` with in-line cursor editing**, listbox, tree,
   table, command palette, panel/label, function bar, menu bar, message box —
   controlled + `_mut`.
-- **Examples:** `hello`, `counter` (functional), `form`, `mini_commander`.
+- **Examples:** `hello`, `counter` (functional), `form`, `mini_commander`, and
+  five larger demos — `editor` (text_area cursor editing), `file_manager`
+  (MC-style dual-pane browser), `todo` (functional model/view/update), `procmon`
+  (live `ps` table), `chat` (thread-safe `timui_post` from a worker thread). Run
+  one with `make run-<name>`.
 
 See [docs/PRD.md](docs/PRD.md) (roadmap, §15 progress) and [docs/DECISIONS.md](docs/DECISIONS.md).
 
