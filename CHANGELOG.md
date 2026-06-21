@@ -7,6 +7,12 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 ## [Unreleased]
 
 ### Fixed
+- **Dropped render bytes (screen garbling)**: `fd_write` did a single `write()`
+  and ignored a short count. The output fd shares its file description with the
+  O_NONBLOCK input fd, so under output pressure (heavy render + fast typing) the
+  tty buffer fills and `write()` returns EAGAIN / a partial count, silently
+  dropping the rest of the frame. It now loops (EINTR / EAGAIN-poll / partial)
+  until every byte is written.
 - **Auto-wrap desync**: `screen_enter` now disables DECAWM (`\x1b[?7l`, restored
   on exit) so a glyph written to the last column can't wrap the cursor or scroll
   the screen behind the diff renderer's back — the remaining right-edge

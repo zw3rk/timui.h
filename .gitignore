@@ -11,3 +11,4 @@
 *.exe
 compile_commands.json
 .cache/
+/recordings/

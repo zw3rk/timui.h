@@ -14,6 +14,7 @@ EXADIR   := examples
 TSTDIR   := tests
 TOOLDIR  := tools
 RELDIR   := release
+RECDIR   := recordings
 
 HEADER    := $(INCDIR)/timui.h
 # The library is a unity build: src/timui.c #includes every src/timui_*.c
@@ -61,6 +62,8 @@ help: ## Show this help
 	@printf "  $(C_BOLD)targets$(C_RESET)\n"
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(C_GREEN)%-14s$(C_RESET) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "run-<name>" "run one example: editor procmon todo chat file_manager"
+	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "rec-<name>" "record an interactive session -> recordings/<name>.cast"
+	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "drive-<name>" "drive headless w/ recordings/<name>.in -> .raw + .txt"
 
 build: $(EXAMPLES) ## Build all examples (single-header mode)
 	@printf "$(C_GREEN)✓ build complete$(C_RESET)\n"
@@ -86,6 +89,46 @@ run: build ## Build and run the hello example
 # Demos: editor procmon todo chat file_manager (plus hello counter form mini_commander).
 run-%: $(BLDDIR)/%
 	@./$(BLDDIR)/$*
+
+# ---- recording / headless driving --------------------------------------- #
+$(BLDDIR)/pty_drive: $(TOOLDIR)/pty_drive.c
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) $< -o $@
+$(BLDDIR)/vt_render: $(TOOLDIR)/vt_render.c
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) $< -o $@
+
+# Record a REAL interactive session (you type) to recordings/<name>.cast — the
+# raw byte stream, viewable with `asciinema play` and analysable by the verifier.
+rec-%: $(BLDDIR)/%
+	@mkdir -p $(RECDIR)
+	@command -v asciinema >/dev/null 2>&1 || { printf "$(C_YELL)asciinema not found — run inside 'nix develop'$(C_RESET)\n"; exit 1; }
+	@printf "$(C_CYAN)recording$(C_RESET) $(RECDIR)/$*.cast — quit the app (F10/ESC) to stop\n"
+	@asciinema rec --overwrite -c "./$(BLDDIR)/$*" "$(RECDIR)/$*.cast"
+
+# Drive <name> HEADLESS: feed scripted keystrokes from recordings/<name>.in (a
+# raw byte file; missing => none) through a pty, capture the output stream to
+# recordings/<name>.raw, and render the final screen to recordings/<name>.txt.
+drive-%: $(BLDDIR)/% $(BLDDIR)/pty_drive $(BLDDIR)/vt_render
+	@mkdir -p $(RECDIR)
+	@in="$(RECDIR)/$*.in"; [ -f "$$in" ] || in=/dev/null; \
+	 printf "$(C_CYAN)driving$(C_RESET) $* headless (input: $$in)\n"; \
+	 ./$(BLDDIR)/pty_drive --cols 100 --rows 30 --out "$(RECDIR)/$*.raw" --delay-ms 4 -- ./$(BLDDIR)/$* < "$$in"; \
+	 ./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/$*.raw" > "$(RECDIR)/$*.txt"; \
+	 printf "$(C_GREEN)✓ $(RECDIR)/$*.raw + $(RECDIR)/$*.txt$(C_RESET)\n"
+
+# Headless acceptance smoke: drive an app with a CHECKED-IN input script
+# (tests/drive/<name>.in) and assert the rendered screen. End-to-end proof that a
+# real app binary handles input + renders correctly. Timing-dependent, so it is
+# deliberately OUTSIDE `make check` (which stays deterministic).
+accept: $(BLDDIR)/editor $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless acceptance smoke (scripted input -> assert render)
+	@mkdir -p $(RECDIR)
+	@printf "$(C_BOLD)Headless acceptance$(C_RESET) (scripted input through a pty)\n"
+	@./$(BLDDIR)/pty_drive --cols 100 --rows 30 --run-ms 2500 --settle-ms 300 \
+	   --out "$(RECDIR)/accept-editor.raw" --delay-ms 4 -- ./$(BLDDIR)/editor < tests/drive/editor.in
+	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/accept-editor.raw" | grep -q 'timui acceptance ok' \
+	  && printf "  $(C_GREEN)✓ editor: typed text rendered$(C_RESET)\n" \
+	  || { printf "  $(C_RED)✗ editor: typed text missing from render$(C_RESET)\n"; exit 1; }
 
 test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=address
 	@mkdir -p $(BLDDIR)

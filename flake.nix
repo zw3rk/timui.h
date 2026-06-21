@@ -16,7 +16,9 @@
           default = pkgs.mkShell {
             # pkg-config lets `make vt-test` resolve libvterm (and is harmless
             # where libvterm is absent — the Makefile warns gracefully).
-            nativeBuildInputs = [ pkgs.gnumake pkgs.pkg-config ];
+            # asciinema records a real terminal session's raw byte stream to a
+            # .cast for `make rec-<name>` (feedable to the render verifier).
+            nativeBuildInputs = [ pkgs.gnumake pkgs.pkg-config pkgs.asciinema ];
             # libvterm is Linux-only in nixpkgs (meta.platforms excludes
             # darwin), so add it conditionally — otherwise `nix develop` would
             # fail to evaluate on macOS. On darwin, `make vt-test` reports the
