@@ -278,6 +278,14 @@ TIMUI_API void timui_end(TimuiFrame *frame){
      * too. */
     if(ui->cursor_visible){
         timui_render_cursor(&ui->transport, ui->cursor_x, ui->cursor_y, 1);
+        /* render_cursor moved the physical cursor off render_diff's last cell —
+         * resync the renderer (only when it actually emitted a CUP, i.e. the
+         * position is on-screen), or next frame's diff skips a CUP it needs and
+         * draws a cell at the cursor position instead of its own. */
+        if(ui->cursor_x >= 0 && ui->cursor_y >= 0){
+            ui->renderer.last_x = ui->cursor_x;
+            ui->renderer.last_y = ui->cursor_y;
+        }
         ui->cursor_shown = 1;
         if(ui->transport.flush) ui->transport.flush(&ui->transport);
     } else if(ui->cursor_shown){
@@ -337,6 +345,29 @@ TIMUI_API int timui_key_pressed(TimuiFrame *f, TimuiKey key){
 TIMUI_API int timui_key_pressed_mods(TimuiFrame *f, TimuiKey key, uint32_t mods){
     return (f && f->ui && f->ui->key_pressed == key &&
             (f->ui->key_mods & mods) == mods);
+}
+/* Typed characters this frame that a focused input has not consumed (digits,
+ * space, and letters arrive as text, not TimuiKey events — so apps can read
+ * single-key commands without reaching into internals). */
+TIMUI_API TimuiStr timui_text_input(const TimuiFrame *f){
+    TimuiStr s = { NULL, 0 };
+    if(f && f->ui){ s.ptr = f->ui->text_in; s.len = (size_t)f->ui->text_in_len; }
+    return s;
+}
+TIMUI_API int timui_char_pressed(const TimuiFrame *f, char ch){
+    int i;
+    if(!f || !f->ui) return 0;
+    for(i = 0; i < f->ui->text_in_len; i++)
+        if(f->ui->text_in[i] == ch) return 1;
+    return 0;
+}
+/* Programmatic focus: focus the widget with `id` (persists until a click or Tab
+ * moves it — call once, e.g. `if(!timui_focus(f)) timui_set_focus(f, id);`). */
+TIMUI_API void timui_set_focus(TimuiFrame *f, TimuiId id){
+    if(f && f->ui) f->ui->ia.focus = id;
+}
+TIMUI_API TimuiId timui_focus(const TimuiFrame *f){
+    return (f && f->ui) ? f->ui->ia.focus : 0;
 }
 
 /* ---- ids (FNV-1a 64; non-cryptographic widget identity) ---------------- */

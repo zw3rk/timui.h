@@ -166,18 +166,15 @@ static void apply_sort_key(int key){
     }
 }
 
-/* Scan the text typed this frame for a 1..4 sort key. timui folds printable
- * keys into the frame's text-input buffer — a plain digit arrives as a TEXT
- * event (codepoint), not as a TimuiKey code, so that buffer is where it
- * surfaces. procmon has no text-input widget, so the buffer is ours to read.
- * Returns the chosen SORT_* column, or -1 if no digit was pressed. */
-static int poll_sort_key(const Timui *ui){
-    int i, want = -1;
-    for(i = 0; i < ui->text_in_len; i++){
-        char c = ui->text_in[i];
-        if(c >= '1' && c <= '4') want = c - '1';   /* '1'->PID .. '4'->CMD */
-    }
-    return want;
+/* A plain digit arrives as typed text (a TEXT event), not a TimuiKey code;
+ * timui_char_pressed reads it without touching library internals. Returns the
+ * chosen SORT_* column ('1'->PID .. '4'->CMD), or -1 if no digit was pressed. */
+static int poll_sort_key(const TimuiFrame *f){
+    if(timui_char_pressed(f, '1')) return 0;
+    if(timui_char_pressed(f, '2')) return 1;
+    if(timui_char_pressed(f, '3')) return 2;
+    if(timui_char_pressed(f, '4')) return 3;
+    return -1;
 }
 
 int main(void){
@@ -220,7 +217,7 @@ int main(void){
 
         /* Sort-column selection (1/2/3/4); re-sort at once so the reordering is
          * visible before the next ~1 s data refresh. */
-        key = poll_sort_key(ui);
+        key = poll_sort_key(f);
         if(key >= 0){ apply_sort_key(key); sort_table(&table); }
 
         /* Throttled data refresh: run `ps` at most once per second. The loop

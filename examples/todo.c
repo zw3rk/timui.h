@@ -74,17 +74,13 @@ static void todo_save(const char *path, const struct Task *tasks, int count) {
  * key ONLY when no input is focused — i.e. exactly when the user is navigating
  * the list rather than typing a task name (where a Space or 'd' is just text).
  *
- * This is the one place the demo reads library-internal frame state; it is
- * legitimate here because the single-header build compiles the implementation
- * into this translation unit. Call AFTER the input field so a focused field has
- * already claimed its text. */
-static char todo_command_key(TimuiFrame *f) {
-    int i;
-    if (!f || !f->ui) return 0;
-    for (i = 0; i < f->ui->text_in_len; i++) {
-        char c = f->ui->text_in[i];
-        if (c == ' ' || c == 'd' || c == 'D') return c;
-    }
+ * Space / d arrive as typed text, not TimuiKey events; timui_char_pressed reads
+ * them via the public API. Call AFTER the input field so a focused field has
+ * already claimed its text (only then do list commands apply). */
+static char todo_command_key(const TimuiFrame *f) {
+    if (timui_char_pressed(f, ' ')) return ' ';
+    if (timui_char_pressed(f, 'd')) return 'd';
+    if (timui_char_pressed(f, 'D')) return 'D';
     return 0;
 }
 

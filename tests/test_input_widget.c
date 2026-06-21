@@ -232,3 +232,85 @@ TIMUI_TEST(test_focused_input_cursor){
     TIMUI_CHECK(out_contains(&fake, "\x1b[?25l"));       /* cursor hidden on focus loss */
     timui_close(ui);
 }
+
+/* Follow-up: timui_set_focus focuses a widget without a click; timui_focus reads it. */
+TIMUI_TEST(test_set_focus_programmatic){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[8] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 10, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 3, &al);
+    timui_begin(ui, &f);
+    TIMUI_CHECK(timui_focus(f) == 0);                    /* nothing focused initially */
+    timui_set_focus(f, TIMUI_ID("fld"));                 /* focus without a click */
+    timui_input_field(f, TIMUI_ID("fld"), r, &is);
+    timui_end(f);
+    TIMUI_CHECK(timui_focus(f) == TIMUI_ID("fld"));       /* persists */
+    SETIN(&fake, "hi");                                   /* type — the field is focused */
+    timui_begin(ui, &f);
+    timui_input_field(f, TIMUI_ID("fld"), r, &is);
+    timui_end(f);
+    TIMUI_CHECK(strcmp(text, "hi") == 0);
+    timui_set_focus(NULL, 1);                             /* NULL guard: no crash */
+    TIMUI_CHECK(timui_focus(NULL) == 0);
+    timui_close(ui);
+}
+
+/* Follow-up: timui_text_input / timui_char_pressed expose typed chars when no
+ * focused input consumes them (digits/space/letters are text, not TimuiKey). */
+TIMUI_TEST(test_text_input_accessor){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr typed;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 3, &al);
+    SETIN(&fake, "d3 ");                                  /* 'd','3',' ' — nothing consumes */
+    timui_begin(ui, &f);
+    typed = timui_text_input(f);
+    TIMUI_CHECK(typed.len == 3);
+    TIMUI_CHECK(timui_char_pressed(f, 'd'));
+    TIMUI_CHECK(timui_char_pressed(f, '3'));
+    TIMUI_CHECK(timui_char_pressed(f, ' '));
+    TIMUI_CHECK(!timui_char_pressed(f, 'x'));
+    timui_end(f);
+    TIMUI_CHECK(!timui_char_pressed(NULL, 'd'));          /* NULL guards */
+    TIMUI_CHECK(timui_text_input(NULL).len == 0);
+    timui_close(ui);
+}
+
+/* Regression: the focused-input cursor (F1.4) is emitted AFTER render_diff, so
+ * it moves the physical cursor away from where the diff renderer thinks it is.
+ * If the renderer's cross-frame last_x/last_y isn't resynced, the next frame can
+ * skip a needed CUP and draw a cell at the cursor position instead of its own.
+ * Repro: frame 2 changes exactly the cell the stale last_x/last_y points at. */
+TIMUI_TEST(test_cursor_no_diff_desync){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[4] = "a";
+    TimuiInputState is = { text, sizeof text, 1, 0 };   /* "a", cursor after it (col 1) */
+    TimuiStyle st = timui_style_make(0xffffff, 0, 0);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 6, 2, &al);
+    /* frame 1: focused input "a" at (0,0,3,1) — draws (0,0)..(2,0); after it the
+     * renderer's last_x is 3, but render_cursor then moves the cursor to (1,0). */
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("fld"));
+    timui_input_field(f, TIMUI_ID("fld"), TIMUI_RECT(0,0,3,1), &is);
+    timui_end(f);
+    /* frame 2: same input (cells unchanged) + a NEW 'Z' at (3,0). (3,0) is the
+     * only changed cell and equals the stale last_x — a correct renderer must
+     * still emit a CUP to (3,0). */
+    timui_fake_clear_output(&fake);
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("fld"));
+    timui_input_field(f, TIMUI_ID("fld"), TIMUI_RECT(0,0,3,1), &is);
+    timui_label(f, 3, 0, TIMUI_STR_LIT("Z"), st);
+    timui_end(f);
+    TIMUI_CHECK(out_contains(&fake, "\x1b[1;4H"));   /* 'Z' must be positioned at (3,0) */
+    timui_close(ui);
+}

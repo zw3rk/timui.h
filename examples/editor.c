@@ -7,11 +7,9 @@
  * with F10/ESC — with a "discard changes?" confirmation when the buffer is
  * dirty.
  *
- * Focus model: timui exposes no programmatic-focus API and `Timui` is opaque,
- * so a widget takes focus only from a mouse click (interact click-to-focus) or
- * a Tab press. The editor is the only focusable widget here, so the title bar
- * carries a "click to edit" hint; once clicked, every editing key routes to the
- * text_area and a hardware cursor tracks the edit position.
+ * Focus: the editor calls timui_set_focus() each frame (except while the discard
+ * dialog is up) so the text_area is focused from the first frame — typing works
+ * immediately, with a hardware cursor tracking the edit position.
  *
  * SPDX-License-Identifier: Apache-2.0
  * Copyright 2026 Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd.
@@ -146,14 +144,12 @@ int main(int argc, char **argv){
             hint = "Saved";
             timui_label(f, top.x + top.w - (int)strlen(hint) - 1, top.y,
                         timui_str_from_cstr(hint), saved_st);
-        } else {
-            hint = "click to edit";
-            timui_label(f, top.x + top.w - (int)strlen(hint) - 1, top.y,
-                        timui_str_from_cstr(hint), status_st);
         }
 
-        /* the star: a multi-line editor with an in-line hardware cursor when
-         * focused. Click the body to focus, then type/navigate/delete. */
+        /* the star: a multi-line editor with an in-line hardware cursor. Keep it
+         * focused (it's the only input) so typing works immediately; while the
+         * discard dialog is up, let its buttons hold focus instead. */
+        if(dialog == 0) timui_set_focus(f, TIMUI_ID("editor"));
         timui_text_area(f, TIMUI_ID("editor"), body, &ta);
 
         /* function bar: shortcuts + live cursor position. */

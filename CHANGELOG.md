@@ -4,6 +4,19 @@ All notable changes to **timui.h** are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); the project uses pre-1.0
 semver (a MINOR bump signals a breaking API change, PATCH a fix).
 
+## [Unreleased]
+
+### Added
+- **Five larger example applications** (`make run-<name>`): `editor` (text_area
+  cursor editing), `file_manager` (MC-style dual-pane browser), `todo`
+  (functional model/view/update), `procmon` (live `ps` table), `chat`
+  (thread-safe `timui_post` from a worker thread).
+- **App-level input accessors** (surfaced by building those demos):
+  `timui_set_focus(f, id)` / `timui_focus(f)` — programmatic focus; and
+  `timui_char_pressed(f, ch)` / `timui_text_input(f)` — read typed characters
+  (digits/space/letters arrive as text, not `TimuiKey` events). These remove the
+  need for apps to reach into `struct Timui`.
+
 ## [0.2.0] — 2026-07-05
 
 First tagged release. A working immediate-mode C99 TUI — terminal backend,

@@ -721,6 +721,16 @@ TIMUI_API void    timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, Ti
 TIMUI_API uint64_t timui_now_ms(void);   /* monotonic milliseconds */
 TIMUI_API int    timui_key_pressed(TimuiFrame *f, TimuiKey key);
 TIMUI_API int    timui_key_pressed_mods(TimuiFrame *f, TimuiKey key, uint32_t mods);
+/* Typed text this frame not yet consumed by a focused input — digits, space, and
+ * letters arrive as text, not TimuiKey events. timui_char_pressed scans for a
+ * specific ASCII char; timui_text_input returns the raw run (a view into a
+ * per-frame buffer, valid until the next timui_begin). */
+TIMUI_API int      timui_char_pressed(const TimuiFrame *f, char ch);
+TIMUI_API TimuiStr timui_text_input(const TimuiFrame *f);
+/* Programmatic focus: focus the widget `id` (persists until a click/Tab moves
+ * it); timui_focus returns the currently focused id (0 = none). */
+TIMUI_API void     timui_set_focus(TimuiFrame *f, TimuiId id);
+TIMUI_API TimuiId  timui_focus(const TimuiFrame *f);
 
 /* ---- Interaction state (hot/active/focus) ----------------------------- *
  * Immediate-mode interaction: each frame, widgets call timui_interact_button
