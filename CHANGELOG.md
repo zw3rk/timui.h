@@ -6,6 +6,32 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 
 ## [Unreleased]
 
+### Fixed
+- **Auto-wrap desync**: `screen_enter` now disables DECAWM (`\x1b[?7l`, restored
+  on exit) so a glyph written to the last column can't wrap the cursor or scroll
+  the screen behind the diff renderer's back — the remaining right-edge
+  corruption in fast-updating apps. Standard for cell-based TUIs.
+- `examples/chat`: focuses the input on the first frame (no Tab needed).
+- `examples/file_manager`: the file viewer is now a real read-only scrollable
+  view (was an editable text_area that swallowed Space/keys, took focus on click,
+  and wouldn't page-scroll).
+- **Frame tearing**: `timui_end` now wraps each frame in synchronized output
+  (DEC 2026, `\x1b[?2026h`/`l`) when the terminal advertises it, so a partial
+  update never reaches the screen. Without it, a fast-updating app (chat,
+  file_manager) showed half-drawn frames that read as interleaved corruption.
+  Added a byte-stream verifier (a minimal VT model replaying the diff stream)
+  that confirmed the renderer itself is correct.
+- `examples/file_manager`: Enter now views files (was: broke the pane by scanning
+  a file as a directory); F10 quits from anywhere including the viewer.
+- **Diff-renderer / cursor desync**: a focused `input_field`/`text_area` emits
+  its hardware cursor after `render_diff`, which moved the physical cursor off
+  the renderer's tracked position; the next frame could then skip a cursor-
+  positioning CUP and draw a cell at the wrong place — visible as garbled output
+  in `chat` and `file_manager`'s file viewer. The renderer is now resynced after
+  the cursor moves. (The grid/golden tests can't catch this — they compare cell
+  content, not the emitted byte stream — so a deterministic byte-stream
+  regression was added.)
+
 ### Added
 - **Five larger example applications** (`make run-<name>`): `editor` (text_area
   cursor editing), `file_manager` (MC-style dual-pane browser), `todo`

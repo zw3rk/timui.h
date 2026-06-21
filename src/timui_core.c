@@ -25,10 +25,36 @@ static void ui_event_cb(void *ctx, const TimuiEvent *ev){
     else
         ui->events_dropped++;
 }
+/* Write ALL n bytes to fd. The output fd typically SHARES its open file
+ * description with the input fd (fd 0/1 on a tty), which we set O_NONBLOCK for
+ * the frame loop's read — so writes can return a short count or EAGAIN under
+ * output pressure (heavy rendering while typing fast). A single write() that
+ * dropped the remainder would lose render bytes and garble the screen, so loop:
+ * retry on EINTR, wait for writability on EAGAIN, and continue on a partial
+ * write until the whole buffer is out. Returns bytes written (== n on success),
+ * or -1 if nothing could be written. Exposed (not in the public header) so the
+ * partial-write behavior is unit-testable via a pipe. */
+TIMUI_API int timui_write_all_(int fd, const void *d, size_t n){
+    const char *p = (const char *)d;
+    size_t off = 0;
+    while(off < n){
+        ssize_t w = write(fd, p + off, n - off);
+        if(w > 0){ off += (size_t)w; continue; }
+        if(w < 0 && errno == EINTR) continue;
+        if(w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){
+            struct pollfd pfd;
+            pfd.fd = fd; pfd.events = POLLOUT; pfd.revents = 0;
+            while(poll(&pfd, 1, -1) < 0 && errno == EINTR){ /* retry */ }
+            if(pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) break;
+            continue;
+        }
+        break;   /* genuine write error */
+    }
+    return (off == 0 && n > 0) ? -1 : (int)off;
+}
 static int fd_write(TimuiTransport *t, const void *d, size_t n){
     TimuiFdCtx *c = (TimuiFdCtx *)t->ctx;
-    ssize_t w = write(c->write_fd, d, n);
-    return w < 0 ? -1 : (int)w;
+    return timui_write_all_(c->write_fd, d, n);
 }
 static int fd_read(TimuiTransport *t, void *b, size_t cap){
     TimuiFdCtx *c = (TimuiFdCtx *)t->ctx;
@@ -268,14 +294,22 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
 TIMUI_API void timui_end(TimuiFrame *frame){
     Timui *ui;
     TimuiCellBuffer tmp;
+    int sync;
     if(!frame || !frame->ui) return;
     ui = frame->ui;
     timui_interact_end(&ui->ia);
+    /* Wrap the whole frame in synchronized output (DEC 2026) when the terminal
+     * supports it, so a partial update never reaches the screen — the diff
+     * writes cells incrementally, and without this a fast-updating app tears
+     * (a screenshot of a half-drawn frame looks like interleaved corruption).
+     * Unsupported terminals lack the cap and ignore the markers anyway. */
+    sync = (ui->caps.flags & TIMUI_CAP_SYNC_OUTPUT) ||
+           (ui->cfg.flags  & TIMUI_FLAG_SYNC_OUTPUT);
+    if(sync) timui_sync_begin(&ui->transport);
     timui_render_diff(&ui->transport, &ui->prev, &ui->curr, &ui->renderer);
     /* F1.4: render_diff left the physical cursor at the last drawn cell, so
      * reposition it for the focused input every visible frame; emit a hide once
-     * when focus leaves. render_diff already flushed, so flush the cursor bytes
-     * too. */
+     * when focus leaves. */
     if(ui->cursor_visible){
         timui_render_cursor(&ui->transport, ui->cursor_x, ui->cursor_y, 1);
         /* render_cursor moved the physical cursor off render_diff's last cell —
@@ -287,12 +321,12 @@ TIMUI_API void timui_end(TimuiFrame *frame){
             ui->renderer.last_y = ui->cursor_y;
         }
         ui->cursor_shown = 1;
-        if(ui->transport.flush) ui->transport.flush(&ui->transport);
     } else if(ui->cursor_shown){
         timui_render_cursor(&ui->transport, -1, -1, 0);
         ui->cursor_shown = 0;
-        if(ui->transport.flush) ui->transport.flush(&ui->transport);
     }
+    if(sync) timui_sync_end(&ui->transport);
+    if(ui->transport.flush) ui->transport.flush(&ui->transport);   /* commit the frame */
     tmp = ui->prev; ui->prev = ui->curr; ui->curr = tmp;   /* swap for next diff */
 }
 TIMUI_API TimuiRect timui_root(const TimuiFrame *frame){

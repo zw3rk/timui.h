@@ -17,6 +17,7 @@ TIMUI_TEST(test_screen_enter_emits_modes){
     /* title + alt screen + mouse(SGR) + bracketed paste, in enter order */
     static const char expected[] =
         "\x1b]0;T\x07"             /* OSC 0 ; title BEL */
+        "\x1b[?7l"                 /* auto-wrap off (cell renderer) */
         "\x1b[?1049h"              /* alt screen on  */
         "\x1b[?1000h" "\x1b[?1006h"/* mouse + SGR encoding */
         "\x1b[?2004h";             /* bracketed paste on */
@@ -42,7 +43,8 @@ TIMUI_TEST(test_screen_exit_reverses){
     static const char expected[] =
         "\x1b[?2004l"              /* bracketed paste off */
         "\x1b[?1006l" "\x1b[?1000l"/* SGR + mouse off */
-        "\x1b[?1049l";             /* alt screen off */
+        "\x1b[?1049l"              /* alt screen off */
+        "\x1b[?7h";                /* auto-wrap restored */
 
     TIMUI_CHECK(timui_fake_init(&f, &al) == TIMUI_OK);
     t = timui_fake_transport(&f);
@@ -70,16 +72,17 @@ TIMUI_TEST(test_title_rejects_controls){
     TIMUI_CHECK(timui_fake_init(&f, &al) == TIMUI_OK);
     t = timui_fake_transport(&f);
 
+    /* flags=0 so only the title OSC + the unconditional auto-wrap-off follow. */
     timui_screen_enter(&t, &m, 0, TIMUI_STR_LIT("\xC3\x9C"));   /* Ü */
     out = timui_fake_output(&f);
-    TIMUI_CHECK(out.len == 7);
-    TIMUI_CHECK(memcmp(out.ptr, "\x1b]0;\xC3\x9C\x07", 7) == 0);
+    TIMUI_CHECK(out.len == 12);
+    TIMUI_CHECK(memcmp(out.ptr, "\x1b]0;\xC3\x9C\x07" "\x1b[?7l", 12) == 0);
 
     timui_fake_clear_output(&f);
     timui_screen_enter(&t, &m, 0, TIMUI_STR_LIT("a\xC2\x9C\x07" "b"));  /* a, U+009C, BEL, b */
     out = timui_fake_output(&f);
-    TIMUI_CHECK(out.len == 7);
-    TIMUI_CHECK(memcmp(out.ptr, "\x1b]0;ab\x07", 7) == 0);       /* U+009C + BEL dropped */
+    TIMUI_CHECK(out.len == 12);
+    TIMUI_CHECK(memcmp(out.ptr, "\x1b]0;ab\x07" "\x1b[?7l", 12) == 0);  /* U+009C + BEL dropped */
 
     timui_fake_destroy(&f);
 }

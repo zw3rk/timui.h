@@ -173,14 +173,28 @@ static void load_view(Pane *p, Entry *e, char *buf, size_t cap){
     }
 }
 
-/* True if any control/navigation/function key fired this frame. Printable text
- * arrives as TEXT (not KEY) events, so this covers the practical "any key"
- * used to dismiss the viewer: ESC, Enter, Tab, arrows, F1..F12, etc. */
-static int any_key_pressed(TimuiFrame *f){
-    int k;
-    for(k = TIMUI_KEY_ESCAPE; k <= TIMUI_KEY_F12; k++)
-        if(timui_key_pressed(f, (TimuiKey)k)) return 1;
-    return 0;
+/* Read-only viewer: fill `body` uniformly (so there are no patchy gaps), then
+ * draw `text`'s lines (split on '\n') starting at line `scroll`. Long lines are
+ * clipped at the buffer edge. Returns the total line count for scroll clamping.
+ * Drawn by the app — not a text_area — so it is not editable and does not steal
+ * focus / accept keystrokes. */
+static int draw_viewer(TimuiFrame *f, const char *text, TimuiRect body, int scroll, TimuiStyle st){
+    TimuiCellBuffer *buf = timui_frame_buffer(f);
+    const char *s = text;
+    int line = 0, y = 0, total = 1;
+    const char *p;
+    timui_draw_fill(buf, body, st);
+    for(p = text; *p; p++) if(*p == '\n') total++;     /* total lines */
+    while(line < scroll && *s){ if(*s == '\n') line++; s++; }   /* skip to `scroll` */
+    while(*s && y < body.h){
+        const char *end = s;
+        while(*end && *end != '\n') end++;
+        { TimuiStr ln = { s, (size_t)(end - s) };
+          timui_draw_text(buf, body.x, body.y + y, ln, st); }
+        y++;
+        s = (*end == '\n') ? end + 1 : end;
+    }
+    return total;
 }
 
 /* ---- Rendering --------------------------------------------------------- */
@@ -238,7 +252,7 @@ static const char HELP_TEXT[] =
     "\n"
     "  Tab .......... switch the active pane\n"
     "  Up / Down .... move the selection\n"
-    "  Enter ........ open the highlighted directory (.. goes up)\n"
+    "  Enter ........ open a directory (.. goes up), or view a file\n"
     "  F3 ........... view the highlighted file (read-only)\n"
     "  F1 ........... this help\n"
     "  F10 / ESC .... quit\n"
@@ -255,7 +269,7 @@ int main(void){
     /* The model, owned by main(). Large but well within the main-thread stack. */
     static Pane left, right;                            /* static: keep the ~2MB model off the frame */
     static char viewer_buf[VIEW_CAP + 1];
-    TimuiTextAreaState viewer = { viewer_buf, sizeof viewer_buf, 0, 0 };
+    int view_scroll = 0;                                /* read-only viewer scroll (lines) */
     TimuiMenuBar menubar = {0};
     int active = 0;                                     /* 0 = left, 1 = right  */
     int viewer_open = 0;
@@ -296,22 +310,34 @@ int main(void){
         keys_r = timui_cut_bottom(&root, 1);
         timui_split_cols(root, 0.5f, &left_r, &right_r);
 
-        /* Input — suppressed while the viewer owns the screen. */
+        /* F10 quits from anywhere (matching the "F10 Quit" hint); ESC and the
+         * per-key navigation below are suppressed while the viewer owns the
+         * screen (there, ESC / any key closes the overlay instead). */
+        if(timui_key_pressed(f, TIMUI_KEY_F10)) timui_quit(ui);
         if(!was_open){
-            if(timui_key_pressed(f, TIMUI_KEY_ESCAPE) || timui_key_pressed(f, TIMUI_KEY_F10))
-                timui_quit(ui);
+            if(timui_key_pressed(f, TIMUI_KEY_ESCAPE)) timui_quit(ui);
             if(timui_key_pressed(f, TIMUI_KEY_TAB)){ active = !active; ap = active ? &right : &left; }
             if(timui_key_pressed(f, TIMUI_KEY_UP)   && ap->selected > 0)               ap->selected--;
             if(timui_key_pressed(f, TIMUI_KEY_DOWN) && ap->selected < ap->count - 1)   ap->selected++;
-            if(timui_key_pressed(f, TIMUI_KEY_ENTER)) pane_enter(ap);
+            if(timui_key_pressed(f, TIMUI_KEY_ENTER)){
+                /* Enter opens a directory (.. goes up) OR views a file. Without
+                 * the file case, pane_enter would path_join the file and scan
+                 * it as a directory, breaking the pane. */
+                if(ap->count > 0 && !ap->entries[ap->selected].is_dir){
+                    load_view(ap, &ap->entries[ap->selected], viewer_buf, sizeof viewer_buf);
+                    view_scroll = 0; viewer_open = 1;
+                } else {
+                    pane_enter(ap);
+                }
+            }
             if(timui_key_pressed(f, TIMUI_KEY_F1)){
                 snprintf(viewer_buf, sizeof viewer_buf, "%s", HELP_TEXT);
-                viewer.cursor = 0; viewer.scroll_y = 0; viewer_open = 1;
+                view_scroll = 0; viewer_open = 1;
             }
             if(timui_key_pressed(f, TIMUI_KEY_F3) && ap->count > 0 &&
                !ap->entries[ap->selected].is_dir){
                 load_view(ap, &ap->entries[ap->selected], viewer_buf, sizeof viewer_buf);
-                viewer.cursor = 0; viewer.scroll_y = 0; viewer_open = 1;
+                view_scroll = 0; viewer_open = 1;
             }
         }
 
@@ -343,11 +369,11 @@ int main(void){
             if(do_quit) timui_quit(ui);
             if(do_help){
                 snprintf(viewer_buf, sizeof viewer_buf, "%s", HELP_TEXT);
-                viewer.cursor = 0; viewer.scroll_y = 0; viewer_open = 1;
+                view_scroll = 0; viewer_open = 1;
             }
             if(do_view && ap->count > 0 && !ap->entries[ap->selected].is_dir){
                 load_view(ap, &ap->entries[ap->selected], viewer_buf, sizeof viewer_buf);
-                viewer.cursor = 0; viewer.scroll_y = 0; viewer_open = 1;
+                view_scroll = 0; viewer_open = 1;
             }
         }
 
@@ -357,10 +383,25 @@ int main(void){
         if(viewer_open){
             TimuiRect ov = timui_inset(timui_root(f), 2);
             TimuiRect vbody = timui_panel_begin(f, TIMUI_ID("viewer"), ov,
-                TIMUI_STR_LIT(" Viewer — press any key to close "), TIMUI_BORDER_DOUBLE);
-            timui_text_area(f, TIMUI_ID("view_ta"), vbody, &viewer);
+                TIMUI_STR_LIT(" Viewer — Up/Down/PgUp/PgDn scroll · ESC/Enter close "),
+                TIMUI_BORDER_DOUBLE);
+            int total = draw_viewer(f, viewer_buf, vbody, view_scroll,
+                                    timui_style_make(0xFFFFFF, 0x0000AA, 0));
             timui_panel_end(f);
-            if(was_open && any_key_pressed(f)) viewer_open = 0;
+            /* Scroll / close — only if the viewer was already open at frame start,
+             * so the very key that opened it doesn't also act on it. */
+            if(was_open){
+                int page = vbody.h > 1 ? vbody.h - 1 : 1;
+                if(timui_key_pressed(f, TIMUI_KEY_UP))        view_scroll--;
+                if(timui_key_pressed(f, TIMUI_KEY_DOWN))      view_scroll++;
+                if(timui_key_pressed(f, TIMUI_KEY_PAGE_UP))   view_scroll -= page;
+                if(timui_key_pressed(f, TIMUI_KEY_PAGE_DOWN)) view_scroll += page;
+                if(view_scroll > total - 1) view_scroll = total - 1;
+                if(view_scroll < 0)         view_scroll = 0;
+                if(timui_key_pressed(f, TIMUI_KEY_ESCAPE) ||
+                   timui_key_pressed(f, TIMUI_KEY_ENTER)  ||
+                   timui_key_pressed(f, TIMUI_KEY_F3))     viewer_open = 0;
+            }
         }
 
         timui_end(f);

@@ -101,6 +101,12 @@ TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_
             TIMUI_EMIT(t, "\x07");
         }
     }
+    /* Disable auto-wrap (DECAWM off) unconditionally: the diff renderer positions
+     * every cell with its own CUP, so a glyph written to the last column must
+     * stay put — with auto-wrap on it moves the cursor to the next line (or
+     * scrolls the screen when that cell is the bottom-right), desyncing the
+     * renderer from the terminal. This is standard for cell-based TUIs. */
+    TIMUI_EMIT(t, "\x1b[?7l");
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049h");
     if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25l");
     if(flags & TIMUI_FLAG_MOUSE){          TIMUI_EMIT(t, "\x1b[?1000h"); TIMUI_EMIT(t, "\x1b[?1006h"); }
@@ -114,6 +120,7 @@ TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m){
     if(flags & TIMUI_FLAG_MOUSE){          TIMUI_EMIT(t, "\x1b[?1006l"); TIMUI_EMIT(t, "\x1b[?1000l"); }
     if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25h");
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049l");
+    TIMUI_EMIT(t, "\x1b[?7h");             /* restore auto-wrap on exit */
 }
 
 /* ---- terminal raw mode (POSIX) ---------------------------------------- */

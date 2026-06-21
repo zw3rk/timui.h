@@ -57,6 +57,7 @@ void test_mpsc_overflow_guard(void);
 void test_fake_capture_output(void);
 void test_fake_inject_input(void);
 void test_fake_grows(void);
+void test_write_all_under_backpressure(void);
 void test_screen_enter_emits_modes(void);
 void test_screen_exit_reverses(void);
 void test_title_rejects_controls(void);
@@ -219,5 +220,7 @@ void test_interact_tab_grow_oom(void);
 void test_hyperlink_set_edges(void);
 void test_run_negative_guards(void);
 void test_getters(void);
+void test_render_stream_chat_like(void);
+void test_frame_synchronized_output(void);
 
 #endif /* TIMUI_TEST_H */

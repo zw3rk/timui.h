@@ -46,6 +46,7 @@ int main(void){
         test_fake_capture_output,
         test_fake_inject_input,
         test_fake_grows,
+        test_write_all_under_backpressure,
         test_screen_enter_emits_modes,
         test_screen_exit_reverses,
         test_title_rejects_controls,
@@ -210,6 +211,8 @@ int main(void){
         test_hyperlink_set_edges,
         test_run_negative_guards,
         test_getters,
+        test_render_stream_chat_like,
+        test_frame_synchronized_output,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

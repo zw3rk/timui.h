@@ -193,8 +193,10 @@ int main(void){
         /* Transcript body (auto-scrolled to the newest line). */
         draw_transcript(f, &transcript, root, panel, self_fg, sys_fg, text_fg);
 
-        /* Compose line: a "> " prompt then the editable input field. On Enter,
-         * append "you: <text>" locally and clear the field. */
+        /* Compose line: a "> " prompt then the editable input field. Focus it by
+         * default (unless the user clicked elsewhere) so you can type from the
+         * first frame without pressing Tab. On Enter, append and clear. */
+        if(timui_focus(f) == 0) timui_set_focus(f, TIMUI_ID("compose"));
         prompt = timui_cut_left(&input, 2);
         timui_label(f, prompt.x, prompt.y, TIMUI_STR_LIT("> "),
                     timui_style_make(text_fg, panel.bg, 0));
