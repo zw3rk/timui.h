@@ -18,8 +18,38 @@ TIMUI_API const char *timui_error_string(TimuiResult result){
 }
 
 /* ---- lifecycle + frame ------------------------------------------------ */
+/* TIMUI_TRACE: append a human-readable line of raw input bytes to the trace fd
+ * (ESC -> \e, printable as-is, else \xNN). For diagnosing drag-drop / paste. */
+static void trace_write_(int fd, const char *tag, const unsigned char *b, size_t n){
+    static const char hex[] = "0123456789abcdef";
+    char line[1200];
+    size_t k, o = 0;
+    if(fd < 0) return;
+    while(*tag && o < sizeof line - 1) line[o++] = *tag++;
+    for(k = 0; k < n && o + 4 < sizeof line; k++){
+        unsigned char c = b[k];
+        if(c == 0x1b){ line[o++] = '\\'; line[o++] = 'e'; }
+        else if(c >= 0x20 && c < 0x7f){ line[o++] = (char)c; }
+        else { line[o++] = '\\'; line[o++] = 'x'; line[o++] = hex[c >> 4]; line[o++] = hex[c & 15]; }
+    }
+    if(o < sizeof line) line[o++] = '\n';
+    (void)write(fd, line, o);
+}
 static void ui_event_cb(void *ctx, const TimuiEvent *ev){
     Timui *ui = (Timui *)ctx;
+    /* Bracketed paste (incl. a Finder drag-drop of a path) arrives here during
+     * the parse, while its ptr into the read buffer is still valid — and a paste
+     * split across reads produces SEVERAL paste events in a frame. Accumulate
+     * their content into a persistent buffer (not enqueued) so nothing dangles
+     * or gets overwritten; the frame appends it to the focused input's text. */
+    if(ev->kind == TIMUI_EVENT_PASTE){
+        size_t k;
+        if(ui->trace_fd >= 0)
+            trace_write_(ui->trace_fd, "PASTE ", (const unsigned char *)ev->as.paste.ptr, ev->as.paste.len);
+        for(k = 0; k < ev->as.paste.len && ui->paste_len < (int)sizeof(ui->paste_buf); k++)
+            ui->paste_buf[ui->paste_len++] = ev->as.paste.ptr[k];
+        return;
+    }
     if(ui->event_count < (int)(sizeof(ui->events) / sizeof(ui->events[0])))
         ui->events[ui->event_count++] = *ev;
     else
@@ -105,6 +135,7 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     ui->transport = transport;
     ui->have_transport = 1;
     ui->fd.read_fd = -1;   /* no real fd behind a test/fake transport (W7) */
+    ui->trace_fd = -1;
     timui_caps_detect(&ui->caps, NULL, NULL, NULL);
     r = timui_setup(ui, w, h);
     if(r != TIMUI_OK){ alloc->free(alloc->userdata, ui, sizeof *ui); return r; }
@@ -172,6 +203,11 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     ui->cfg = *cfg;
     ui->fd.read_fd = cfg->input_fd;
     ui->fd.write_fd = cfg->output_fd;
+    /* TIMUI_TRACE=<file>: append a raw-input trace (drag-drop / paste debugging).
+     * Best-effort; a failed open leaves tracing off. */
+    ui->trace_fd = -1;
+    { const char *tp = getenv("TIMUI_TRACE");
+      if(tp && *tp) ui->trace_fd = open(tp, O_WRONLY | O_CREAT | O_APPEND, 0644); }
     ui->transport.write = fd_write;
     ui->transport.read  = fd_read;
     ui->transport.flush = fd_flush;
@@ -213,6 +249,7 @@ TIMUI_API void timui_close(Timui *ui){
     if(ui->have_postq) timui_mpsc_destroy(&ui->postq);
     timui_interact_destroy(&ui->ia);   /* V24: free the dynamic tab_order */
     if(ui->have_ids) timui_id_stack_destroy(&ui->ids);
+    if(ui->trace_fd >= 0) close(ui->trace_fd);
     al = ui->alloc;
     al.free(al.userdata, ui, sizeof *ui);
 }
@@ -233,6 +270,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         }
         n = ui->transport.read(&ui->transport, buf, sizeof buf);
         if(n > 0){
+            if(ui->trace_fd >= 0) trace_write_(ui->trace_fd, "READ  ", (const unsigned char *)buf, (size_t)n);
             timui_input_set_now(&ui->input, timui_now_ms());
             timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
         }else if(ui->fd.read_fd >= 0 && !ui->termios_active){
@@ -300,6 +338,17 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 }
             }
         }
+        /* Append the frame's accumulated bracketed-paste content (a real paste
+         * or a Finder drag-drop path) to the focused input as text. Control
+         * bytes — newlines etc. — are dropped so a single-line field gets a
+         * clean string and no escape sequence can be injected. */
+        { int pk;
+          for(pk = 0; pk < ui->paste_len && ui->text_in_len < (int)sizeof(ui->text_in); pk++){
+              unsigned char pc = (unsigned char)ui->paste_buf[pk];
+              if(pc >= 0x20 && pc != 0x7f) ui->text_in[ui->text_in_len++] = (char)pc;
+          }
+          ui->paste_len = 0;   /* consumed; reset for the next frame's feed */
+        }
     }
     timui_interact_begin(&ui->ia);
     ui->cursor_visible = 0;           /* F1.4: focused input re-requests each frame */
@@ -328,11 +377,13 @@ TIMUI_API void timui_end(TimuiFrame *frame){
            (ui->cfg.flags  & TIMUI_FLAG_SYNC_OUTPUT);
     if(sync) timui_sync_begin(&ui->transport);
     timui_render_diff(&ui->transport, &ui->prev, &ui->curr, &ui->renderer);
-    /* Kitty-graphics images drawn ON TOP of the diffed cells (their CUP+place
-     * moves the physical cursor, so force the next frame's diff to re-CUP). */
-    if(ui->img_place_count > 0){
+    /* Kitty-graphics images drawn ON TOP of the diffed cells. Also run when the
+     * count dropped to 0 (img_last_count>0) so scrolled-away placements get
+     * cleared. A placement's CUP moves the physical cursor, so force the next
+     * frame's diff to re-CUP whenever we emitted any. */
+    if(ui->img_place_count > 0 || ui->img_last_count > 0){
         timui_images_flush_(ui);
-        ui->renderer.last_x = -1; ui->renderer.last_y = -1;
+        if(ui->img_place_count > 0){ ui->renderer.last_x = -1; ui->renderer.last_y = -1; }
     }
     /* F1.4: render_diff left the physical cursor at the last drawn cell, so
      * reposition it for the focused input every visible frame; emit a hide once
@@ -400,6 +451,7 @@ TIMUI_API int timui_events_dropped(Timui *ui){
 }
 TIMUI_API void timui_quit(Timui *ui){ if(ui) ui->should_quit = 1; }
 TIMUI_API bool timui_should_quit(const Timui *ui){ return ui ? (bool)ui->should_quit : false; }
+TIMUI_API const TimuiCaps *timui_caps(const Timui *ui){ return ui ? &ui->caps : NULL; }
 TIMUI_API int timui_key_pressed(TimuiFrame *f, TimuiKey key){
     return (f && f->ui && f->ui->key_pressed == key);
 }

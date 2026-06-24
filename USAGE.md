@@ -43,9 +43,11 @@ It is exactly what the render verifier consumes.
 `recordings/` is git-ignored (artifacts); acceptance input scripts live under
 `tests/drive/*.in` (checked in). Tools: `tools/pty_drive.c` (pty runner + input
 injector) and `tools/vt_render.c` (replays a raw stream through a VT model and
-prints the grid — `./build/vt_render recordings/<name>.raw`). `--delay-ms`
-simulates typing speed; `pty_drive` waits for the app's first output before
-sending input (so keystrokes aren't echoed or flushed by raw-mode entry).
+prints the grid — `./build/vt_render recordings/<name>.raw`; add `--images` to
+also parse Kitty-graphics APC sequences and report image transmits + placements,
+the headless check for inline images). `--delay-ms` simulates typing speed;
+`pty_drive` waits for the app's first output before sending input (so keystrokes
+aren't echoed or flushed by raw-mode entry).
 
 Example — replay a captured session through the render model, or grep a headless
 run as an assertion:
@@ -53,6 +55,18 @@ run as an assertion:
     nix develop -c make rec-chat            # record; produces recordings/chat.cast
     asciinema play recordings/chat.cast     # watch it back
     ./build/vt_render recordings/chat.raw    # or reconstruct the grid from a drive
+
+## Debugging input (drag-drop / paste)
+
+Set `TIMUI_TRACE=<file>` to append a raw-input trace — one line per `read()` and
+per bracketed paste, with `ESC` shown as `\e` and other control bytes as `\xNN`:
+
+    TIMUI_TRACE=/tmp/timui-trace.log nix develop -c make run-chat
+    # …drag a file into the input, quit, then inspect:
+    grep -E 'READ|PASTE' /tmp/timui-trace.log
+
+This shows exactly what the terminal sends (e.g. a drag-drop may arrive as
+`\e[200~<path>\e[201~`, possibly split across several reads).
 
 ## Single-header drop-in
 

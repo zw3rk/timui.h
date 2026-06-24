@@ -639,6 +639,9 @@ typedef struct {
 TIMUI_API void timui_caps_detect(TimuiCaps *caps, const char *term, const char *term_program, const char *colorterm);
 TIMUI_API void timui_caps_apply_force(TimuiCaps *caps, uint32_t force_on, uint32_t force_off);
 TIMUI_API int  timui_caps_has(const TimuiCaps *caps, TimuiCapFlags cap);
+/* The capabilities detected for an open ui — so apps can, e.g., choose an inline
+ * Kitty-graphics image vs a text fallback: timui_caps_has(timui_caps(ui), ...). */
+TIMUI_API const TimuiCaps *timui_caps(const Timui *ui);
 
 /* ---- Synchronized output (DEC 2026) + cursor -------------------------- *
  * Wrap a frame's terminal writes so the terminal repaints atomically. The

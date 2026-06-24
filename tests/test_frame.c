@@ -62,21 +62,27 @@ TIMUI_TEST(test_frame_quit_flag){
     timui_close(ui);
 }
 
-/* G7: events beyond the 16-slot queue are dropped; timui_events_dropped
- * reports the count (and resets on read). */
+/* G7: the event queue holds a WHOLE read (512 slots > the 256-byte read buffer),
+ * so a burst of typed text — e.g. a Finder drag-drop, which the terminal inserts
+ * as plain text, one event per char — is delivered in full, not dropped (the
+ * 16-slot queue truncated a dropped path to its first 16 chars). The
+ * events_dropped counter remains as a safety net and still resets on read. */
 TIMUI_TEST(test_events_dropped){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
     TimuiTransport t;
     Timui *ui = NULL;
     TimuiFrame *f = NULL;
+    static char burst[120];
+    int k;
+    for(k = 0; k < (int)sizeof burst; k++) burst[k] = (char)('a' + (k % 26));
     timui_fake_init(&fake, &al);
     t = timui_fake_transport(&fake);
     timui_open_for_test(&ui, t, 30, 5, &al);
-    timui_fake_set_input(&fake, "abcdefghijklmnopq", 17);   /* 17 text events */
+    timui_fake_set_input(&fake, burst, sizeof burst);   /* 120 text events, one read */
     timui_begin(ui, &f);
-    TIMUI_CHECK(timui_events_dropped(ui) == 1);   /* 17 - 16 = 1 dropped */
-    TIMUI_CHECK(timui_events_dropped(ui) == 0);   /* reset after read */
+    TIMUI_CHECK(timui_events_dropped(ui) == 0);   /* all fit — nothing dropped */
+    TIMUI_CHECK(timui_events_dropped(ui) == 0);   /* still zero (and reset) after read */
     timui_end(f);
     timui_close(ui);
 }

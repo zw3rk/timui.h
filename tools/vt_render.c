@@ -20,6 +20,30 @@
 static unsigned int g[MAXH][MAXW];
 static int W = 80, H = 40, cx, cy, pending, autowrap = 1;
 
+/* Kitty-graphics validation: track image transmits (a=t, by id) and placements
+ * (a=p, at the cursor, sized c x r). Lets a scripted run assert an image landed
+ * at the right cell region — the headless check for inline graphics. */
+#define MAXIMG 32
+static struct { unsigned id; long bytes; } img_tx[MAXIMG]; static int img_tx_n;
+static struct { unsigned id; int x, y, c, r; } img_pl[MAXIMG]; static int img_pl_n;
+static unsigned cur_tx = 0;   /* id of the transmit currently streaming */
+static int want_images = 0;
+static void img_add_bytes(unsigned id, long b){
+    int k;
+    for(k = 0; k < img_tx_n; k++) if(img_tx[k].id == id){ img_tx[k].bytes += b; return; }
+    if(img_tx_n < MAXIMG){ img_tx[img_tx_n].id = id; img_tx[img_tx_n].bytes = b; img_tx_n++; }
+}
+static void img_place(unsigned id, int x, int y, int c, int r){
+    int yy, xx;
+    if(img_pl_n < MAXIMG){
+        img_pl[img_pl_n].id = id; img_pl[img_pl_n].x = x; img_pl[img_pl_n].y = y;
+        img_pl[img_pl_n].c = c; img_pl[img_pl_n].r = r; img_pl_n++;
+    }
+    for(yy = y; yy < y + r && yy < H; yy++)                    /* mark the region ▒ */
+        for(xx = x; xx < x + c && xx < W; xx++)
+            if(yy >= 0 && xx >= 0) g[yy][xx] = 0x2592;
+}
+
 static void scroll_up(void){
     int y, x;
     for(y = 0; y < H - 1; y++) for(x = 0; x < W; x++) g[y][x] = g[y+1][x];
@@ -80,6 +104,33 @@ static void feed(const unsigned char *s, long n){
             if(j < n && s[j] == 0x1b) j++;
             i = (j < n) ? j + 1 : n; continue;
         }
+        if(c == 0x1b && i+1 < n && s[i+1] == '_'){           /* APC — Kitty graphics ESC _ G ... ST */
+            long j = i + 2;
+            if(j < n && s[j] == 'G'){
+                char action = 0; unsigned id = 0, cc = 0, rr = 0; long pstart, pe;
+                j++;
+                while(j < n && s[j] != ';' && !(s[j]==0x1b && j+1<n && s[j+1]=='\\')){
+                    char key = s[j]; j++;
+                    if(j < n && s[j] == '='){
+                        j++;
+                        if(key == 'a'){ action = (char)s[j]; j++; }
+                        else { long v = 0; while(j<n && s[j]>='0' && s[j]<='9'){ v = v*10 + (s[j]-'0'); j++; }
+                               if(key=='i') id=(unsigned)v; else if(key=='c') cc=(unsigned)v; else if(key=='r') rr=(unsigned)v; }
+                    }
+                    if(j < n && s[j] == ',') j++;
+                }
+                pstart = (j < n && s[j] == ';') ? j + 1 : j; pe = pstart;
+                while(pe < n && !(s[pe]==0x1b && pe+1<n && s[pe+1]=='\\')) pe++;
+                if(action == 't'){ cur_tx = id; img_add_bytes(id, pe - pstart); }
+                else if(action == 'p'){ img_place(id, cx, cy, (int)cc, (int)rr); }
+                else if(action == 0 && cur_tx){ img_add_bytes(cur_tx, pe - pstart); }  /* continuation chunk */
+                j = (pe < n) ? pe + 2 : pe;                  /* skip ST */
+            } else {
+                while(j < n && !(s[j]==0x1b && j+1<n && s[j+1]=='\\')) j++;
+                if(j < n) j += 2;
+            }
+            i = j; continue;
+        }
         if(c == 0x1b){ i += 2; continue; }
         if(c == '\r'){ cx = 0; pending = 0; i++; continue; }
         if(c == '\n'){ cy++; if(cy >= H){ scroll_up(); cy = H-1; } pending = 0; i++; continue; }
@@ -94,6 +145,7 @@ int main(int argc, char **argv){
     for(i = 1; i < argc; i++){
         if(!strcmp(argv[i], "--cols") && i+1 < argc) W = atoi(argv[++i]);
         else if(!strcmp(argv[i], "--rows") && i+1 < argc) H = atoi(argv[++i]);
+        else if(!strcmp(argv[i], "--images")) want_images = 1;
         else path = argv[i];
     }
     if(W > MAXW) W = MAXW; if(H > MAXH) H = MAXH;
@@ -119,6 +171,14 @@ int main(int argc, char **argv){
             else { putchar((int)(0xE0|(cp>>12))); putchar((int)(0x80|((cp>>6)&0x3F))); putchar((int)(0x80|(cp&0x3F))); }
         }
         putchar('\n');
+    }
+    if(want_images){                                          /* Kitty-graphics summary */
+        int k;
+        for(k = 0; k < img_pl_n; k++)
+            printf("IMG place id=%u at=%d,%d size=%dx%d\n",
+                   img_pl[k].id, img_pl[k].x, img_pl[k].y, img_pl[k].c, img_pl[k].r);
+        for(k = 0; k < img_tx_n; k++)
+            printf("IMG data id=%u b64bytes=%ld\n", img_tx[k].id, img_tx[k].bytes);
     }
     return 0;
 }

@@ -41,6 +41,10 @@ struct Timui {
     TimuiTheme        theme;
     char              text_in[256];
     int               text_in_len;
+    char              paste_buf[256];   /* bracketed-paste accumulator (ev ptr is transient; a paste
+                                         * can also span several reads -> several events per frame) */
+    int               paste_len;
+    int               trace_fd;         /* TIMUI_TRACE input trace fd, -1 = off */
     /* Submit segmentation for timui_input_field: byte offsets in text_in where
      * Enter fired this frame, in order. Lets the field submit ONE segment per
      * frame ("a\rb\r" -> "a" then "b") instead of merging; the post-first-Enter
@@ -61,7 +65,10 @@ struct Timui {
     int               events_dropped;
     int               w, h;
     int               should_quit;
-    TimuiEvent        events[16];
+    /* One feed reads up to 256 bytes and can emit one event PER byte (e.g. a
+     * drag-drop path typed as text), so the queue must hold a whole read plus a
+     * deferred ESC — 16 dropped all but the first 16 chars of a dropped path. */
+    TimuiEvent        events[512];
     int               event_count;
     struct { TimuiRect clip; int has_clip; } clip_stack[8];
     int               clip_count;
@@ -70,6 +77,7 @@ struct Timui {
      * diff in timui_end, so they compose with the renderer. */
     struct { TimuiImage *img; TimuiRect rect; } img_place[8];
     int               img_place_count;
+    int               img_last_count;   /* placements emitted last frame (for shrink-cleanup) */
     uint32_t          next_image_id;
     /* Z27: menu state moved out of Timui into the caller-owned TimuiMenuBar. */
     TimuiFrame        frame;

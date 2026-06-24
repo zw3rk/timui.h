@@ -188,6 +188,74 @@ TIMUI_TEST(test_input_field_multi_submit){
     timui_close(ui);
 }
 
+/* Bracketed paste — a real paste, or a Finder drag-drop of a file path — must
+ * reach the focused input. The terminal wraps it in ESC[200~ ... ESC[201~; the
+ * parser turns that into a PASTE event, which timui_begin feeds to the focused
+ * input (control bytes, incl. newlines, are dropped for the single-line field). */
+TIMUI_TEST(test_input_field_paste){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[64] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 50, 5, &al);
+#define PF() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PF();          /* click to focus */
+    SETIN(&fake, "\x1b[<0;2;1m"); PF();
+    SETIN(&fake, "\x1b[200~/tmp/cat.png\x1b[201~"); PF();   /* drag-drop / paste */
+    TIMUI_CHECK(strcmp(text, "/tmp/cat.png") == 0);
+#undef PF
+    timui_close(ui);
+}
+
+/* A paste can arrive across SEVERAL reads (a slow drag-drop): the parser emits
+ * the chunk at each feed boundary, so a frame — or the whole paste — spans
+ * multiple PASTE events. They must ACCUMULATE into the full string, not
+ * overwrite each other (the 'path truncated to the first chunk' bug). */
+TIMUI_TEST(test_input_field_paste_split){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[64] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 50, 5, &al);
+#define PF() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PF();
+    SETIN(&fake, "\x1b[<0;2;1m"); PF();
+    SETIN(&fake, "\x1b[200~/Users/angerman"); PF();          /* start + chunk, no terminator */
+    SETIN(&fake, "/Documents/cat.png\x1b[201~"); PF();       /* rest + terminator */
+    TIMUI_CHECK(strcmp(text, "/Users/angerman/Documents/cat.png") == 0);
+#undef PF
+    timui_close(ui);
+}
+
+/* A long burst of typed text in one read — how Ghostty inserts a drag-drop path
+ * (plain text, not a paste) — must reach the input in full. The parser emits one
+ * event per char, so a 73-char path is 73 events; the queue must hold them all
+ * (it was 16, dropping all but the first 16 chars: the '/Users/angerman/' bug). */
+TIMUI_TEST(test_input_field_text_burst){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[128] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 1);
+    static const char path[] = "/Users/angerman/Projects/iohk/cardano-bean/reports/bean-forge-aggregate.png";
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 90, 5, &al);
+#define PF() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PF();
+    SETIN(&fake, "\x1b[<0;2;1m"); PF();
+    timui_fake_set_input(&fake, path, sizeof path - 1); PF();   /* whole path, one read */
+    TIMUI_CHECK(strcmp(text, path) == 0);
+#undef PF
+    timui_close(ui);
+}
+
 /* F1.5: horizontal scroll keeps the cursor visible; Home scrolls back. */
 TIMUI_TEST(test_input_field_scroll){
     TimuiAllocator al = timui_default_allocator();

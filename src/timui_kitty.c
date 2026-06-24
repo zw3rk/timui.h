@@ -83,25 +83,38 @@ static void kitty_transmit_(TimuiTransport *t, uint32_t id, const unsigned char 
     }
     al.free(al.userdata, buf, b64cap);
 }
-/* place image `id` at the cursor, scaled to cols x rows cells (a=p). */
-static void kitty_place_(TimuiTransport *t, uint32_t id, int cols, int rows){
-    char b[48]; int n = 0; const char *p;
+/* place image `id` at the cursor, scaled to cols x rows cells, under placement
+ * id `place_id` (a=p). A UNIQUE placement id per on-screen slot is essential:
+ * several messages sharing one image (same id) must not all use the same
+ * placement id, or each a=p replaces the previous and only one image shows. */
+static void kitty_place_(TimuiTransport *t, uint32_t id, int cols, int rows, int place_id){
+    char b[64]; int n = 0; const char *p;
     b[n++] = 0x1b; b[n++] = '_'; b[n++] = 'G';
     p = "a=p,q=2,i="; while(*p) b[n++] = *p++;
     n += fmt_uint(b + n, id);
+    p = ",p="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(place_id > 0 ? place_id : 1));
     p = ",c="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(cols > 0 ? cols : 1));
     p = ",r="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(rows > 0 ? rows : 1));
-    /* p=1: a stable placement id so re-placing each frame REPLACES this
-     * placement rather than accumulating a new one in the terminal. */
-    p = ",p=1"; while(*p) b[n++] = *p++;
     b[n++] = 0x1b; b[n++] = '\\';
     kitty_write_all(t, b, (size_t)n);
 }
+/* delete every visible placement (keeps image data: lowercase d=a). */
+static void kitty_delete_all_placements(TimuiTransport *t){
+    kitty_write_all(t, "\x1b_Ga=d,d=a\x1b\\", 12);
+}
 /* Transmit (once) + place every image recorded this frame, on top of the cell
- * diff. Each image is CUP'd to its rect's top-left and scaled to its cell size. */
+ * diff. Each on-screen slot gets a distinct placement id (i+1) and is CUP'd to
+ * its rect, scaled to its cell size. When the count SHRINKS (placements scrolled
+ * away, or shuffled slots), clear last frame's placements first so nothing
+ * lingers above the cells (a cell redraw can't erase a Kitty image), then
+ * re-place this frame's set. Under synchronized output the clear+replace is
+ * atomic, so there is no flicker. Skipped on the first frame (nothing to
+ * clear), which keeps a lone draw to a single transmit+place. */
 void timui_images_flush_(Timui *ui){
     int i;
     if(!ui) return;
+    if(ui->img_last_count > 0)
+        kitty_delete_all_placements(&ui->transport);
     for(i = 0; i < ui->img_place_count; i++){
         TimuiImage *img = ui->img_place[i].img;
         TimuiRect r = ui->img_place[i].rect;
@@ -115,8 +128,9 @@ void timui_images_flush_(Timui *ui){
         cn += fmt_uint(cup + cn, (unsigned)(r.y + 1)); cup[cn++] = ';';
         cn += fmt_uint(cup + cn, (unsigned)(r.x + 1)); cup[cn++] = 'H';
         kitty_write_all(&ui->transport, cup, (size_t)cn);
-        kitty_place_(&ui->transport, img->id, r.w, r.h);
+        kitty_place_(&ui->transport, img->id, r.w, r.h, i + 1);
     }
+    ui->img_last_count = ui->img_place_count;
 }
 TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){
     Timui *ui;

@@ -30,10 +30,13 @@ TIMUI_TEST(test_caps_multiplexer_reduces){
 
 TIMUI_TEST(test_caps_multiplexer_kitty_passthrough){
     TimuiCaps c;
-    /* W12: under a multiplexer, a kitty-family OUTER (TERM_PROGRAM inherited
-     * into the session) implies passthrough is intended -> KEEP Kitty caps. */
+    /* Under a multiplexer, a kitty-family OUTER (TERM_PROGRAM inherited into the
+     * session) keeps keyboard/sync (passthrough likely). But GRAPHICS is ALWAYS
+     * stripped: it needs explicit tmux allow-passthrough + graphics support we
+     * can't assume, and dropped APC graphics leave a grey placeholder + stray
+     * cursor moves. Run outside the multiplexer for real images. */
     timui_caps_detect(&c, "tmux-256color", "kitty", "truecolor");
-    TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_KITTY_GRAPHICS));
+    TIMUI_CHECK(!timui_caps_has(&c, TIMUI_CAP_KITTY_GRAPHICS));   /* stripped under tmux */
     TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_KITTY_KEYBOARD));
     TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_256_COLOR));
 }

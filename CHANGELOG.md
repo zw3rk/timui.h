@@ -7,6 +7,30 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 ## [Unreleased]
 
 ### Fixed
+- **Multiple inline images collapsed to one**: every Kitty placement used `p=1`,
+  so messages sharing an image (same id) each replaced the previous placement —
+  only one showed. Each on-screen slot now gets a distinct placement id, and last
+  frame's placements are cleared (atomic under sync) before re-placing so
+  scrolled-away/shuffled images don't linger.
+- **Bracketed paste never reached inputs**: `timui_begin` dropped `PASTE` events
+  (drain handled MOUSE/KEY/TEXT only), so a real paste or a Finder drag-drop of a
+  file path didn't land in the focused input. Now the frame accumulates a paste's
+  content (it can span several reads → several events) and appends it to the
+  focused input; `chat` renders a dropped `.png` path as an inline image. Added
+  `TIMUI_TRACE=<file>` to trace raw input (drag-drop / paste debugging).
+- **Kitty graphics under tmux**: caps now ALWAYS strip `TIMUI_CAP_KITTY_GRAPHICS`
+  under a multiplexer (tmux/screen/zellij) — passthrough needs explicit tmux
+  config we can't assume, and dropped graphics APC leaves a grey placeholder +
+  stray cursor moves. New public `timui_caps(ui)` accessor. `examples/chat` uses
+  it to draw a real inline image only when graphics work, else a one-line badge;
+  its badge emoji is now U+1F4F7 📷 (emoji-presentation, width 2 everywhere)
+  rather than the text-default U+1F5BC 🖼 whose ambiguous width caused artifacts.
+- **Kitty graphics never worked**: `timui_image_draw` emitted `ESC G`, but the
+  protocol requires the APC `ESC _ G` — no terminal recognised the image. It also
+  transmitted mid-frame (clobbered by the cell diff) with no placement/sizing.
+  Now: correct APC; transmit once (keyed by `TimuiImage.id`) + place each frame
+  (stable `p=1`); placements flush AFTER the cell diff (composed on top), CUP'd
+  to the rect and scaled to its cell size. Enables real inline images.
 - **`input_field` submit batching**: several Enters in one frame (a paste, or
   input faster than the frame rate) merged into a single submission with the
   post-Enter text appended (`"a\rb\r"` → one `"ab"`). `timui_begin` now records
@@ -49,9 +73,9 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   messages (`*bold*`, `_italic_`, `` `code` ``), http(s):// URLs as OSC 8
   hyperlinks, and emoji/wide-glyph rendering — all over the existing public API
   (`timui_utf8_width`/`_decode`, `timui_label_hyperlink`, text attributes).
-  Markdown images `![alt](url)` render as clickable `🖼 alt` badges (OSC 8 to the
-  url); true inline Kitty-graphics rendering is future work (`timui_image_draw`
-  is a v0.2 stub without placement/cell-composition).
+  Markdown images: remote `![alt](http…)` render as clickable `🖼 alt` badges
+  (OSC 8); LOCAL `![alt](path.png)` render as real inline Kitty-graphics images
+  (variable-height transcript, PNG cached per path).
 - **Recording & headless-driving tooling**: `make rec-<name>` (asciinema),
   `make drive-<name>` (scripted-input pty capture), `make accept` (acceptance
   smoke); `tools/pty_drive.c` + `tools/vt_render.c`.

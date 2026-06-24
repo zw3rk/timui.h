@@ -219,14 +219,17 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         c->flags |= TIMUI_CAP_256_COLOR;
         c->colors = 256;
     }
-    /* multiplexers reduce capabilities unless passthrough is likely. Probe via
-     * the OUTER terminal (TERM_PROGRAM is inherited into the session): if it's
-     * kitty-family, the session is very likely kitty+tmux with passthrough
-     * intended, so KEEP the Kitty caps; otherwise strip them (conservative).
-     * timui_force_cap overrides either way (W12). */
+    /* multiplexers reduce capabilities. Kitty GRAPHICS is ALWAYS stripped under a
+     * multiplexer: it requires explicit tmux `allow-passthrough` + graphics
+     * support we can't assume, and emitting APC graphics that tmux silently
+     * drops leaves a grey placeholder region and stray cursor moves. Keyboard
+     * and sync are only kept when the OUTER terminal (TERM_PROGRAM, inherited
+     * into the session) is kitty-family; otherwise stripped. timui_force_cap
+     * overrides either way (W12). */
     if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
+        c->flags &= ~TIMUI_CAP_KITTY_GRAPHICS;
         if(!caps_is_kitty_family(term_program))
-            c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SYNC_OUTPUT);
+            c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
         c->flags |= TIMUI_CAP_256_COLOR;
         if(c->colors < 256) c->colors = 256;
     }

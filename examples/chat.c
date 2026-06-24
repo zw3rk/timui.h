@@ -26,7 +26,14 @@
 #include <pthread.h>   /* pthread_create / pthread_join */
 #include <time.h>      /* nanosleep / time / localtime / strftime */
 #include <string.h>    /* strlen / strncmp / memcpy */
-#include <stdio.h>     /* snprintf */
+#include <stdio.h>     /* snprintf / fopen / fread */
+#include <stdlib.h>    /* malloc / free */
+
+/* An inline image message reserves IMG_ROWS rows (a caption line + the picture,
+ * IMG_COLS wide). Kitty-graphics terminals draw the real PNG; others show the
+ * "[img]" cell placeholder from timui_image_draw. */
+#define IMG_ROWS 7
+#define IMG_COLS 20
 
 /* Message type carried over the MPSC queue. */
 enum { MSG_LINE = 1 };
@@ -71,7 +78,7 @@ static void *chat_worker(void *arg){
     static const char *canned[] = {
         "alice: hi \xF0\x9F\x91\x8B",                                  /* 👋 */
         "bob: how's the *TUI*? run `make run-chat` \xE2\x80\x94 https://github.com",
-        "carol: shipping _0.2.0_ \xF0\x9F\x9A\x80 ![screenshot](https://github.com)",  /* 🚀 + image */
+        "carol: shipping _0.2.0_ \xF0\x9F\x9A\x80 ![logo](examples/assets/logo.png)",   /* 🚀 + inline image */
     };
     int turn = 0;
     unsigned counter = 1;
@@ -124,7 +131,7 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
                     TimuiStr alt;
                     if(ul > sizeof uri - 1) ul = sizeof uri - 1;
                     memcpy(uri, s + u, ul); uri[ul] = '\0';
-                    timui_label(f, x, y, TIMUI_STR_LIT("\xF0\x9F\x96\xBC "),   /* 🖼 + space */
+                    timui_label(f, x, y, TIMUI_STR_LIT("\xF0\x9F\x93\xB7 "),   /* 📷 + space (emoji-width, unambiguous) */
                                 timui_style_make(code_fg, bg, 0));
                     x += 3;                                    /* emoji width 2 + space */
                     alt.ptr = s + a; alt.len = ae - a;
@@ -174,37 +181,125 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
     }
 }
 
-/* Draw the transcript into `body`, newest at the bottom. `scroll` is the number
- * of lines the view is pinned ABOVE the newest (0 = following the tail). Each
- * line is a dim timestamp then the rich-rendered message, tinted by sender. */
+/* ---- Inline images ----------------------------------------------------- *
+ * A small path-keyed cache so each referenced PNG is read + handed to timui
+ * once (a resource pool, freed in main on quit). A failed load is cached as
+ * NULL so we don't re-open a bad path every frame. */
+#define IMG_CACHE 8
+static struct { char path[256]; TimuiImage *img; } g_imgcache[IMG_CACHE];
+static int g_imgcache_n;
+
+static TimuiImage *load_image(Timui *ui, const char *path){
+    int k;
+    FILE *fp;
+    long sz;
+    unsigned char *buf;
+    TimuiImage *img = NULL;
+    for(k = 0; k < g_imgcache_n; k++)
+        if(strcmp(g_imgcache[k].path, path) == 0) return g_imgcache[k].img;
+    if(g_imgcache_n >= IMG_CACHE) return NULL;
+    fp = fopen(path, "rb");
+    if(fp){
+        fseek(fp, 0, SEEK_END); sz = ftell(fp); fseek(fp, 0, SEEK_SET);
+        buf = (sz > 0 && sz < 4 * 1024 * 1024) ? (unsigned char *)malloc((size_t)sz) : NULL;
+        if(buf && fread(buf, 1, (size_t)sz, fp) == (size_t)sz)
+            img = timui_image_from_png(ui, buf, (size_t)sz);
+        free(buf); fclose(fp);
+    }
+    snprintf(g_imgcache[g_imgcache_n].path, sizeof g_imgcache[g_imgcache_n].path, "%s", path);
+    g_imgcache[g_imgcache_n].img = img;
+    g_imgcache_n++;
+    return img;
+}
+static void free_images(Timui *ui){
+    int k;
+    for(k = 0; k < g_imgcache_n; k++) if(g_imgcache[k].img) timui_image_free(ui, g_imgcache[k].img);
+    g_imgcache_n = 0;
+}
+
+/* True if `s` ends in ".png" (case-insensitive) — the only format Kitty
+ * graphics transmits here (f=100). A Finder drag-drop inserts such a path. */
+static int is_png_path(const char *s){
+    size_t n = strlen(s);
+    const char *e;
+    if(n < 4) return 0;
+    e = s + n - 4;
+    return e[0] == '.' && (e[1]=='p'||e[1]=='P') && (e[2]=='n'||e[2]=='N') && (e[3]=='g'||e[3]=='G');
+}
+
+/* Extract the LOCAL (non-http) path from the first ![alt](path) in `s`. */
+static int msg_image_path(const char *s, char *out, size_t cap){
+    const char *p = strstr(s, "![");
+    const char *e;
+    size_t n;
+    if(!p) return 0;
+    p = strchr(p, '(');
+    if(!p) return 0;
+    p++;
+    if(strncmp(p, "http://", 7) == 0 || strncmp(p, "https://", 8) == 0) return 0;   /* remote: badge only */
+    e = strchr(p, ')');
+    if(!e) return 0;
+    n = (size_t)(e - p); if(n >= cap) n = cap - 1;
+    memcpy(out, p, n); out[n] = '\0';
+    return n > 0;
+}
+/* Row count for a message: IMG_ROWS only when the terminal can actually draw an
+ * inline image (Kitty graphics) AND the local PNG loads. Otherwise 1 row — the
+ * message keeps its clickable badge (no ugly grey placeholder box). Kitty
+ * graphics is stripped under tmux/screen, so there the badge is used. */
+static int msg_rows(Timui *ui, const char *s){
+    char path[256];
+    if(timui_caps_has(timui_caps(ui), TIMUI_CAP_KITTY_GRAPHICS) &&
+       msg_image_path(s, path, sizeof path) && load_image(ui, path)) return IMG_ROWS;
+    return 1;
+}
+/* Draw one message at row `y` spanning `h` rows: a dim timestamp + rich text on
+ * the first row, and (for an image message) the picture below it. */
+static void draw_message(TimuiFrame *f, const char *ts, const char *s, TimuiRect body,
+                         int y, int h, TimuiStyle panel, uint32_t fg, uint32_t sys_fg,
+                         uint32_t code_fg, uint32_t link_fg, Timui *ui){
+    char path[256];
+    timui_label(f, body.x + 1, y, timui_str_from_cstr(ts),
+                timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM));
+    draw_rich(f, body.x + 1 + TS_COLS, y, body.x + body.w, s, fg, panel.bg, code_fg, link_fg);
+    if(h > 1 && msg_image_path(s, path, sizeof path)){
+        TimuiImage *img = load_image(ui, path);
+        if(img) timui_image_draw(f, img, TIMUI_RECT(body.x + 2, y + 1, IMG_COLS, h - 1));
+    }
+}
+
+/* Draw the transcript into `body`, newest at the bottom. Messages have variable
+ * height (image messages take IMG_ROWS); they are stacked upward from the bottom
+ * until the body fills. `scroll` pins the view above the newest message. */
 static void draw_transcript(TimuiFrame *f, const Transcript *t, TimuiRect body,
                             int scroll, TimuiStyle panel, uint32_t self_fg,
                             uint32_t sys_fg, uint32_t text_fg,
                             uint32_t code_fg, uint32_t link_fg){
     TimuiCellBuffer *buf = timui_frame_buffer(f);
-    int rows, last, shown, first, i;
+    Timui *ui = f->ui;
+    int last, used, first, idx, y;
 
     timui_draw_fill(buf, body, panel);
     if(body.h <= 0 || body.w <= 0) return;
 
-    rows  = body.h;
-    last  = t->count - 1 - scroll;               /* index of the bottom visible line */
+    last = t->count - 1 - scroll;                 /* newest visible message index */
     if(last < 0) return;
-    shown = last + 1 < rows ? last + 1 : rows;    /* how many lines fit / exist */
-    first = last - shown + 1;
-
-    for(i = 0; i < shown; i++){
-        int idx = (first + i) & (LOG_CAP - 1);
-        const char *s  = t->log[idx].line;
-        const char *ts = t->log[idx].ts;
-        int y = body.y + body.h - shown + i;      /* bottom-align the shown block */
+    used = 0; first = last;
+    for(idx = last; idx >= 0 && (last - idx) < LOG_CAP; idx--){   /* stack heights upward */
+        int h = msg_rows(ui, t->log[idx & (LOG_CAP - 1)].line);
+        if(used + h > body.h) break;
+        used += h; first = idx;
+    }
+    y = body.y + body.h - used;                   /* bottom-align the stacked block */
+    for(idx = first; idx <= last; idx++){
+        int i2 = idx & (LOG_CAP - 1);
+        const char *s = t->log[i2].line;
+        int h = msg_rows(ui, s);
         uint32_t fg = text_fg;
         if(strncmp(s, "you:", 4) == 0)         fg = self_fg;
         else if(strncmp(s, "system:", 7) == 0) fg = sys_fg;
-        timui_label(f, body.x + 1, y, timui_str_from_cstr(ts),
-                    timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM));
-        draw_rich(f, body.x + 1 + TS_COLS, y, body.x + body.w, s,
-                  fg, panel.bg, code_fg, link_fg);
+        draw_message(f, t->log[i2].ts, s, body, y, h, panel, fg, sys_fg, code_fg, link_fg, ui);
+        y += h;
     }
 }
 
@@ -326,9 +421,19 @@ int main(void){
         timui_label(f, prompt.x, prompt.y, TIMUI_STR_LIT("> "),
                     timui_style_make(text_fg, panel.bg, 0));
         if(timui_input_field(f, TIMUI_ID("compose"), input, &compose_state)){
+            /* Trim trailing whitespace a drag-drop may append. */
+            { size_t L = strlen(compose);
+              while(L > 0 && (compose[L-1] == ' ' || compose[L-1] == '\t')) compose[--L] = '\0'; }
             if(compose[0] != '\0'){
-                char sent[200];
-                snprintf(sent, sizeof sent, "you: %s", compose);
+                char sent[512];
+                if(is_png_path(compose)){
+                    /* A dropped image path -> render it inline as ![name](path). */
+                    const char *base = strrchr(compose, '/');
+                    base = base ? base + 1 : compose;
+                    snprintf(sent, sizeof sent, "you: ![%s](%s)", base, compose);
+                } else {
+                    snprintf(sent, sizeof sent, "you: %s", compose);
+                }
                 log_append(&transcript, sent);
             }
             compose[0] = '\0';
@@ -349,6 +454,7 @@ int main(void){
         worker.stop = 1;
         pthread_join(th, NULL);
     }
+    free_images(ui);
     timui_close(ui);
     return 0;
 }
