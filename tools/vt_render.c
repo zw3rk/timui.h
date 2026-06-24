@@ -25,10 +25,25 @@ static void scroll_up(void){
     for(y = 0; y < H - 1; y++) for(x = 0; x < W; x++) g[y][x] = g[y+1][x];
     for(x = 0; x < W; x++) g[H-1][x] = ' ';
 }
+/* Minimal wcwidth mirroring timui_utf8_width: combining -> 0, CJK/emoji -> 2. */
+static int cp_width(unsigned int cp){
+    if(cp < 0x20 || cp == 0x7F) return 0;
+    if((cp >= 0x0300 && cp <= 0x036F) || (cp >= 0x1AB0 && cp <= 0x1AFF) ||
+       (cp >= 0x1DC0 && cp <= 0x1DFF) || (cp >= 0x20D0 && cp <= 0x20FF) ||
+       (cp >= 0xFE20 && cp <= 0xFE2F)) return 0;
+    if((cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0xA4CF) ||
+       (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+       (cp >= 0xFE30 && cp <= 0xFE6F) || (cp >= 0xFF00 && cp <= 0xFF60) ||
+       (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F300 && cp <= 0x1FAFF)) return 2;
+    return 1;
+}
 static void put(unsigned int cp){
+    int w = cp_width(cp);
+    if(w == 0) return;                            /* combining/zero-width: don't place or advance */
     if(pending && autowrap){ cx = 0; cy++; pending = 0; if(cy >= H){ scroll_up(); cy = H - 1; } }
     if(cy >= 0 && cy < H && cx >= 0 && cx < W) g[cy][cx] = cp;
-    cx++;
+    if(w >= 2 && cy >= 0 && cy < H && cx + 1 < W) g[cy][cx + 1] = ' ';   /* blank continuation cell */
+    cx += w;
     if(cx >= W){ cx = W; pending = 1; }
 }
 /* decode one UTF-8 codepoint; returns bytes consumed */

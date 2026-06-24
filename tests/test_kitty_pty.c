@@ -48,7 +48,11 @@ TIMUI_TEST(test_kitty_graphics_transmit){
     out = timui_fake_output(&fake);
 
     TIMUI_CHECK(out.len > 0);
-    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1bG"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1b_G"));   /* APC graphics (was ESC G — a bug) */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "a=t"));      /* transmit under an id */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "a=p"));      /* placed by id */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "c=5"));      /* sized to the 5x3 rect */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "r=3"));
 
     timui_image_free(ui, img);
     timui_close(ui);
@@ -81,9 +85,9 @@ TIMUI_TEST(test_kitty_graphics_chunking){
     timui_end(f);
     out = timui_fake_output(&fake);
 
-    for(i = 0; i + 1 < out.len; i++)
-        if((unsigned char)out.ptr[i] == 0x1b && out.ptr[i + 1] == 'G') frames++;
-    TIMUI_CHECK(frames == 2);                                   /* chunked */
+    for(i = 0; i + 2 < out.len; i++)
+        if((unsigned char)out.ptr[i] == 0x1b && out.ptr[i + 1] == '_' && out.ptr[i + 2] == 'G') frames++;
+    TIMUI_CHECK(frames == 3);                                   /* 2 transmit chunks + 1 place */
     TIMUI_CHECK(bytes_contain(out.ptr, out.len, "m=1"));        /* continuation */
     TIMUI_CHECK(bytes_contain(out.ptr, out.len, "m=0"));        /* final */
 

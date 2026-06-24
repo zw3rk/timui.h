@@ -246,7 +246,21 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     }
     /* drain parsed events: mouse -> hit-testing; tab/enter -> interaction;
      * printable text + cursor keys -> the focused input's accumulator. */
-    ui->text_in_len = 0;
+    /* Re-inject any input deferred from the previous frame's multi-Enter burst
+     * (post-first-Enter tail), so this frame's new events append after it and a
+     * fast "a\rb\r" submits one segment per frame instead of merging. */
+    if(ui->pending_in_len > 0 || ui->pending_enter_count > 0){
+        int pe;
+        memcpy(ui->text_in, ui->pending_in, (size_t)ui->pending_in_len);
+        ui->text_in_len = ui->pending_in_len;
+        for(pe = 0; pe < ui->pending_enter_count; pe++) ui->enter_at[pe] = ui->pending_enter_at[pe];
+        ui->enter_count = ui->pending_enter_count;
+        ui->pending_in_len = 0;
+        ui->pending_enter_count = 0;
+    } else {
+        ui->text_in_len = 0;
+        ui->enter_count = 0;
+    }
     ui->key_in = 0;
     ui->key_pressed = TIMUI_KEY_UNKNOWN;
     ui->key_mods = 0;
@@ -259,7 +273,13 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 ui->key_pressed = ev.as.key.key;   /* app-level key detection */
                 ui->key_mods = ev.as.key.mods;
                 if(ev.as.key.key == TIMUI_KEY_TAB) timui_interact_set_keys(&ui->ia, 1, 0);
-                else if(ev.as.key.key == TIMUI_KEY_ENTER) timui_interact_set_keys(&ui->ia, 0, 1);
+                else if(ev.as.key.key == TIMUI_KEY_ENTER){
+                    timui_interact_set_keys(&ui->ia, 0, 1);
+                    /* record the Enter's position in the text stream (input_field
+                     * segments submits on these; excess past the cap just merges). */
+                    if(ui->enter_count < (int)(sizeof(ui->enter_at)/sizeof(ui->enter_at[0])))
+                        ui->enter_at[ui->enter_count++] = ui->text_in_len;
+                }
                 else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
                 else if(ev.as.key.key == TIMUI_KEY_LEFT)   ui->key_in |= TIMUI_KEYIN_LEFT;
                 else if(ev.as.key.key == TIMUI_KEY_RIGHT)  ui->key_in |= TIMUI_KEYIN_RIGHT;
@@ -285,6 +305,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->cursor_visible = 0;           /* F1.4: focused input re-requests each frame */
     ui->curr.has_clip = 0;            /* fresh clip stack each frame */
     ui->clip_count = 0;
+    ui->img_place_count = 0;          /* image placements are per-frame */
     timui_cells_clear(&ui->curr);
     ui->ids.count = 0;                  /* fresh id stack for this frame */
     ui->frame.ui = ui;
@@ -307,6 +328,12 @@ TIMUI_API void timui_end(TimuiFrame *frame){
            (ui->cfg.flags  & TIMUI_FLAG_SYNC_OUTPUT);
     if(sync) timui_sync_begin(&ui->transport);
     timui_render_diff(&ui->transport, &ui->prev, &ui->curr, &ui->renderer);
+    /* Kitty-graphics images drawn ON TOP of the diffed cells (their CUP+place
+     * moves the physical cursor, so force the next frame's diff to re-CUP). */
+    if(ui->img_place_count > 0){
+        timui_images_flush_(ui);
+        ui->renderer.last_x = -1; ui->renderer.last_y = -1;
+    }
     /* F1.4: render_diff left the physical cursor at the last drawn cell, so
      * reposition it for the focused input every visible frame; emit a hide once
      * when focus leaves. */

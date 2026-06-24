@@ -142,6 +142,7 @@ void test_input_types_and_submits(void);
 void test_input_line_utf8_no_split(void);
 void test_input_line_utf8_backspace(void);
 void test_input_field_edit(void);
+void test_input_field_multi_submit(void);
 void test_input_field_scroll(void);
 void test_input_field_guards(void);
 void test_focused_input_cursor(void);

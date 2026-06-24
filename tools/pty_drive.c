@@ -113,10 +113,30 @@ int main(int argc, char **argv){
         if(si >= 0 && (pfd[si].revents & POLLIN)){   /* scripted input -> app */
             char buf[1024]; ssize_t r = read(0, buf, sizeof buf);
             if(r > 0){
-                if(delay_ms > 0){ ssize_t k; for(k = 0; k < r; k++){
-                    write_all(master, buf + k, 1);
-                    struct timespec ts = { delay_ms/1000, (long)(delay_ms%1000)*1000000L }; nanosleep(&ts, NULL);
-                }} else write_all(master, buf, (size_t)r);
+                if(delay_ms > 0){
+                    /* Pace input, but send each escape sequence (ESC [ ... final,
+                     * or ESC O x) ATOMICALLY — real terminals burst them, and a
+                     * per-byte delay longer than the app's ESC timeout would
+                     * split "\x1b[A" into a bare ESC (often "quit"). */
+                    ssize_t k = 0;
+                    while(k < r){
+                        ssize_t seq = 1;
+                        if(buf[k] == 0x1b && k + 1 < r){
+                            if(buf[k+1] == '['){
+                                seq = 2;
+                                while(k + seq < r && (unsigned char)buf[k+seq] >= 0x20
+                                                  && (unsigned char)buf[k+seq] < 0x40) seq++;
+                                if(k + seq < r) seq++;                 /* final byte 0x40..0x7e */
+                            } else if(buf[k+1] == 'O'){
+                                seq = (k + 2 < r) ? 3 : 2;             /* SS3 + one byte */
+                            }
+                        }
+                        write_all(master, buf + k, (size_t)seq);
+                        k += seq;
+                        { struct timespec ts = { delay_ms/1000, (long)(delay_ms%1000)*1000000L };
+                          nanosleep(&ts, NULL); }
+                    }
+                } else write_all(master, buf, (size_t)r);
             } else { stdin_open = 0; input_done_at = now_ms(); }   /* input EOF */
         }
 

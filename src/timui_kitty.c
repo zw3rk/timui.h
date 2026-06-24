@@ -34,6 +34,7 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     if(!img->data){ al.free(al.userdata, img, sizeof *img); return NULL; }
     memcpy(img->data, data, size);
     img->len = size;
+    img->id = 0;                 /* assigned on first transmit (timui_images_flush_) */
     return img;
 }
 TIMUI_API void timui_image_free(Timui *ui, TimuiImage *img){
@@ -44,56 +45,97 @@ TIMUI_API void timui_image_free(Timui *ui, TimuiImage *img){
     if(img->data) al.free(al.userdata, img->data, img->len);
     al.free(al.userdata, img, sizeof *img);
 }
+/* base64-encode + chunked transmit of the PNG bytes under `id` (a=t, one-time).
+ * Uses the correct APC introducer ESC _ G (was ESC G — a real protocol bug that
+ * meant no terminal ever recognised the image). */
+static void kitty_transmit_(TimuiTransport *t, uint32_t id, const unsigned char *data, size_t len){
+    size_t b64cap, b64len, sent;
+    TimuiAllocator al = timui_default_allocator();
+    char *buf;
+    int first = 1;
+    if(len == 0 || len > (SIZE_MAX - 1) / 4) return;
+    b64cap = ((len + 2) / 3) * 4 + 1;
+    buf = (char *)al.alloc(al.userdata, b64cap);
+    if(!buf) return;
+    b64len = b64_encode(data, len, buf, b64cap - 1);
+    if(b64len > 0 && b64len != (size_t)-1){
+        #define KITTY_CHUNK 4096
+        sent = 0;
+        while(sent < b64len){
+            size_t chunk = b64len - sent;
+            char hdr[48]; int hn = 0, is_last;
+            const char *p;
+            if(chunk > KITTY_CHUNK) chunk = KITTY_CHUNK;
+            is_last = (sent + chunk >= b64len);
+            hdr[hn++] = 0x1b; hdr[hn++] = '_'; hdr[hn++] = 'G';          /* APC + G */
+            if(first){ /* transmit: direct(d) PNG(f=100) under id, quiet(q=2) */
+                p = "a=t,t=d,f=100,q=2,i="; while(*p) hdr[hn++] = *p++;
+                hn += fmt_uint(hdr + hn, id);
+                hdr[hn++] = ',';
+            }
+            hdr[hn++] = 'm'; hdr[hn++] = '='; hdr[hn++] = is_last ? '0' : '1'; hdr[hn++] = ';';
+            kitty_write_all(t, hdr, (size_t)hn);
+            kitty_write_all(t, buf + sent, chunk);
+            kitty_write_all(t, "\x1b\\", 2);
+            sent += chunk; first = 0;
+        }
+        #undef KITTY_CHUNK
+    }
+    al.free(al.userdata, buf, b64cap);
+}
+/* place image `id` at the cursor, scaled to cols x rows cells (a=p). */
+static void kitty_place_(TimuiTransport *t, uint32_t id, int cols, int rows){
+    char b[48]; int n = 0; const char *p;
+    b[n++] = 0x1b; b[n++] = '_'; b[n++] = 'G';
+    p = "a=p,q=2,i="; while(*p) b[n++] = *p++;
+    n += fmt_uint(b + n, id);
+    p = ",c="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(cols > 0 ? cols : 1));
+    p = ",r="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(rows > 0 ? rows : 1));
+    /* p=1: a stable placement id so re-placing each frame REPLACES this
+     * placement rather than accumulating a new one in the terminal. */
+    p = ",p=1"; while(*p) b[n++] = *p++;
+    b[n++] = 0x1b; b[n++] = '\\';
+    kitty_write_all(t, b, (size_t)n);
+}
+/* Transmit (once) + place every image recorded this frame, on top of the cell
+ * diff. Each image is CUP'd to its rect's top-left and scaled to its cell size. */
+void timui_images_flush_(Timui *ui){
+    int i;
+    if(!ui) return;
+    for(i = 0; i < ui->img_place_count; i++){
+        TimuiImage *img = ui->img_place[i].img;
+        TimuiRect r = ui->img_place[i].rect;
+        char cup[32]; int cn = 0;
+        if(!img) continue;
+        if(img->id == 0){                                   /* transmit once, keyed by id */
+            img->id = ++ui->next_image_id;
+            kitty_transmit_(&ui->transport, img->id, img->data, img->len);
+        }
+        cup[cn++] = 0x1b; cup[cn++] = '[';                  /* CUP to the top-left cell */
+        cn += fmt_uint(cup + cn, (unsigned)(r.y + 1)); cup[cn++] = ';';
+        cn += fmt_uint(cup + cn, (unsigned)(r.x + 1)); cup[cn++] = 'H';
+        kitty_write_all(&ui->transport, cup, (size_t)cn);
+        kitty_place_(&ui->transport, img->id, r.w, r.h);
+    }
+}
 TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){
     Timui *ui;
     if(!f || !f->ui || !img) return;
     ui = f->ui;
     if(timui_caps_has(&ui->caps, TIMUI_CAP_KITTY_GRAPHICS)){
-        size_t b64cap, b64len;
-        TimuiAllocator al = timui_default_allocator();
-        char *buf;
-        if(img->len > (SIZE_MAX - 1) / 4) return;     /* base64 size would overflow */
-        b64cap = ((img->len + 2) / 3) * 4 + 1;
-        buf = (char *)al.alloc(al.userdata, b64cap);
-        if(buf){
-            b64len = b64_encode(img->data, img->len, buf, b64cap - 1);
-            if(b64len > 0 && b64len != (size_t)-1){
-                /* Chunk at 4096 bytes with m=1 continuation (Kitty protocol) */
-                #define KITTY_CHUNK 4096
-                size_t sent = 0;
-                int first = 1;
-                while(sent < b64len){
-                    size_t chunk = b64len - sent;
-                    char hdr[40]; int hn = 0;
-                    int is_last;
-                    if(chunk > KITTY_CHUNK) chunk = KITTY_CHUNK;
-                    is_last = (sent + chunk >= b64len);
-                    /* header: first chunk has a=T,t=d,f=100; all chunks carry m=0/1 */
-                    hn = 0;
-                    hdr[hn++] = 0x1b; hdr[hn++] = 'G';
-                    if(first){
-                        hdr[hn++] = 'a'; hdr[hn++] = '='; hdr[hn++] = 'T';
-                        hdr[hn++] = ','; hdr[hn++] = 't'; hdr[hn++] = '='; hdr[hn++] = 'd';
-                        hdr[hn++] = ','; hdr[hn++] = 'f'; hdr[hn++] = '='; hdr[hn++] = '1'; hdr[hn++] = '0'; hdr[hn++] = '0';
-                        hdr[hn++] = ',';
-                    }
-                    hdr[hn++] = 'm'; hdr[hn++] = '=';
-                    hdr[hn++] = is_last ? '0' : '1';
-                    hdr[hn++] = ';';
-                    kitty_write_all(&ui->transport, hdr, (size_t)hn);
-                    kitty_write_all(&ui->transport, buf + sent, chunk);
-                    kitty_write_all(&ui->transport, "\x1b\\", 2);
-                    sent += chunk;
-                    first = 0;
-                }
-                #undef KITTY_CHUNK
-            }
-            al.free(al.userdata, buf, b64cap);
-            return;
+        /* record the placement; the transmit + placement happen on top of the
+         * cell diff in timui_end (timui_images_flush_), so the cell renderer
+         * doesn't clobber the image. The caller reserves the region (fills its
+         * background, draws no text there). */
+        if(ui->img_place_count < (int)(sizeof(ui->img_place) / sizeof(ui->img_place[0]))){
+            ui->img_place[ui->img_place_count].img = img;
+            ui->img_place[ui->img_place_count].rect = r;
+            ui->img_place_count++;
         }
+    } else {
+        /* placeholder fallback (cells) for non-Kitty terminals */
+        timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_INPUT));
+        timui_draw_text(&ui->curr, r.x, r.y, TIMUI_STR_LIT("[img]"),
+                        timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT_DIM));
     }
-    /* placeholder fallback */
-    timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_INPUT));
-    timui_draw_text(&ui->curr, r.x, r.y, TIMUI_STR_LIT("[img]"),
-                    timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT_DIM));
 }

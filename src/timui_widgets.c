@@ -325,16 +325,21 @@ TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiIn
     ui = f->ui;
     if(st->cursor >= st->cap) st->cursor = st->cap - 1;   /* Y1-style: distrust caller cursor */
     {
-        int submit = ui->ia.activate_pressed;             /* capture before interact consumes it */
         ir = timui_interact_button(&ui->ia, id, r);
         if(ir.focused){
+            /* Insert typed text UP TO the first Enter this frame; on an Enter,
+             * submit and DEFER the post-Enter tail (and any further Enters) to
+             * the next frame — one submit per frame, so a burst "a\rb\r" yields
+             * "a" then "b" instead of the merged "ab". */
+            int first_enter = (ui->enter_count > 0) ? ui->enter_at[0] : -1;
+            int upto = (first_enter >= 0) ? first_enter : ui->text_in_len;
             int j = 0;
             size_t len;
-            /* insert typed codepoints at the cursor (mid-string), whole ones only */
-            while(j < ui->text_in_len){
+            if(upto > ui->text_in_len) upto = ui->text_in_len;
+            while(j < upto){
                 int n = utf8_lead_len((unsigned char)ui->text_in[j]);
                 size_t m = (size_t)(n > 0 ? n : 1);
-                if(j + (int)m > ui->text_in_len) m = (size_t)(ui->text_in_len - j);
+                if(j + (int)m > upto) m = (size_t)(upto - j);
                 if(!text_insert_(st->text, st->cap, st->cursor, ui->text_in + j, m)) break;
                 st->cursor += m; j += (int)m;
             }
@@ -351,8 +356,19 @@ TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiIn
                 size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
                 (void)text_erase_(st->text, st->cursor, nxt);
             }
-            if(submit) submitted = true;
+            if(first_enter >= 0){
+                int tail = ui->text_in_len - upto, k;
+                submitted = true;
+                if(tail < 0) tail = 0;
+                if(tail > (int)sizeof(ui->pending_in)) tail = (int)sizeof(ui->pending_in);
+                memcpy(ui->pending_in, ui->text_in + upto, (size_t)tail);
+                ui->pending_in_len = tail;
+                ui->pending_enter_count = ui->enter_count - 1;
+                for(k = 0; k < ui->pending_enter_count; k++)
+                    ui->pending_enter_at[k] = ui->enter_at[k + 1] - upto;
+            }
             ui->text_in_len = 0;
+            ui->enter_count = 0;
             ui->key_in = 0;
         }
     }

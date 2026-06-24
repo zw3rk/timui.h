@@ -7,6 +7,11 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 ## [Unreleased]
 
 ### Fixed
+- **`input_field` submit batching**: several Enters in one frame (a paste, or
+  input faster than the frame rate) merged into a single submission with the
+  post-Enter text appended (`"a\rb\r"` → one `"ab"`). `timui_begin` now records
+  each Enter's position in the text stream and `input_field` submits one segment
+  per frame, deferring the tail — `"a"` then `"b"`. Single-bool API unchanged.
 - **Dropped render bytes (screen garbling)**: `fd_write` did a single `write()`
   and ignored a short count. The output fd shares its file description with the
   O_NONBLOCK input fd, so under output pressure (heavy render + fast typing) the
@@ -39,6 +44,17 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   regression was added.)
 
 ### Added
+- **`examples/chat` enrichments**: scrollback (1024-line ring; Up/Down + PgUp/PgDn
+  with a header indicator), per-line HH:MM:SS timestamps, a markdown subset in
+  messages (`*bold*`, `_italic_`, `` `code` ``), http(s):// URLs as OSC 8
+  hyperlinks, and emoji/wide-glyph rendering — all over the existing public API
+  (`timui_utf8_width`/`_decode`, `timui_label_hyperlink`, text attributes).
+  Markdown images `![alt](url)` render as clickable `🖼 alt` badges (OSC 8 to the
+  url); true inline Kitty-graphics rendering is future work (`timui_image_draw`
+  is a v0.2 stub without placement/cell-composition).
+- **Recording & headless-driving tooling**: `make rec-<name>` (asciinema),
+  `make drive-<name>` (scripted-input pty capture), `make accept` (acceptance
+  smoke); `tools/pty_drive.c` + `tools/vt_render.c`.
 - **Five larger example applications** (`make run-<name>`): `editor` (text_area
   cursor editing), `file_manager` (MC-style dual-pane browser), `todo`
   (functional model/view/update), `procmon` (live `ps` table), `chat`

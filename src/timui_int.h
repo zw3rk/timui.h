@@ -41,6 +41,16 @@ struct Timui {
     TimuiTheme        theme;
     char              text_in[256];
     int               text_in_len;
+    /* Submit segmentation for timui_input_field: byte offsets in text_in where
+     * Enter fired this frame, in order. Lets the field submit ONE segment per
+     * frame ("a\rb\r" -> "a" then "b") instead of merging; the post-first-Enter
+     * tail is stashed in pending_* and re-injected by timui_begin next frame. */
+    int               enter_at[32];
+    int               enter_count;
+    char              pending_in[256];
+    int               pending_in_len;
+    int               pending_enter_at[32];
+    int               pending_enter_count;
     unsigned          key_in;
     TimuiKey          key_pressed;
     uint32_t          key_mods;     /* modifiers of the last key event */
@@ -55,9 +65,19 @@ struct Timui {
     int               event_count;
     struct { TimuiRect clip; int has_clip; } clip_stack[8];
     int               clip_count;
+    /* Kitty-graphics image placements recorded this frame by timui_image_draw;
+     * transmitted (once, keyed by TimuiImage.id) and placed ON TOP of the cell
+     * diff in timui_end, so they compose with the renderer. */
+    struct { TimuiImage *img; TimuiRect rect; } img_place[8];
+    int               img_place_count;
+    uint32_t          next_image_id;
     /* Z27: menu state moved out of Timui into the caller-owned TimuiMenuBar. */
     TimuiFrame        frame;
 };
+
+/* Transmit+place any images recorded this frame (Kitty graphics), on top of the
+ * cell diff. Defined in timui_kitty.c; called by timui_end in timui_core.c. */
+void timui_images_flush_(Timui *ui);
 
 /* Z6: the single shared UTF-8 encoder. Encodes an already-validated codepoint
  * into `out` and returns the byte count (1..4). Defined in the first-included

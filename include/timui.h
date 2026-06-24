@@ -825,8 +825,14 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
 TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);
 TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
 
-/* ---- v0.2: Kitty graphics images -------------------------------------- */
-typedef struct TimuiImage { unsigned char *data; size_t len; } TimuiImage;
+/* ---- v0.2: Kitty graphics images -------------------------------------- *
+ * timui_image_draw records a placement; the image is transmitted (once, by id)
+ * and placed ON TOP of the cell diff in timui_end, so it composes with the cell
+ * renderer instead of being clobbered by it. `id` is assigned on first transmit
+ * (0 = not yet sent). The caller reserves the region (draws its own background
+ * and no text there). Kitty-graphics terminals only; a "[img]" cell placeholder
+ * is drawn otherwise. */
+typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id; } TimuiImage;
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
 TIMUI_API void        timui_image_free(Timui *ui, TimuiImage *img);
 TIMUI_API void        timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r);

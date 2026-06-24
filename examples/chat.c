@@ -71,7 +71,7 @@ static void *chat_worker(void *arg){
     static const char *canned[] = {
         "alice: hi \xF0\x9F\x91\x8B",                                  /* 👋 */
         "bob: how's the *TUI*? run `make run-chat` \xE2\x80\x94 https://github.com",
-        "carol: shipping _0.2.0_ \xF0\x9F\x9A\x80",                      /* 🚀 */
+        "carol: shipping _0.2.0_ \xF0\x9F\x9A\x80 ![screenshot](https://github.com)",  /* 🚀 + image */
     };
     int turn = 0;
     unsigned counter = 1;
@@ -109,6 +109,37 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
     uint32_t attrs = 0;
     int code = 0;
     while(s[i] && x < maxx){
+        /* markdown image ![alt](url): a "🖼 alt" badge, alt hyperlinked to the
+         * url (clickable in terminals with OSC 8). True inline Kitty-graphics
+         * rendering needs image-subsystem work (see timui_image_draw). */
+        if(s[i] == '!' && s[i+1] == '['){
+            size_t a = i + 2, ae = a, u, ue, k;
+            while(s[ae] && s[ae] != ']') ae++;
+            if(s[ae] == ']' && s[ae+1] == '('){
+                u = ae + 2; ue = u;
+                while(s[ue] && s[ue] != ')') ue++;
+                if(s[ue] == ')'){
+                    char uri[512];
+                    size_t ul = ue - u;
+                    TimuiStr alt;
+                    if(ul > sizeof uri - 1) ul = sizeof uri - 1;
+                    memcpy(uri, s + u, ul); uri[ul] = '\0';
+                    timui_label(f, x, y, TIMUI_STR_LIT("\xF0\x9F\x96\xBC "),   /* 🖼 + space */
+                                timui_style_make(code_fg, bg, 0));
+                    x += 3;                                    /* emoji width 2 + space */
+                    alt.ptr = s + a; alt.len = ae - a;
+                    timui_label_hyperlink(f, x, y, alt, uri,
+                                          timui_style_make(link_fg, bg, TIMUI_ATTR_UNDERLINE));
+                    for(k = a; k < ae;){                       /* advance x by alt's width */
+                        uint32_t cp; int adv = timui_utf8_decode(s + k, ae - k, &cp);
+                        if(adv <= 0) adv = 1;
+                        x += timui_utf8_width(cp); k += (size_t)adv;
+                    }
+                    i = ue + 1;
+                    continue;
+                }
+            }
+        }
         if(strncmp(s + i, "http://", 7) == 0 || strncmp(s + i, "https://", 8) == 0){
             size_t j = i, ul;
             char uri[512];

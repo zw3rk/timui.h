@@ -157,6 +157,37 @@ TIMUI_TEST(test_input_field_edit){
     timui_close(ui);
 }
 
+/* Regression: several Enters arriving in ONE frame (a paste, or input faster
+ * than the frame rate) must submit ONE segment per frame, not merge — so
+ * "one\rtwo\r" yields "one" then "two", never "onetwo". The caller consumes and
+ * clears on each submit (as chat.c does); the post-Enter tail is deferred. */
+TIMUI_TEST(test_input_field_multi_submit){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    char got[32] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 1);
+    bool submitted = false;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 5, &al);
+#define MS_FRAME() do{ timui_begin(ui,&f); \
+        submitted = timui_input_field(f, TIMUI_ID("in"), r, &is); \
+        if(submitted){ strcpy(got, text); text[0]='\0'; is.cursor=0; is.scroll_x=0; } \
+        timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); MS_FRAME();          /* click to focus */
+    SETIN(&fake, "\x1b[<0;2;1m"); MS_FRAME();
+    SETIN(&fake, "one\rtwo\r"); MS_FRAME();            /* two submits in one frame */
+    TIMUI_CHECK(submitted && strcmp(got, "one") == 0); /* first segment, NOT "onetwo" */
+    SETIN(&fake, ""); MS_FRAME();                      /* no new input: deferred "two" */
+    TIMUI_CHECK(submitted && strcmp(got, "two") == 0); /* deferred second segment */
+    SETIN(&fake, ""); MS_FRAME();                      /* nothing left */
+    TIMUI_CHECK(!submitted);
+#undef MS_FRAME
+    timui_close(ui);
+}
+
 /* F1.5: horizontal scroll keeps the cursor visible; Home scrolls back. */
 TIMUI_TEST(test_input_field_scroll){
     TimuiAllocator al = timui_default_allocator();

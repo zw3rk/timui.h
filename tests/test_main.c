@@ -131,6 +131,7 @@ int main(void){
         test_input_line_utf8_no_split,
         test_input_line_utf8_backspace,
         test_input_field_edit,
+        test_input_field_multi_submit,
         test_input_field_scroll,
         test_input_field_guards,
         test_focused_input_cursor,
