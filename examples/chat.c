@@ -192,6 +192,11 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
 static struct { char path[256]; TimuiImage *img; } g_imgcache[IMG_CACHE];
 static int g_imgcache_n;
 
+/* Clickable image regions recorded while drawing the transcript this frame, so a
+ * click can open that image in the fullscreen viewer. Reset each frame. */
+static struct { TimuiRect rect; char path[256]; char alt[128]; } g_click_img[16];
+static int g_click_n;
+
 static TimuiImage *load_image(Timui *ui, const char *path){
     int k;
     FILE *fp;
@@ -283,6 +288,23 @@ static void draw_message(TimuiFrame *f, const char *ts, const char *s, TimuiRect
                 if(vis.y == full.y && vis.h == full.h) timui_image_draw(f, img, full);
                 else timui_image_draw_clipped(f, img, full, vis);
             }
+            /* record the clickable region (whole visible message) + its alt so a
+             * click opens the fullscreen viewer. */
+            { int rt = y > by0 ? y : by0, rb = (y + h - 1) < by1 ? (y + h - 1) : by1;
+              if(rt <= rb && g_click_n < (int)(sizeof g_click_img / sizeof g_click_img[0])){
+                  const char *ab = strstr(s, "!["), *ae;
+                  g_click_img[g_click_n].rect = TIMUI_RECT(body.x, rt, body.w, rb - rt + 1);
+                  snprintf(g_click_img[g_click_n].path, sizeof g_click_img[0].path, "%s", path);
+                  g_click_img[g_click_n].alt[0] = '\0';
+                  if(ab && (ae = strchr(ab + 2, ']')) != NULL){
+                      size_t n = (size_t)(ae - (ab + 2));
+                      if(n >= sizeof g_click_img[0].alt) n = sizeof g_click_img[0].alt - 1;
+                      memcpy(g_click_img[g_click_n].alt, ab + 2, n);
+                      g_click_img[g_click_n].alt[n] = '\0';
+                  }
+                  g_click_n++;
+              }
+            }
         }
     }
 }
@@ -298,6 +320,7 @@ static void draw_transcript(TimuiFrame *f, const Transcript *t, TimuiRect body,
     Timui *ui = f->ui;
     int idx, y_bottom;
 
+    g_click_n = 0;                              /* rebuild clickable image regions */
     timui_draw_fill(buf, body, panel);
     if(body.h <= 0 || body.w <= 0 || t->count <= 0) return;
 
@@ -353,13 +376,103 @@ static void open_url(const char *url){
     if(pid > 0){ int st; waitpid(pid, &st, 0); }
 }
 
-int main(void){
+/* ---- Demo autoplay (for screen recordings) ------------------------------- *
+ * `--demo <script>` self-drives the chat on a timeline so a recording is
+ * hands-off and reproducible. The script is one action per line:
+ *   wait <ms>     pause
+ *   msg  <text>   a message arrives (e.g. "alice: hi")
+ *   say  <text>   type <text> into the composer (animated) then send it
+ *   img  <path>   send a local image message (![name](path))
+ *   scroll <n>    scroll by n lines (+ older, - newer)
+ *   open / close  open / close the fullscreen viewer for the last image
+ *   quit          end the demo
+ * Lines that are blank or start with '#' are ignored. */
+enum { D_WAIT, D_MSG, D_SAY, D_IMG, D_SCROLL, D_OPEN, D_CLOSE, D_QUIT };
+typedef struct { int kind; int arg; char text[MSG_MAX]; } DemoStep;
+
+static long now_ms(void){
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static int demo_load(const char *path, DemoStep *out, int max){
+    FILE *fp = fopen(path, "r");
+    char line[MSG_MAX + 64];
+    int n = 0;
+    if(!fp) return -1;
+    while(n < max && fgets(line, sizeof line, fp)){
+        char *s = line, *rest;
+        size_t L;
+        while(*s == ' ' || *s == '\t') s++;
+        L = strlen(s);
+        while(L > 0 && (s[L-1] == '\n' || s[L-1] == '\r')) s[--L] = '\0';
+        if(*s == '\0' || *s == '#') continue;
+        rest = strchr(s, ' ');
+        if(rest){ *rest++ = '\0'; while(*rest == ' ') rest++; } else rest = s + strlen(s);
+        out[n].arg = 0; out[n].text[0] = '\0';
+        if(strcmp(s, "wait")   == 0){ out[n].kind = D_WAIT;   out[n].arg = atoi(rest); }
+        else if(strcmp(s, "msg")    == 0){ out[n].kind = D_MSG;   snprintf(out[n].text, MSG_MAX, "%s", rest); }
+        else if(strcmp(s, "say")    == 0){ out[n].kind = D_SAY;   snprintf(out[n].text, MSG_MAX, "%s", rest); }
+        else if(strcmp(s, "img")    == 0){ out[n].kind = D_IMG;   snprintf(out[n].text, MSG_MAX, "%s", rest); }
+        else if(strcmp(s, "scroll") == 0){ out[n].kind = D_SCROLL; out[n].arg = atoi(rest); }
+        else if(strcmp(s, "open")   == 0){ out[n].kind = D_OPEN; }
+        else if(strcmp(s, "close")  == 0){ out[n].kind = D_CLOSE; }
+        else if(strcmp(s, "quit")   == 0){ out[n].kind = D_QUIT; }
+        else continue;   /* unknown action: skip */
+        n++;
+    }
+    fclose(fp);
+    return n;
+}
+
+/* Fullscreen image viewer: a dark backdrop, the image aspect-fit into most of the
+ * screen (a cell is ~2× taller than wide), and the alt text centered below. */
+static void draw_fullscreen(TimuiFrame *f, TimuiRect root, TimuiImage *img, const char *alt){
+    TimuiCellBuffer *buf = timui_frame_buffer(f);
+    timui_draw_fill(buf, root, timui_style_make(0xCCCCCC, 0x000000, 0));
+    if(img && img->px_w > 0 && img->px_h > 0){
+        int aw = root.w - 2, ah = root.h - 3;   /* side margin + 2 rows for the caption */
+        int cols, rows;
+        TimuiRect r;
+        if(aw < 1) aw = 1;
+        if(ah < 1) ah = 1;
+        rows = ah;
+        cols = (int)((long)ah * 2 * img->px_w / img->px_h);
+        if(cols > aw){ cols = aw; rows = (int)((long)aw * img->px_h / (2 * img->px_w)); }
+        if(cols < 1) cols = 1;
+        if(rows < 1) rows = 1;
+        r.x = root.x + (root.w - cols) / 2;
+        r.y = root.y + 1 + (ah - rows) / 2;
+        r.w = cols; r.h = rows;
+        timui_image_draw(f, img, r);
+    }
+    if(alt && alt[0]){
+        int w = disp_w(alt);
+        timui_label(f, root.x + (root.w - w) / 2, root.y + root.h - 1,
+                    timui_str_from_cstr(alt), timui_style_make(0xFFFFFF, 0x000000, TIMUI_ATTR_BOLD));
+    }
+    timui_label(f, root.x + 1, root.y, TIMUI_STR_LIT("Esc / click to close"),
+                timui_style_make(0x888888, 0x000000, 0));
+}
+
+int main(int argc, char **argv){
     TimuiConfig cfg = {0};
     Timui *ui = NULL;
     Worker worker = {0};
     pthread_t th;
     int thread_started = 0;
     int scroll = 0;                    /* lines pinned above the newest (0 = follow) */
+
+    /* Demo autoplay: `--demo <script>` self-drives the chat (no worker thread). */
+    static DemoStep demo_steps[128];
+    const char *demo_file = NULL;
+    int demo_mode = 0, demo_n = 0, demo_i = 0, demo_typed = 0;
+    long demo_at = 0;
+    char demo_img_path[256] = {0}, demo_img_alt[128] = {0};
+    { int a;
+      for(a = 1; a < argc; a++)
+          if(strcmp(argv[a], "--demo") == 0 && a + 1 < argc) demo_file = argv[++a]; }
 
     /* UI-thread-owned model: the transcript (static — ~1 MB ring, off the stack)
      * and the compose buffer. The input state persists across frames. */
@@ -371,6 +484,10 @@ int main(void){
      * hist_pos == hist_count means "editing a fresh line". */
     static char history[64][MSG_MAX];
     int hist_count = 0, hist_pos = 0;
+
+    /* Fullscreen image viewer (opened by clicking an image message). */
+    char fs_path[256] = {0}, fs_alt[128] = {0};
+    int fs_active = 0;
 
     /* Theme-derived styles (MODERN_DARK) so the hand-drawn feed matches the
      * themed widgets (input field, function bar). */
@@ -394,9 +511,16 @@ int main(void){
      * is nothing to join and the process exits immediately. */
     if(timui_open(&cfg, &ui) != TIMUI_OK) return 1;
 
-    worker.ui = ui;
-    worker.stop = 0;
-    if(pthread_create(&th, NULL, chat_worker, &worker) == 0) thread_started = 1;
+    if(demo_file){
+        demo_n = demo_load(demo_file, demo_steps, 128);
+        if(demo_n > 0){ demo_mode = 1; demo_at = now_ms(); }
+    }
+    /* The worker posts async messages; in demo mode the script drives everything. */
+    if(!demo_mode){
+        worker.ui = ui;
+        worker.stop = 0;
+        if(pthread_create(&th, NULL, chat_worker, &worker) == 0) thread_started = 1;
+    }
 
     while(!timui_should_quit(ui)){
         TimuiFrame *f = NULL;
@@ -405,9 +529,10 @@ int main(void){
         char header_txt[80];
         uint32_t type = 0;
         size_t sz;
-        int count_before, body_rows, page, maxscroll;
+        int count_before, body_rows, page, maxscroll, fs_was;
 
         if(!timui_begin(ui, &f)) break;   /* break => still stop+join+close below */
+        fs_was = fs_active;               /* modal state at frame start */
 
         /* Drain EVERY queued post into the transcript (UI thread only). Reset
          * the buffer size before each recv; recv reports the real payload size,
@@ -431,9 +556,69 @@ int main(void){
             scroll += nl;
         }
 
-        /* ESC or F10 quit. */
-        if(timui_key_pressed(f, TIMUI_KEY_ESCAPE) || timui_key_pressed(f, TIMUI_KEY_F10))
-            timui_quit(ui);
+        /* Demo autoplay: advance the script on its timeline, driving the same
+         * state a user would (transcript, composer, scroll, fullscreen). */
+        if(demo_mode && demo_i < demo_n){
+            long now = now_ms();
+            if(now >= demo_at){
+                DemoStep *st = &demo_steps[demo_i];
+                switch(st->kind){
+                    case D_WAIT:  demo_at = now + st->arg; demo_i++; break;
+                    case D_MSG:   log_append(&transcript, st->text); scroll = 0; demo_at = now + 650; demo_i++; break;
+                    case D_SAY: {
+                        int len = (int)strlen(st->text);
+                        if(demo_typed < len){                 /* reveal one char (animated typing) */
+                            demo_typed++;
+                            snprintf(compose, sizeof compose, "%.*s", demo_typed, st->text);
+                            compose_state.cursor = strlen(compose);
+                            demo_at = now + 45;
+                        } else {                               /* done -> send */
+                            char sent[MSG_MAX];
+                            snprintf(sent, sizeof sent, "you: %s", st->text);
+                            log_append(&transcript, sent);
+                            compose[0] = '\0'; compose_state.cursor = 0; scroll = 0;
+                            demo_typed = 0; demo_at = now + 650; demo_i++;
+                        }
+                    } break;
+                    case D_IMG: {
+                        const char *base = strrchr(st->text, '/'); char sent[MSG_MAX];
+                        base = base ? base + 1 : st->text;
+                        snprintf(sent, sizeof sent, "you: ![%s](%s)", base, st->text);
+                        log_append(&transcript, sent); scroll = 0;
+                        snprintf(demo_img_path, sizeof demo_img_path, "%s", st->text);
+                        snprintf(demo_img_alt,  sizeof demo_img_alt,  "%s", base);
+                        demo_at = now + 900; demo_i++;
+                    } break;
+                    case D_SCROLL: scroll += st->arg; if(scroll < 0) scroll = 0; demo_at = now + 450; demo_i++; break;
+                    case D_OPEN:
+                        if(demo_img_path[0]){
+                            snprintf(fs_path, sizeof fs_path, "%s", demo_img_path);
+                            snprintf(fs_alt,  sizeof fs_alt,  "%s", demo_img_alt);
+                            fs_active = 1;
+                        }
+                        demo_at = now + 1400; demo_i++;
+                        break;
+                    case D_CLOSE: fs_active = 0; demo_at = now + 650; demo_i++; break;
+                    case D_QUIT:  timui_quit(ui); demo_i++; break;
+                }
+            }
+        }
+
+        /* F10 quits from anywhere. The fullscreen image viewer is modal: while it
+         * is up, draw it and dismiss on Esc / Enter / Space / click, then skip
+         * the normal UI for this frame. */
+        if(timui_key_pressed(f, TIMUI_KEY_F10)) timui_quit(ui);
+        if(fs_active){
+            draw_fullscreen(f, timui_root(f), load_image(ui, fs_path), fs_alt);
+            if(fs_was && (timui_key_pressed(f, TIMUI_KEY_ESCAPE) ||
+                          timui_key_pressed(f, TIMUI_KEY_ENTER)  ||
+                          timui_char_pressed(f, ' ') ||
+                          timui_mouse_clicked(f, NULL, NULL)))
+                fs_active = 0;
+            timui_end(f);
+            continue;
+        }
+        if(timui_key_pressed(f, TIMUI_KEY_ESCAPE)) timui_quit(ui);
 
         /* Layout (top→bottom): header · transcript · ─── rule · ❯ input · hint. */
         root   = timui_root(f);
@@ -473,10 +658,23 @@ int main(void){
         draw_transcript(f, &transcript, root, scroll, panel,
                         self_fg, sys_fg, text_fg, code_fg, link_fg);
 
-        /* Click a link to open it — with mouse reporting on, the terminal sends
-         * us the click instead of opening the OSC 8 link itself. */
+        /* A click on an image message opens the fullscreen viewer; otherwise, on
+         * a link, open it (mouse reporting means the terminal hands us the click
+         * rather than opening the OSC 8 link itself). */
         { int mx, my;
-          if(timui_mouse_clicked(f, &mx, &my)) open_url(timui_hyperlink_at(f, mx, my)); }
+          if(timui_mouse_clicked(f, &mx, &my)){
+              int hit = 0, k;
+              for(k = 0; k < g_click_n; k++){
+                  TimuiRect rr = g_click_img[k].rect;
+                  if(mx >= rr.x && mx < rr.x + rr.w && my >= rr.y && my < rr.y + rr.h){
+                      snprintf(fs_path, sizeof fs_path, "%s", g_click_img[k].path);
+                      snprintf(fs_alt,  sizeof fs_alt,  "%s", g_click_img[k].alt);
+                      fs_active = 1; hit = 1; break;
+                  }
+              }
+              if(!hit) open_url(timui_hyperlink_at(f, mx, my));
+          }
+        }
 
         /* A ─── rule frames the composer (claude-code style); while scrolled up
          * it becomes a centered "jump to bottom" affordance. */

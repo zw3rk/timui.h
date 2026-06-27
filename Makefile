@@ -90,6 +90,18 @@ run: build ## Build and run the hello example
 run-%: $(BLDDIR)/%
 	@./$(BLDDIR)/$*
 
+# Autoplay the chat demo (self-driving via examples/chat.demo). Explicit targets
+# override the run-% pattern. Kitty-graphics images are terminal PIXELS, so
+# asciinema/agg/VHS can't capture them — screen-record this window instead.
+run-chat-demo: $(BLDDIR)/chat ## Autoplay the chat demo script (self-driving)
+	@./$(BLDDIR)/chat --demo examples/chat.demo
+
+rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
+	@printf "$(C_CYAN)Start a screen recorder$(C_RESET) (Kap / QuickTime) on this Ghostty window,\n"
+	@printf "then press Enter to autoplay the demo (~26s). Turn the capture into a GIF with:\n"
+	@printf "  $(C_YELL)ffmpeg -i cap.mov -vf 'fps=15,scale=900:-1:flags=lanczos' chat.gif$(C_RESET)\n"
+	@read _ && ./$(BLDDIR)/chat --demo examples/chat.demo
+
 # ---- recording / headless driving --------------------------------------- #
 $(BLDDIR)/pty_drive: $(TOOLDIR)/pty_drive.c
 	@mkdir -p $(@D)

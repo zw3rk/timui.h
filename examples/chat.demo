@@ -1,0 +1,31 @@
+# timui.h chat — autoplay demo for screen recordings.
+#   run:  ./build/chat --demo examples/chat.demo   (or: make run-chat-demo)
+# Actions:  wait <ms> | msg <text> | say <text> | img <path>
+#           scroll <n> | open | close | quit
+# '#'/blank lines are ignored.
+
+wait 700
+msg alice: hey! did the new chat land? 👋
+wait 800
+msg bob: yep — inline images, markdown, scrollback. try `make run-chat`
+wait 400
+say Nice! Let me try a few things.
+wait 500
+say Markdown works: *bold*, _italic_ and `code`.
+wait 700
+say And a real inline image:
+img examples/assets/logo.png
+wait 1500
+open
+wait 2600
+close
+wait 600
+say Click an image and it opens fullscreen 🎉
+wait 800
+scroll 9
+wait 1500
+scroll -9
+wait 900
+say Links too — https://github.com for the source.
+wait 1800
+quit

@@ -73,6 +73,11 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   regression was added.)
 
 ### Added
+- **`timui_image_draw_clipped`**: draw only the part of an image that lands in a
+  visible sub-rect (Kitty source-crop from the PNG's `IHDR` pixel size), so an
+  image clips smoothly at a pane edge. `examples/chat` uses it with LINE-based
+  scrolling so tall image messages scroll and clip smoothly; clicking an image
+  opens it fullscreen (aspect-fit) with its alt caption below.
 - **App input accessors**: `timui_mouse_wheel(f)` (per-frame wheel delta),
   `timui_mouse_clicked(f,&x,&y)` (a click + its cell), and `timui_hyperlink_at(
   f,x,y)` (the OSC 8 URL under a cell) — so apps can scroll on the wheel and open
