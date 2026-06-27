@@ -135,6 +135,7 @@ int main(void){
         test_input_field_paste,
         test_input_field_paste_split,
         test_input_field_text_burst,
+        test_input_field_emacs,
         test_input_field_scroll,
         test_input_field_guards,
         test_focused_input_cursor,

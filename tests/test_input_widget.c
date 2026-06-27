@@ -256,6 +256,43 @@ TIMUI_TEST(test_input_field_text_burst){
     timui_close(ui);
 }
 
+/* emacs / readline line-editing keys (ubiquitous on macOS): Ctrl-A/E move to
+ * start/end, Ctrl-B/F back/forward, Ctrl-D delete, Ctrl-K/U kill to end/start,
+ * Ctrl-W kill the previous word. */
+TIMUI_TEST(test_input_field_emacs){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 5, &al);
+#define PF() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PF();
+    SETIN(&fake, "\x1b[<0;2;1m"); PF();
+    SETIN(&fake, "hello world"); PF();
+    TIMUI_CHECK(is.cursor == 11);
+    SETIN(&fake, "\x01"); PF(); TIMUI_CHECK(is.cursor == 0);     /* Ctrl-A -> start */
+    SETIN(&fake, "\x05"); PF(); TIMUI_CHECK(is.cursor == 11);    /* Ctrl-E -> end   */
+    SETIN(&fake, "\x02"); PF(); TIMUI_CHECK(is.cursor == 10);    /* Ctrl-B -> back  */
+    SETIN(&fake, "\x06"); PF(); TIMUI_CHECK(is.cursor == 11);    /* Ctrl-F -> fwd   */
+    SETIN(&fake, "\x17"); PF();                                   /* Ctrl-W kills "world" */
+    TIMUI_CHECK(strcmp(text, "hello ") == 0 && is.cursor == 6);
+    SETIN(&fake, "\x0b"); PF();                                   /* Ctrl-K at end: no-op */
+    TIMUI_CHECK(strcmp(text, "hello ") == 0);
+    SETIN(&fake, "\x15"); PF();                                   /* Ctrl-U kills to start */
+    TIMUI_CHECK(strcmp(text, "") == 0 && is.cursor == 0);
+    SETIN(&fake, "abc"); PF();
+    SETIN(&fake, "\x01"); PF();                                   /* Ctrl-A */
+    SETIN(&fake, "\x04"); PF();                                   /* Ctrl-D deletes 'a' */
+    TIMUI_CHECK(strcmp(text, "bc") == 0);
+    SETIN(&fake, "\x05"); PF(); SETIN(&fake, "\x0b"); PF();       /* Ctrl-E, Ctrl-K: no-op at end */
+    TIMUI_CHECK(strcmp(text, "bc") == 0);
+#undef PF
+    timui_close(ui);
+}
+
 /* F1.5: horizontal scroll keeps the cursor visible; Home scrolls back. */
 TIMUI_TEST(test_input_field_scroll){
     TimuiAllocator al = timui_default_allocator();

@@ -242,6 +242,9 @@ TIMUI_API void       timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr tex
 #define TIMUI_KEYIN_DELETE    32u
 #define TIMUI_KEYIN_UP        64u
 #define TIMUI_KEYIN_DOWN      128u
+#define TIMUI_KEYIN_KILL_EOL  256u    /* Ctrl-K: delete from the cursor to end of line */
+#define TIMUI_KEYIN_KILL_BOL  512u    /* Ctrl-U: delete from start of line to the cursor */
+#define TIMUI_KEYIN_KILL_WORD 1024u   /* Ctrl-W: delete the word before the cursor */
 
 /* Mutable single-line input: click to focus, type to append (bounded by cap),
  * backspace deletes the last rune, Enter submits. Returns true on submit.

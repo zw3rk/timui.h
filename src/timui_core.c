@@ -326,6 +326,21 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 else if(ev.as.key.key == TIMUI_KEY_DELETE) ui->key_in |= TIMUI_KEYIN_DELETE;
                 else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
                 else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
+                else if(ev.as.key.key == TIMUI_KEY_UNKNOWN && (ev.as.key.mods & TIMUI_MOD_CTRL)){
+                    /* emacs / readline line editing (ubiquitous on macOS). Ctrl-H
+                     * (backspace) already arrives as KEY_BACKSPACE from the parser. */
+                    switch(ev.as.key.codepoint){
+                        case 'a': ui->key_in |= TIMUI_KEYIN_HOME;      break;  /* start of line */
+                        case 'e': ui->key_in |= TIMUI_KEYIN_END;       break;  /* end of line   */
+                        case 'b': ui->key_in |= TIMUI_KEYIN_LEFT;      break;  /* back one char */
+                        case 'f': ui->key_in |= TIMUI_KEYIN_RIGHT;     break;  /* forward       */
+                        case 'd': ui->key_in |= TIMUI_KEYIN_DELETE;    break;  /* delete at cursor */
+                        case 'k': ui->key_in |= TIMUI_KEYIN_KILL_EOL;  break;  /* kill to EOL    */
+                        case 'u': ui->key_in |= TIMUI_KEYIN_KILL_BOL;  break;  /* kill to BOL    */
+                        case 'w': ui->key_in |= TIMUI_KEYIN_KILL_WORD; break;  /* kill word back */
+                        default: break;
+                    }
+                }
             } else if(ev.kind == TIMUI_EVENT_TEXT){
                 /* UTF-8 encode the codepoint into text_in (supports international
                  * input) via the single shared encoder (Z6). */

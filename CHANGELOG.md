@@ -12,6 +12,11 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   only one showed. Each on-screen slot now gets a distinct placement id, and last
   frame's placements are cleared (atomic under sync) before re-placing so
   scrolled-away/shuffled images don't linger.
+- **Drag-drop path truncated to 16 chars**: the parser emits one event per typed
+  character (a terminal inserts a dropped path as plain text), but the event
+  queue held only 16 — so a 73-char path lost all but `/Users/angerman/`. The
+  queue now holds a whole read (512 > the 256-byte read buffer). Not a terminal
+  setting; diagnosed with `TIMUI_TRACE`.
 - **Bracketed paste never reached inputs**: `timui_begin` dropped `PASTE` events
   (drain handled MOUSE/KEY/TEXT only), so a real paste or a Finder drag-drop of a
   file path didn't land in the focused input. Now the frame accumulates a paste's

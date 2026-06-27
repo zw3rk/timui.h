@@ -356,6 +356,21 @@ TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiIn
                 size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
                 (void)text_erase_(st->text, st->cursor, nxt);
             }
+            if(ui->key_in & TIMUI_KEYIN_KILL_EOL){          /* Ctrl-K: cursor..end */
+                st->text[st->cursor] = '\0';                /* cursor is a codepoint boundary */
+            }
+            if(ui->key_in & TIMUI_KEYIN_KILL_BOL){          /* Ctrl-U: start..cursor */
+                size_t rest = strlen(st->text + st->cursor);
+                memmove(st->text, st->text + st->cursor, rest + 1);
+                st->cursor = 0;
+            }
+            if(ui->key_in & TIMUI_KEYIN_KILL_WORD){         /* Ctrl-W: the word before the cursor */
+                size_t c = st->cursor, w = c;
+                while(w > 0 && st->text[w-1] == ' ') w--;    /* trailing spaces */
+                while(w > 0 && st->text[w-1] != ' ') w--;    /* the word */
+                memmove(st->text + w, st->text + c, strlen(st->text + c) + 1);
+                st->cursor = w;
+            }
             if(first_enter >= 0){
                 int tail = ui->text_in_len - upto, k;
                 submitted = true;
