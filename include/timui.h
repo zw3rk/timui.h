@@ -258,6 +258,10 @@ TIMUI_API bool       timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r
  * visible. Returns true on Enter. `cursor`/`scroll_x` are byte-index and column. */
 typedef struct { char *text; size_t cap; size_t cursor; int scroll_x; } TimuiInputState;
 TIMUI_API bool       timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st);
+/* Single-line editor drawn with a caller-supplied style instead of the theme's
+ * input slots — e.g. to blend into a surrounding panel. Same editing behaviour. */
+TIMUI_API bool       timui_input_field_styled(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                              TimuiInputState *st, TimuiStyle style);
 
 typedef struct { int selected; int scroll; } TimuiListState;
 typedef const char *(*TimuiLabelFn)(void *userdata, int index);
@@ -733,6 +737,14 @@ TIMUI_API int    timui_key_pressed_mods(TimuiFrame *f, TimuiKey key, uint32_t mo
  * per-frame buffer, valid until the next timui_begin). */
 TIMUI_API int      timui_char_pressed(const TimuiFrame *f, char ch);
 TIMUI_API TimuiStr timui_text_input(const TimuiFrame *f);
+/* Accumulated mouse-wheel delta this frame (+ up / - down, 0 = none). Requires
+ * TIMUI_FLAG_MOUSE. Use for scrolling a view. */
+TIMUI_API int      timui_mouse_wheel(const TimuiFrame *f);
+/* 1 (+ 0-based cell in out_x/out_y) if a button was pressed this frame. */
+TIMUI_API int      timui_mouse_clicked(const TimuiFrame *f, int *out_x, int *out_y);
+/* URL of the OSC 8 hyperlink under cell (x,y) in the frame just drawn, else NULL
+ * — e.g. to open a link on click when mouse reporting intercepts it. */
+TIMUI_API const char *timui_hyperlink_at(const TimuiFrame *f, int x, int y);
 /* Programmatic focus: focus the widget `id` (persists until a click/Tab moves
  * it); timui_focus returns the currently focused id (0 = none). */
 TIMUI_API void     timui_set_focus(TimuiFrame *f, TimuiId id);

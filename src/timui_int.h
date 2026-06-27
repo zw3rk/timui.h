@@ -58,6 +58,9 @@ struct Timui {
     unsigned          key_in;
     TimuiKey          key_pressed;
     uint32_t          key_mods;     /* modifiers of the last key event */
+    int               mouse_wheel;  /* accumulated wheel delta this frame (+up/-down) */
+    int               mouse_x, mouse_y;   /* last reported cell (0-based) */
+    int               mouse_clicked;      /* a button press occurred this frame */
     /* F1.4: hardware cursor request for the focused input. cursor_visible is a
      * per-frame request (reset in timui_begin, set by the focused input);
      * cursor_shown tracks what's on the terminal so a hide is emitted once. */

@@ -302,11 +302,16 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->key_in = 0;
     ui->key_pressed = TIMUI_KEY_UNKNOWN;
     ui->key_mods = 0;
+    ui->mouse_wheel = 0;
+    ui->mouse_clicked = 0;
     {
         TimuiEvent ev;
         while(timui_poll_event(ui, &ev)){
             if(ev.kind == TIMUI_EVENT_MOUSE){
                 timui_interact_set_mouse(&ui->ia, ev.as.mouse.x - 1, ev.as.mouse.y - 1, ev.as.mouse.pressed);
+                ui->mouse_wheel += ev.as.mouse.wheel_y;   /* expose wheel to the app */
+                ui->mouse_x = ev.as.mouse.x - 1; ui->mouse_y = ev.as.mouse.y - 1;
+                if(ev.as.mouse.pressed) ui->mouse_clicked = 1;
             } else if(ev.kind == TIMUI_EVENT_KEY){
                 ui->key_pressed = ev.as.key.key;   /* app-level key detection */
                 ui->key_mods = ev.as.key.mods;
@@ -467,6 +472,26 @@ TIMUI_API int timui_events_dropped(Timui *ui){
 TIMUI_API void timui_quit(Timui *ui){ if(ui) ui->should_quit = 1; }
 TIMUI_API bool timui_should_quit(const Timui *ui){ return ui ? (bool)ui->should_quit : false; }
 TIMUI_API const TimuiCaps *timui_caps(const Timui *ui){ return ui ? &ui->caps : NULL; }
+TIMUI_API int timui_mouse_wheel(const TimuiFrame *f){ return (f && f->ui) ? f->ui->mouse_wheel : 0; }
+TIMUI_API int timui_mouse_clicked(const TimuiFrame *f, int *out_x, int *out_y){
+    if(!f || !f->ui || !f->ui->mouse_clicked) return 0;
+    if(out_x) *out_x = f->ui->mouse_x;
+    if(out_y) *out_y = f->ui->mouse_y;
+    return 1;
+}
+/* URL of the OSC 8 hyperlink under cell (x,y) in the frame just drawn, or NULL.
+ * Lets an app act on a link click (terminals with mouse reporting on send the
+ * click to the app rather than opening the link themselves). */
+TIMUI_API const char *timui_hyperlink_at(const TimuiFrame *f, int x, int y){
+    Timui *ui;
+    const TimuiCell *c;
+    if(!f || !f->ui) return NULL;
+    ui = f->ui;
+    c = timui_cells_get(&ui->curr, x, y);
+    if(c && c->hyperlink_id > 0 && (int)c->hyperlink_id <= ui->curr.link_count)
+        return ui->curr.links[c->hyperlink_id - 1].uri;
+    return NULL;
+}
 TIMUI_API int timui_key_pressed(TimuiFrame *f, TimuiKey key){
     return (f && f->ui && f->ui->key_pressed == key);
 }

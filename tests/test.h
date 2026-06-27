@@ -147,6 +147,8 @@ void test_input_field_paste(void);
 void test_input_field_paste_split(void);
 void test_input_field_text_burst(void);
 void test_input_field_emacs(void);
+void test_input_field_styled(void);
+void test_mouse_click_hyperlink(void);
 void test_input_field_scroll(void);
 void test_input_field_guards(void);
 void test_focused_input_cursor(void);

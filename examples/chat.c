@@ -28,6 +28,8 @@
 #include <string.h>    /* strlen / strncmp / memcpy */
 #include <stdio.h>     /* snprintf / fopen / fread */
 #include <stdlib.h>    /* malloc / free */
+#include <unistd.h>    /* fork / execlp / _exit — open a clicked link */
+#include <sys/wait.h>  /* waitpid */
 
 /* An inline image message reserves IMG_ROWS rows (a caption line + the picture,
  * IMG_COLS wide). Kitty-graphics terminals draw the real PNG; others show the
@@ -46,7 +48,8 @@ enum { MSG_LINE = 1 };
 #define LOG_CAP  1024                  /* scrollback depth (power of two) */
 #define TS_LEN   9                     /* "HH:MM:SS" + NUL */
 #define TS_COLS  9                     /* timestamp render width incl. one space */
-typedef struct { char line[200]; char ts[TS_LEN]; } LogLine;
+#define MSG_MAX  1024                  /* max chars in a composed / stored message */
+typedef struct { char line[MSG_MAX]; char ts[TS_LEN]; } LogLine;
 typedef struct { LogLine log[LOG_CAP]; int count; } Transcript;
 
 /* Append one line (truncated to fit) with a timestamp; overwrites the oldest
@@ -303,6 +306,37 @@ static void draw_transcript(TimuiFrame *f, const Transcript *t, TimuiRect body,
     }
 }
 
+/* Display width (columns) of a UTF-8 string — for centering the scroll hint. */
+static int disp_w(const char *s){
+    size_t i = 0, len = strlen(s);
+    int w = 0;
+    while(i < len){
+        uint32_t cp; int a = timui_utf8_decode(s + i, len - i, &cp);
+        if(a <= 0) a = 1;
+        w += timui_utf8_width(cp); i += (size_t)a;
+    }
+    return w;
+}
+
+/* Open an http(s) URL in the default browser. Double-fork so the opener is
+ * reparented (no zombie); exec directly (no shell -> no injection). */
+static void open_url(const char *url){
+    pid_t pid;
+    if(!url) return;
+    if(strncmp(url, "http://", 7) != 0 && strncmp(url, "https://", 8) != 0) return;
+    pid = fork();
+    if(pid == 0){
+        if(fork() == 0){
+            setsid();
+            execlp("open", "open", url, (char *)NULL);         /* macOS */
+            execlp("xdg-open", "xdg-open", url, (char *)NULL);  /* linux */
+            _exit(127);
+        }
+        _exit(0);
+    }
+    if(pid > 0){ int st; waitpid(pid, &st, 0); }
+}
+
 int main(void){
     TimuiConfig cfg = {0};
     Timui *ui = NULL;
@@ -311,11 +345,16 @@ int main(void){
     int thread_started = 0;
     int scroll = 0;                    /* lines pinned above the newest (0 = follow) */
 
-    /* UI-thread-owned model: the transcript and the compose buffer. The input
-     * state persists across frames (cursor + horizontal scroll live here). */
-    Transcript transcript = {0};
-    char compose[200] = {0};
+    /* UI-thread-owned model: the transcript (static — ~1 MB ring, off the stack)
+     * and the compose buffer. The input state persists across frames. */
+    static Transcript transcript;
+    char compose[MSG_MAX] = {0};
     TimuiInputState compose_state = { compose, sizeof compose, 0, 0 };
+
+    /* Sent-message history: Up/Down recall previous inputs (shell-style).
+     * hist_pos == hist_count means "editing a fresh line". */
+    static char history[64][MSG_MAX];
+    int hist_count = 0, hist_pos = 0;
 
     /* Theme-derived styles (MODERN_DARK) so the hand-drawn feed matches the
      * themed widgets (input field, function bar). */
@@ -345,7 +384,7 @@ int main(void){
 
     while(!timui_should_quit(ui)){
         TimuiFrame *f = NULL;
-        TimuiRect root, header, footer, input, prompt;
+        TimuiRect root, header, hint, input, rule, prompt;
         char recv_buf[200];
         char header_txt[80];
         uint32_t type = 0;
@@ -375,22 +414,24 @@ int main(void){
         if(timui_key_pressed(f, TIMUI_KEY_ESCAPE) || timui_key_pressed(f, TIMUI_KEY_F10))
             timui_quit(ui);
 
-        /* Layout: header (top) · footer (bottom) · input (above footer) · the
-         * rest is the scrolling transcript body. */
+        /* Layout (top→bottom): header · transcript · ─── rule · ❯ input · hint. */
         root   = timui_root(f);
         header = timui_cut_top(&root, 1);
-        footer = timui_cut_bottom(&root, 1);
+        hint   = timui_cut_bottom(&root, 1);
         input  = timui_cut_bottom(&root, 1);
+        rule   = timui_cut_bottom(&root, 1);
         body_rows = root.h;
 
-        /* Scrollback navigation. Up/Down by a line, PgUp/PgDn by a page. The
-         * single-line input ignores these keys, so they are ours. Clamp to the
-         * range the ring can still show (older lines are overwritten). */
+        /* Scroll: Shift+↑/↓ by line, PgUp/PgDn by page, mouse wheel; Ctrl+End (or
+         * sending) jumps to the newest. Plain ↑/↓ recall history (below the input).
+         * Clamp to what the ring can still show. */
         page = body_rows > 1 ? body_rows - 1 : 1;
-        if(timui_key_pressed(f, TIMUI_KEY_UP))        scroll += 1;
-        if(timui_key_pressed(f, TIMUI_KEY_DOWN))      scroll -= 1;
+        if(timui_key_pressed_mods(f, TIMUI_KEY_UP,   TIMUI_MOD_SHIFT)) scroll += 1;
+        if(timui_key_pressed_mods(f, TIMUI_KEY_DOWN, TIMUI_MOD_SHIFT)) scroll -= 1;
         if(timui_key_pressed(f, TIMUI_KEY_PAGE_UP))   scroll += page;
         if(timui_key_pressed(f, TIMUI_KEY_PAGE_DOWN)) scroll -= page;
+        scroll += timui_mouse_wheel(f);                /* wheel: up = older, down = newer */
+        if(timui_key_pressed_mods(f, TIMUI_KEY_END, TIMUI_MOD_CTRL)) scroll = 0;
         maxscroll = transcript.count - body_rows;
         cap = LOG_CAP - body_rows;
         if(maxscroll > cap) maxscroll = cap;
@@ -398,36 +439,71 @@ int main(void){
         if(scroll > maxscroll) scroll = maxscroll;
         if(scroll < 0)         scroll = 0;
 
-        /* Header status bar: message counter, plus scroll state when pinned. */
+        /* Header. */
         timui_draw_fill(timui_frame_buffer(f), header, status);
-        if(scroll > 0)
-            snprintf(header_txt, sizeof header_txt,
-                     " timui.h chat — %d msg   \xE2\x86\x91%d scrolled (PgDn: latest) ",
-                     transcript.count, scroll);
-        else
-            snprintf(header_txt, sizeof header_txt,
-                     " timui.h chat — %d message(s) ", transcript.count);
+        snprintf(header_txt, sizeof header_txt, " timui.h chat — %d message(s) ", transcript.count);
         timui_label(f, header.x, header.y, timui_str_from_cstr(header_txt), status);
 
-        /* Transcript body. */
+        /* Transcript. */
         draw_transcript(f, &transcript, root, scroll, panel,
                         self_fg, sys_fg, text_fg, code_fg, link_fg);
 
-        /* Compose line: a "> " prompt then the editable input field. Focus it by
-         * default (unless the user clicked elsewhere) so you can type from the
-         * first frame without pressing Tab. On Enter, append and jump to newest. */
+        /* Click a link to open it — with mouse reporting on, the terminal sends
+         * us the click instead of opening the OSC 8 link itself. */
+        { int mx, my;
+          if(timui_mouse_clicked(f, &mx, &my)) open_url(timui_hyperlink_at(f, mx, my)); }
+
+        /* A ─── rule frames the composer (claude-code style); while scrolled up
+         * it becomes a centered "jump to bottom" affordance. */
+        {
+            TimuiCellBuffer *buf = timui_frame_buffer(f);
+            timui_draw_hline(buf, rule.x, rule.y, rule.w, timui_style_make(sys_fg, panel.bg, 0));
+            if(scroll > 0){
+                char jb[80];
+                int jx;
+                snprintf(jb, sizeof jb,
+                         "  \xE2\x86\x93 %d below \xE2\x80\x94 Ctrl+End / Enter for latest \xE2\x86\x93  ", scroll);
+                jx = rule.x + (rule.w - disp_w(jb)) / 2;
+                if(jx < rule.x) jx = rule.x;
+                timui_label(f, jx, rule.y, timui_str_from_cstr(jb),
+                            timui_style_make(code_fg, panel.bg, TIMUI_ATTR_BOLD));
+            }
+        }
+
+        /* ❯ prompt (a distinct accent) + the editable input field, focused by
+         * default so you can type from the first frame. On Enter, append + snap. */
         if(timui_focus(f) == 0) timui_set_focus(f, TIMUI_ID("compose"));
+        /* Plain ↑/↓ recall sent-message history into the composer (shell-style). */
+        if(timui_key_pressed(f, TIMUI_KEY_UP) &&
+           !timui_key_pressed_mods(f, TIMUI_KEY_UP, TIMUI_MOD_SHIFT) &&
+           hist_count > 0 && hist_pos > 0){
+            hist_pos--;
+            snprintf(compose, sizeof compose, "%s", history[hist_pos]);
+            compose_state.cursor = strlen(compose); compose_state.scroll_x = 0;
+        }
+        if(timui_key_pressed(f, TIMUI_KEY_DOWN) &&
+           !timui_key_pressed_mods(f, TIMUI_KEY_DOWN, TIMUI_MOD_SHIFT) &&
+           hist_pos < hist_count){
+            hist_pos++;
+            if(hist_pos == hist_count){ compose[0] = '\0'; compose_state.cursor = 0; }
+            else { snprintf(compose, sizeof compose, "%s", history[hist_pos]);
+                   compose_state.cursor = strlen(compose); }
+            compose_state.scroll_x = 0;
+        }
         prompt = timui_cut_left(&input, 2);
-        timui_label(f, prompt.x, prompt.y, TIMUI_STR_LIT("> "),
-                    timui_style_make(text_fg, panel.bg, 0));
-        if(timui_input_field(f, TIMUI_ID("compose"), input, &compose_state)){
-            /* Trim trailing whitespace a drag-drop may append. */
-            { size_t L = strlen(compose);
+        timui_label(f, prompt.x, prompt.y, TIMUI_STR_LIT("\xE2\x9D\xAF "),   /* ❯ */
+                    timui_style_make(link_fg, panel.bg, TIMUI_ATTR_BOLD));
+        /* Styled so the composer blends into the panel (just the ❯ accent), not
+         * a green input box that read as the same surface as the hint below. */
+        if(timui_input_field_styled(f, TIMUI_ID("compose"), input, &compose_state,
+                                    timui_style_make(text_fg, panel.bg, 0))){
+            { size_t L = strlen(compose);   /* trim trailing ws a drag-drop may add */
               while(L > 0 && (compose[L-1] == ' ' || compose[L-1] == '\t')) compose[--L] = '\0'; }
             if(compose[0] != '\0'){
-                char sent[512];
+                char sent[MSG_MAX];
+                if(hist_count < (int)(sizeof history / sizeof history[0]))
+                    snprintf(history[hist_count++], MSG_MAX, "%s", compose);   /* record for ↑/↓ */
                 if(is_png_path(compose)){
-                    /* A dropped image path -> render it inline as ![name](path). */
                     const char *base = strrchr(compose, '/');
                     base = base ? base + 1 : compose;
                     snprintf(sent, sizeof sent, "you: ![%s](%s)", base, compose);
@@ -436,15 +512,23 @@ int main(void){
                 }
                 log_append(&transcript, sent);
             }
+            hist_pos = hist_count;         /* back to a fresh line */
             compose[0] = '\0';
             compose_state.cursor = 0;
             compose_state.scroll_x = 0;
-            scroll = 0;                    /* snap back to the newest line */
+            scroll = 0;
         }
 
-        /* Footer hint bar. */
-        timui_function_bar(f, footer,
-            TIMUI_STR_LIT(" F10/ESC Quit   Enter Send   PgUp/PgDn Scroll "));
+        /* Dim hint line — deliberately NOT the green status bar, so the composer
+         * above no longer reads as the same surface as the row below it. */
+        {
+            TimuiStyle dim = timui_style_make(sys_fg, panel.bg, 0);
+            timui_draw_fill(timui_frame_buffer(f), hint, timui_style_make(text_fg, panel.bg, 0));
+            timui_label(f, hint.x + 1, hint.y,
+                TIMUI_STR_LIT("F10 Quit \xC2\xB7 \xE2\x86\x91\xE2\x86\x93 History \xC2\xB7 "
+                              "Shift+\xE2\x86\x91\xE2\x86\x93 / Wheel Scroll \xC2\xB7 Ctrl+End Latest"),
+                dim);
+        }
 
         timui_end(f);
     }

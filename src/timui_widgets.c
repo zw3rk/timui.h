@@ -316,7 +316,8 @@ static void text_pos_(const char *buf, size_t cursor, int *out_row, int *out_col
     *out_row = row;
     *out_col = display_col_(buf + line_start, cursor - line_start);
 }
-TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st){
+static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st,
+                             const TimuiStyle *ovr){
     Timui *ui;
     TimuiInteractResult ir;
     TimuiStyle style;
@@ -398,7 +399,8 @@ TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiIn
           ui->cursor_visible = 1;
       }
     }
-    style = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    style = ovr ? *ovr
+                : timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
     timui_draw_fill(&ui->curr, r, style);
     /* clip to the field and shift the text left by scroll_x so the visible
      * window tracks the cursor (put_glyph drops the clipped leading columns). */
@@ -406,6 +408,17 @@ TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiIn
     timui_draw_text(&ui->curr, r.x - st->scroll_x, r.y, timui_str_from_cstr(st->text), style);
     timui_pop_clip(f);
     return submitted;
+}
+/* Themed single-line editor (INPUT/INPUT_FOCUSED slots). */
+TIMUI_API bool timui_input_field(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st){
+    return input_field_core(f, id, r, st, NULL);
+}
+/* Same, but drawn with a caller-supplied `style` (e.g. to blend the field into a
+ * surrounding panel instead of the themed input box). Editing/cursor behaviour
+ * is identical. */
+TIMUI_API bool timui_input_field_styled(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                        TimuiInputState *st, TimuiStyle style){
+    return input_field_core(f, id, r, st, &style);
 }
 TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
                                         TimuiListState state, int count, TimuiLabelFn label, void *userdata){

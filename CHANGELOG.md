@@ -73,6 +73,9 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   regression was added.)
 
 ### Added
+- **Emacs / readline line-editing keys** in `input_field`: Ctrl-A/E (start/end),
+  Ctrl-B/F (back/forward), Ctrl-D (delete), Ctrl-K/U (kill to end/start of line),
+  Ctrl-W (kill previous word). Navigation keys reach `text_area` too.
 - **`examples/chat` enrichments**: scrollback (1024-line ring; Up/Down + PgUp/PgDn
   with a header indicator), per-line HH:MM:SS timestamps, a markdown subset in
   messages (`*bold*`, `_italic_`, `` `code` ``), http(s):// URLs as OSC 8
@@ -80,7 +83,9 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   (`timui_utf8_width`/`_decode`, `timui_label_hyperlink`, text attributes).
   Markdown images: remote `![alt](http…)` render as clickable `🖼 alt` badges
   (OSC 8); LOCAL `![alt](path.png)` render as real inline Kitty-graphics images
-  (variable-height transcript, PNG cached per path).
+  (variable-height transcript, PNG cached per path). Claude-code-style composer:
+  a ❯ prompt with a ─── rule, a dim (non-status) hint line, a "jump to bottom"
+  affordance while scrolled (Ctrl+End / Enter), and a 1 KB message cap.
 - **Recording & headless-driving tooling**: `make rec-<name>` (asciinema),
   `make drive-<name>` (scripted-input pty capture), `make accept` (acceptance
   smoke); `tools/pty_drive.c` + `tools/vt_render.c`.

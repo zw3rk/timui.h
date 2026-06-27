@@ -293,6 +293,50 @@ TIMUI_TEST(test_input_field_emacs){
     timui_close(ui);
 }
 
+/* timui_input_field_styled draws with the caller's style (to blend into a panel)
+ * instead of the theme's input box. */
+TIMUI_TEST(test_input_field_styled){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    char text[16] = "hi";
+    TimuiInputState is = { text, sizeof text, 2, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 8, 1);
+    TimuiStyle custom = timui_style_make(0xFFFFFF, 0x123456, 0);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 3, &al);
+    timui_begin(ui, &f);
+    (void)timui_input_field_styled(f, TIMUI_ID("in"), r, &is, custom);
+    buf = timui_frame_buffer(f);
+    TIMUI_CHECK(timui_cells_get(buf, 5, 0)->bg == 0x123456);   /* field painted with the given bg */
+    timui_end(f);
+    timui_close(ui);
+}
+
+/* timui_mouse_clicked reports a click's cell; timui_hyperlink_at maps a cell to
+ * its OSC 8 URL — so an app can open a clicked link even with mouse reporting on. */
+TIMUI_TEST(test_mouse_click_hyperlink){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_begin(ui, &f);
+    timui_label_hyperlink(f, 2, 0, TIMUI_STR_LIT("link"), "https://x.io",
+                          timui_style_make(0x66CCFF, 0, TIMUI_ATTR_UNDERLINE));
+    TIMUI_CHECK(timui_hyperlink_at(f, 3, 0) != NULL &&
+                strcmp(timui_hyperlink_at(f, 3, 0), "https://x.io") == 0);
+    TIMUI_CHECK(timui_hyperlink_at(f, 0, 0) == NULL);   /* no link there */
+    timui_end(f);
+    SETIN(&fake, "\x1b[<0;4;1M");                        /* left press at cell (3,0) */
+    timui_begin(ui, &f);
+    { int x = -1, y = -1;
+      TIMUI_CHECK(timui_mouse_clicked(f, &x, &y) && x == 3 && y == 0); }
+    timui_end(f);
+    timui_close(ui);
+}
+
 /* F1.5: horizontal scroll keeps the cursor visible; Home scrolls back. */
 TIMUI_TEST(test_input_field_scroll){
     TimuiAllocator al = timui_default_allocator();
