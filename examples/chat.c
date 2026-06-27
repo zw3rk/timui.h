@@ -262,12 +262,28 @@ static void draw_message(TimuiFrame *f, const char *ts, const char *s, TimuiRect
                          int y, int h, TimuiStyle panel, uint32_t fg, uint32_t sys_fg,
                          uint32_t code_fg, uint32_t link_fg, Timui *ui){
     char path[256];
-    timui_label(f, body.x + 1, y, timui_str_from_cstr(ts),
-                timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM));
-    draw_rich(f, body.x + 1 + TS_COLS, y, body.x + body.w, s, fg, panel.bg, code_fg, link_fg);
+    int by0 = body.y, by1 = body.y + body.h - 1;
+    /* Caption row (timestamp + rich text) — only when it lands in the pane, so a
+     * partly-scrolled message doesn't draw into the header/composer. */
+    if(y >= by0 && y <= by1){
+        timui_label(f, body.x + 1, y, timui_str_from_cstr(ts),
+                    timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM));
+        draw_rich(f, body.x + 1 + TS_COLS, y, body.x + body.w, s, fg, panel.bg, code_fg, link_fg);
+    }
+    /* Inline image (rows y+1 .. y+h-1), CLIPPED to the pane so it slides off
+     * smoothly instead of hiding oddly. */
     if(h > 1 && msg_image_path(s, path, sizeof path)){
         TimuiImage *img = load_image(ui, path);
-        if(img) timui_image_draw(f, img, TIMUI_RECT(body.x + 2, y + 1, IMG_COLS, h - 1));
+        if(img){
+            TimuiRect full = TIMUI_RECT(body.x + 2, y + 1, IMG_COLS, h - 1);
+            int vtop = full.y > by0 ? full.y : by0;
+            int vbot = (full.y + full.h - 1) < by1 ? (full.y + full.h - 1) : by1;
+            if(vtop <= vbot){
+                TimuiRect vis = TIMUI_RECT(full.x, vtop, IMG_COLS, vbot - vtop + 1);
+                if(vis.y == full.y && vis.h == full.h) timui_image_draw(f, img, full);
+                else timui_image_draw_clipped(f, img, full, vis);
+            }
+        }
     }
 }
 
@@ -280,29 +296,29 @@ static void draw_transcript(TimuiFrame *f, const Transcript *t, TimuiRect body,
                             uint32_t code_fg, uint32_t link_fg){
     TimuiCellBuffer *buf = timui_frame_buffer(f);
     Timui *ui = f->ui;
-    int last, used, first, idx, y;
+    int idx, y_bottom;
 
     timui_draw_fill(buf, body, panel);
-    if(body.h <= 0 || body.w <= 0) return;
+    if(body.h <= 0 || body.w <= 0 || t->count <= 0) return;
 
-    last = t->count - 1 - scroll;                 /* newest visible message index */
-    if(last < 0) return;
-    used = 0; first = last;
-    for(idx = last; idx >= 0 && (last - idx) < LOG_CAP; idx--){   /* stack heights upward */
-        int h = msg_rows(ui, t->log[idx & (LOG_CAP - 1)].line);
-        if(used + h > body.h) break;
-        used += h; first = idx;
-    }
-    y = body.y + body.h - used;                   /* bottom-align the stacked block */
-    for(idx = first; idx <= last; idx++){
+    /* Line-based scroll: stack messages newest→oldest upward from the pane
+     * bottom. `scroll` is in LINES, pushing the newest line below the bottom;
+     * each message draws only its rows that land in the pane (draw_message clips
+     * images), so scrolling is smooth even across tall image messages. */
+    y_bottom = body.y + body.h - 1 + scroll;      /* screen row of the newest content line */
+    for(idx = t->count - 1; idx >= 0 && (t->count - 1 - idx) < LOG_CAP; idx--){
         int i2 = idx & (LOG_CAP - 1);
         const char *s = t->log[i2].line;
         int h = msg_rows(ui, s);
-        uint32_t fg = text_fg;
-        if(strncmp(s, "you:", 4) == 0)         fg = self_fg;
-        else if(strncmp(s, "system:", 7) == 0) fg = sys_fg;
-        draw_message(f, t->log[i2].ts, s, body, y, h, panel, fg, sys_fg, code_fg, link_fg, ui);
-        y += h;
+        int y_top = y_bottom - h + 1;
+        if(y_bottom < body.y) break;              /* this + older are all above the pane */
+        if(y_top < body.y + body.h){              /* some rows visible */
+            uint32_t fg = text_fg;
+            if(strncmp(s, "you:", 4) == 0)         fg = self_fg;
+            else if(strncmp(s, "system:", 7) == 0) fg = sys_fg;
+            draw_message(f, t->log[i2].ts, s, body, y_top, h, panel, fg, sys_fg, code_fg, link_fg, ui);
+        }
+        y_bottom -= h;
     }
 }
 
@@ -389,7 +405,7 @@ int main(void){
         char header_txt[80];
         uint32_t type = 0;
         size_t sz;
-        int count_before, body_rows, page, maxscroll, cap;
+        int count_before, body_rows, page, maxscroll;
 
         if(!timui_begin(ui, &f)) break;   /* break => still stop+join+close below */
 
@@ -406,9 +422,14 @@ int main(void){
             }
             sz = sizeof recv_buf - 1;
         }
-        /* Keep the view anchored while scrolled up: new lines push the offset so
-         * the same history stays put (0 = following the tail, which follows). */
-        if(scroll > 0) scroll += transcript.count - count_before;
+        /* Keep the view anchored while scrolled up: the new messages' line-heights
+         * push the offset so the same history stays put. */
+        if(scroll > 0){
+            int j, nl = 0;
+            for(j = count_before; j < transcript.count; j++)
+                nl += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
+            scroll += nl;
+        }
 
         /* ESC or F10 quit. */
         if(timui_key_pressed(f, TIMUI_KEY_ESCAPE) || timui_key_pressed(f, TIMUI_KEY_F10))
@@ -432,9 +453,13 @@ int main(void){
         if(timui_key_pressed(f, TIMUI_KEY_PAGE_DOWN)) scroll -= page;
         scroll += timui_mouse_wheel(f);                /* wheel: up = older, down = newer */
         if(timui_key_pressed_mods(f, TIMUI_KEY_END, TIMUI_MOD_CTRL)) scroll = 0;
-        maxscroll = transcript.count - body_rows;
-        cap = LOG_CAP - body_rows;
-        if(maxscroll > cap) maxscroll = cap;
+        /* clamp scroll (LINES) to the total content the ring can still show */
+        { int j, total_lines = 0;
+          int first = transcript.count > LOG_CAP ? transcript.count - LOG_CAP : 0;
+          for(j = first; j < transcript.count; j++)
+              total_lines += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
+          maxscroll = total_lines - body_rows;
+        }
         if(maxscroll < 0)   maxscroll = 0;
         if(scroll > maxscroll) scroll = maxscroll;
         if(scroll < 0)         scroll = 0;

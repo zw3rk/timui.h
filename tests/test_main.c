@@ -203,6 +203,7 @@ int main(void){
         test_kitty_graphics_transmit,
         test_kitty_graphics_chunking,
         test_signal_restore,
+        test_kitty_graphics_clip,
         test_kitty_graphics_placeholder,
         test_pty_hello_exits_on_esc,
         test_paste_cross_feed_terminator,

@@ -95,6 +95,39 @@ TIMUI_TEST(test_kitty_graphics_chunking){
     timui_close(ui);
 }
 
+/* A clipped placement crops the SOURCE pixels (from the PNG IHDR size) to match
+ * the visible cell sub-rect — for smooth scroll clipping. */
+TIMUI_TEST(test_kitty_graphics_clip){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    unsigned char png[24] = {0};
+    png[19] = 10;   /* IHDR width  = 10 px */
+    png[23] = 20;   /* IHDR height = 20 px */
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_cap(ui, TIMUI_CAP_KITTY_GRAPHICS, 1);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img && img->px_w == 10 && img->px_h == 20);   /* parsed from IHDR */
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    /* full is 4 rows; show only the bottom 2 -> crop the top 2 rows (10 of 20px) */
+    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 4, 4), TIMUI_RECT(0, 2, 4, 2));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "y=10"));   /* src y = 2/4 * 20 */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "h=10"));   /* src h = 2/4 * 20 */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "w=10"));   /* src w = full width */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "r=2"));    /* displayed in 2 rows */
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_kitty_graphics_placeholder){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;

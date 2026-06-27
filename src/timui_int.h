@@ -78,7 +78,7 @@ struct Timui {
     /* Kitty-graphics image placements recorded this frame by timui_image_draw;
      * transmitted (once, keyed by TimuiImage.id) and placed ON TOP of the cell
      * diff in timui_end, so they compose with the renderer. */
-    struct { TimuiImage *img; TimuiRect rect; } img_place[8];
+    struct { TimuiImage *img; TimuiRect rect; TimuiRect full; } img_place[8];   /* rect=visible, full=uncropped */
     int               img_place_count;
     int               img_last_count;   /* placements emitted last frame (for shrink-cleanup) */
     uint32_t          next_image_id;

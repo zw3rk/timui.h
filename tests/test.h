@@ -212,6 +212,7 @@ void test_conpty_unsupported(void);
 void test_kitty_graphics_transmit(void);
 void test_kitty_graphics_chunking(void);
 void test_signal_restore(void);
+void test_kitty_graphics_clip(void);
 void test_kitty_graphics_placeholder(void);
 void test_pty_hello_exits_on_esc(void);
 void test_paste_cross_feed_terminator(void);

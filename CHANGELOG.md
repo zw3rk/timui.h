@@ -73,6 +73,15 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   regression was added.)
 
 ### Added
+- **App input accessors**: `timui_mouse_wheel(f)` (per-frame wheel delta),
+  `timui_mouse_clicked(f,&x,&y)` (a click + its cell), and `timui_hyperlink_at(
+  f,x,y)` (the OSC 8 URL under a cell) — so apps can scroll on the wheel and open
+  a clicked link even when mouse reporting intercepts it.
+- **`timui_input_field_styled`**: an `input_field` drawn with a caller style
+  (blend into a panel) rather than the theme's input box.
+- **`examples/chat`**: Up/Down message history; Shift+↑↓ / wheel / PgUp/PgDn
+  scrolling; click a link to open it in the browser; composer blended into the
+  panel with a ❯ accent.
 - **Emacs / readline line-editing keys** in `input_field`: Ctrl-A/E (start/end),
   Ctrl-B/F (back/forward), Ctrl-D (delete), Ctrl-K/U (kill to end/start of line),
   Ctrl-W (kill previous word). Navigation keys reach `text_area` too.

@@ -850,10 +850,16 @@ TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
  * (0 = not yet sent). The caller reserves the region (draws its own background
  * and no text there). Kitty-graphics terminals only; a "[img]" cell placeholder
  * is drawn otherwise. */
-typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id; } TimuiImage;
+typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id;
+                            int px_w, px_h; } TimuiImage;   /* pixel size from the PNG IHDR */
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
 TIMUI_API void        timui_image_free(Timui *ui, TimuiImage *img);
 TIMUI_API void        timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r);
+/* Draw only the part of `img` (which maps to cell rect `full`) that lands inside
+ * `visible` — i.e. crop the image to the visible sub-rect. For smoothly clipping
+ * an image as it scrolls off a pane. `visible` must be within `full`. */
+TIMUI_API void        timui_image_draw_clipped(TimuiFrame *f, TimuiImage *img,
+                                               TimuiRect full, TimuiRect visible);
 TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
 
 #ifdef __cplusplus

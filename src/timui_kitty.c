@@ -35,6 +35,14 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     memcpy(img->data, data, size);
     img->len = size;
     img->id = 0;                 /* assigned on first transmit (timui_images_flush_) */
+    /* pixel size from the PNG IHDR (width @16, height @20, big-endian) so a
+     * placement can be cropped to a cell sub-rect (smooth scroll clipping). */
+    img->px_w = img->px_h = 0;
+    if(size >= 24){
+        const unsigned char *d = (const unsigned char *)data;
+        img->px_w = (int)(((uint32_t)d[16] << 24) | ((uint32_t)d[17] << 16) | ((uint32_t)d[18] << 8) | d[19]);
+        img->px_h = (int)(((uint32_t)d[20] << 24) | ((uint32_t)d[21] << 16) | ((uint32_t)d[22] << 8) | d[23]);
+    }
     return img;
 }
 TIMUI_API void timui_image_free(Timui *ui, TimuiImage *img){
@@ -87,12 +95,19 @@ static void kitty_transmit_(TimuiTransport *t, uint32_t id, const unsigned char 
  * id `place_id` (a=p). A UNIQUE placement id per on-screen slot is essential:
  * several messages sharing one image (same id) must not all use the same
  * placement id, or each a=p replaces the previous and only one image shows. */
-static void kitty_place_(TimuiTransport *t, uint32_t id, int cols, int rows, int place_id){
-    char b[64]; int n = 0; const char *p;
+static void kitty_place_(TimuiTransport *t, uint32_t id, int cols, int rows, int place_id,
+                         int sx, int sy, int sw, int sh){
+    char b[128]; int n = 0; const char *p;
     b[n++] = 0x1b; b[n++] = '_'; b[n++] = 'G';
     p = "a=p,q=2,i="; while(*p) b[n++] = *p++;
     n += fmt_uint(b + n, id);
     p = ",p="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(place_id > 0 ? place_id : 1));
+    if(sw > 0){   /* source-crop rectangle (pixels) so a scrolled image clips */
+        p = ",x="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(sx > 0 ? sx : 0));
+        p = ",y="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(sy > 0 ? sy : 0));
+        p = ",w="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)sw);
+        p = ",h="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(sh > 0 ? sh : 1));
+    }
     p = ",c="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(cols > 0 ? cols : 1));
     p = ",r="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(rows > 0 ? rows : 1));
     b[n++] = 0x1b; b[n++] = '\\';
@@ -117,9 +132,19 @@ void timui_images_flush_(Timui *ui){
         kitty_delete_all_placements(&ui->transport);
     for(i = 0; i < ui->img_place_count; i++){
         TimuiImage *img = ui->img_place[i].img;
-        TimuiRect r = ui->img_place[i].rect;
+        TimuiRect r    = ui->img_place[i].rect;   /* visible sub-rect */
+        TimuiRect full = ui->img_place[i].full;   /* uncropped rect   */
+        int sx = 0, sy = 0, sw = 0, sh = 0;
         char cup[32]; int cn = 0;
         if(!img) continue;
+        /* If the visible rect is a vertical sub-slice of `full`, crop the source
+         * pixels to match, so the image clips smoothly at a pane edge. */
+        if(img->px_w > 0 && img->px_h > 0 && full.h > 0 && (r.y != full.y || r.h != full.h)){
+            sx = 0; sw = img->px_w;
+            sy = (int)((long)(r.y - full.y) * img->px_h / full.h);
+            sh = (int)((long)r.h * img->px_h / full.h);
+            if(sh < 1) sh = 1;
+        }
         if(img->id == 0){                                   /* transmit once, keyed by id */
             img->id = ++ui->next_image_id;
             kitty_transmit_(&ui->transport, img->id, img->data, img->len);
@@ -128,28 +153,35 @@ void timui_images_flush_(Timui *ui){
         cn += fmt_uint(cup + cn, (unsigned)(r.y + 1)); cup[cn++] = ';';
         cn += fmt_uint(cup + cn, (unsigned)(r.x + 1)); cup[cn++] = 'H';
         kitty_write_all(&ui->transport, cup, (size_t)cn);
-        kitty_place_(&ui->transport, img->id, r.w, r.h, i + 1);
+        kitty_place_(&ui->transport, img->id, r.w, r.h, i + 1, sx, sy, sw, sh);
     }
     ui->img_last_count = ui->img_place_count;
 }
-TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){
-    Timui *ui;
-    if(!f || !f->ui || !img) return;
-    ui = f->ui;
+/* Record an image placement (transmit + place happen on top of the cell diff in
+ * timui_end, so the renderer can't clobber it). `visible` is where it's drawn;
+ * `full` is the uncropped rect (== visible when not clipping). The caller
+ * reserves the region (draws its own background, no text). */
+static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRect full){
     if(timui_caps_has(&ui->caps, TIMUI_CAP_KITTY_GRAPHICS)){
-        /* record the placement; the transmit + placement happen on top of the
-         * cell diff in timui_end (timui_images_flush_), so the cell renderer
-         * doesn't clobber the image. The caller reserves the region (fills its
-         * background, draws no text there). */
         if(ui->img_place_count < (int)(sizeof(ui->img_place) / sizeof(ui->img_place[0]))){
-            ui->img_place[ui->img_place_count].img = img;
-            ui->img_place[ui->img_place_count].rect = r;
+            ui->img_place[ui->img_place_count].img  = img;
+            ui->img_place[ui->img_place_count].rect = visible;
+            ui->img_place[ui->img_place_count].full = full;
             ui->img_place_count++;
         }
     } else {
         /* placeholder fallback (cells) for non-Kitty terminals */
-        timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_INPUT));
-        timui_draw_text(&ui->curr, r.x, r.y, TIMUI_STR_LIT("[img]"),
+        timui_draw_fill(&ui->curr, visible, timui_theme_style(&ui->theme, TIMUI_SLOT_INPUT));
+        timui_draw_text(&ui->curr, visible.x, visible.y, TIMUI_STR_LIT("[img]"),
                         timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT_DIM));
     }
+}
+TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){
+    if(!f || !f->ui || !img) return;
+    image_record_(f->ui, img, r, r);
+}
+TIMUI_API void timui_image_draw_clipped(TimuiFrame *f, TimuiImage *img,
+                                        TimuiRect full, TimuiRect visible){
+    if(!f || !f->ui || !img || visible.w <= 0 || visible.h <= 0) return;
+    image_record_(f->ui, img, visible, full);
 }
