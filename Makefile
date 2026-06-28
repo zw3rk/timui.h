@@ -109,6 +109,16 @@ $(BLDDIR)/pty_drive: $(TOOLDIR)/pty_drive.c
 $(BLDDIR)/vt_render: $(TOOLDIR)/vt_render.c
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) $< -o $@
+# vt_gif rasterizes a capture to pixels (PNG/GIF) INCLUDING Kitty images. Uses
+# vendored single-headers (stb, msf_gif) — relaxed warnings for that third-party
+# code; our own logic still builds under -Wall.
+$(BLDDIR)/vt_gif: $(TOOLDIR)/vt_gif.c $(TOOLDIR)/vendor/vt_font.h
+	@mkdir -p $(@D)
+	@$(CC) -std=c99 -O2 -Wall -Wno-unused-function $(TOOLDIR)/vt_gif.c -o $@ -lm
+
+# Regenerate the baked bitmap font header from a monospace TTF (via nix: pillow).
+gen-font: ## Regenerate tools/vendor/vt_font.h (DejaVu Sans Mono, 8x16)
+	@nix-shell -p 'python3.withPackages(ps: [ps.pillow])' dejavu_fonts --run 'python3 tools/gen_font.py'
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
 # raw byte stream, viewable with `asciinema play` and analysable by the verifier.

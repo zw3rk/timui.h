@@ -78,6 +78,11 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   image clips smoothly at a pane edge. `examples/chat` uses it with LINE-based
   scrolling so tall image messages scroll and clip smoothly; clicking an image
   opens it fullscreen (aspect-fit) with its alt caption below.
+- **`examples/chat --demo <script>`**: self-driving autoplay (a scripted
+  timeline of `msg`/`say`/`img`/`scroll`/`open`/`close`/`wait`/`quit`) so a
+  screen recording of the real terminal — the only way to capture the Kitty
+  images — is hands-off and reproducible. `make run-chat-demo` / `rec-chat-demo`.
+  See `docs/research/kitty-gif-renderer.md` for a headless GIF-pipeline plan.
 - **App input accessors**: `timui_mouse_wheel(f)` (per-frame wheel delta),
   `timui_mouse_clicked(f,&x,&y)` (a click + its cell), and `timui_hyperlink_at(
   f,x,y)` (the OSC 8 URL under a cell) — so apps can scroll on the wheel and open
