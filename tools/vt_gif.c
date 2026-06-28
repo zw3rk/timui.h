@@ -29,6 +29,8 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "vendor/stb_truetype.h"
 #include "vendor/vt_font_ttf.h"   /* subset DejaVu Sans Mono (make gen-font-ttf) */
+#include "vendor/emoji_atlas.h"   /* curated Twemoji colour-emoji atlas (make gen-emoji) */
+#include "vendor/vt_font_cjk.h"   /* bundled Unifont CJK bitmaps, deflated (make gen-cjk) */
 
 #define MAXW 400
 #define MAXH 200
@@ -344,9 +346,32 @@ static void font_init(void){
     }
 }
 
+/* Bundled Unifont CJK bitmap fallback (always present, after any system CJK). The
+ * deflated (cp:u32-LE, 16x16 bitmap:32B) records are inflated once at startup. */
+static unsigned char *cjk_raw;
+static int cjk_count;
+static void cjk_init(void){
+    int outlen = 0;
+    cjk_raw = (unsigned char *)stbi_zlib_decode_malloc((const char *)vt_font_cjk_z, vt_font_cjk_zlen, &outlen);
+    if(cjk_raw && outlen == VT_CJK_RAW) cjk_count = VT_CJK_COUNT;
+    else { free(cjk_raw); cjk_raw = NULL; }
+}
+static const unsigned char *cjk_bitmap(unsigned int cp){   /* 32-byte 16x16 glyph, or NULL */
+    int lo = 0, hi = cjk_count - 1;
+    while(lo <= hi){
+        int mid = (lo + hi) / 2;
+        const unsigned char *r = cjk_raw + (long)mid * 36;
+        unsigned rec = (unsigned)r[0] | ((unsigned)r[1] << 8) | ((unsigned)r[2] << 16) | ((unsigned)r[3] << 24);
+        if(rec == cp) return r + 4;
+        if(rec < cp) lo = mid + 1; else hi = mid - 1;
+    }
+    return NULL;
+}
+
 /* Rasterized glyph: grayscale coverage + offsets + which face drew it (for that
- * face's baseline), cached per cp. cov may be NULL (space / missing / no outline). */
-typedef struct { unsigned int cp; unsigned char *cov; int w, h, xoff, yoff, face; } Glyph;
+ * face's baseline; bitmap glyphs sit at the cell top). Cached per cp; cov may be
+ * NULL (space / missing / no outline). */
+typedef struct { unsigned int cp; unsigned char *cov; int w, h, xoff, yoff, face, bitmap; } Glyph;
 static Glyph gcache[8192];
 static int   gcache_n;
 static Glyph *get_glyph(unsigned int cp){
@@ -355,13 +380,26 @@ static Glyph *get_glyph(unsigned int cp){
     for(i = 0; i < gcache_n; i++) if(gcache[i].cp == cp) return &gcache[i];
     if(gcache_n >= (int)(sizeof gcache / sizeof gcache[0])) return NULL;
     g2 = &gcache[gcache_n++];
-    g2->cp = cp; g2->cov = NULL; g2->w = g2->h = g2->xoff = g2->yoff = 0; g2->face = 0;
-    for(f = 0; f < nface; f++){                   /* first face that has the glyph wins */
+    g2->cp = cp; g2->cov = NULL; g2->w = g2->h = g2->xoff = g2->yoff = 0; g2->face = 0; g2->bitmap = 0;
+    for(f = 0; f < nface; f++){                   /* first outline face with the glyph wins */
         if(stbtt_FindGlyphIndex(&face[f].info, (int)cp) == 0) continue;
         g2->cov = stbtt_GetCodepointBitmap(&face[f].info, face[f].scale, face[f].scale,
                                            (int)cp, &g2->w, &g2->h, &g2->xoff, &g2->yoff);
         g2->face = f;
         break;
+    }
+    if(!g2->cov && cjk_raw){                       /* bundled Unifont CJK bitmap fallback */
+        const unsigned char *bm = cjk_bitmap(cp);
+        if(bm){
+            int gw = 2*cellw, gh = cellh, py, px;  /* fullwidth: 2 cells */
+            g2->cov = (unsigned char *)malloc((size_t)gw*gh);
+            g2->w = gw; g2->h = gh; g2->bitmap = 1;
+            for(py = 0; py < gh; py++) for(px = 0; px < gw; px++){   /* nearest-neighbour 16x16 -> cell */
+                int sx = px*16/gw, sy = py*16/gh;
+                int bit = (bm[sy*2 + (sx>>3)] >> (7 - (sx&7))) & 1;
+                g2->cov[py*gw+px] = bit ? 255 : 0;
+            }
+        }
     }
     return g2;
 }
@@ -433,16 +471,23 @@ static struct { unsigned int cp; unsigned char *rgba; int w, h; } edec[512];
 static int edec_n;
 static int get_emoji(unsigned int cp, unsigned char **rgba, int *w, int *h){
     int i, gid, comp; const unsigned char *st; long go, gn, gd; unsigned char *out = NULL;
-    if(!emoji_ready) return 0;
     for(i = 0; i < edec_n; i++) if(edec[i].cp == cp){ *rgba = edec[i].rgba; *w = edec[i].w; *h = edec[i].h; return edec[i].rgba != NULL; }
     if(edec_n >= (int)(sizeof edec / sizeof edec[0])) return 0;
-    gid = stbtt_FindGlyphIndex(&emoji_font, (int)cp);
-    if(gid > 0 && gid < emoji_font.numGlyphs){
-        st = emoji_data + emoji_strike_off + 4;    /* skip ppem, ppi */
-        go = (long)u32be_(st + 4*gid); gn = (long)u32be_(st + 4*(gid+1));
-        if(gn - go > 8 && (unsigned)u32be_(emoji_data + emoji_strike_off + go + 4) == 0x706E6720u){ /* 'png ' */
-            gd = emoji_strike_off + go + 8;        /* originX(2)+originY(2)+tag(4) */
-            out = stbi_load_from_memory(emoji_data + gd, (int)((gn - go) - 8), w, h, &comp, 4);
+    if(emoji_ready){                               /* 1. system Apple Color Emoji (sbix) */
+        gid = stbtt_FindGlyphIndex(&emoji_font, (int)cp);
+        if(gid > 0 && gid < emoji_font.numGlyphs){
+            st = emoji_data + emoji_strike_off + 4;    /* skip ppem, ppi */
+            go = (long)u32be_(st + 4*gid); gn = (long)u32be_(st + 4*(gid+1));
+            if(gn - go > 8 && (unsigned)u32be_(emoji_data + emoji_strike_off + go + 4) == 0x706E6720u){ /* 'png ' */
+                gd = emoji_strike_off + go + 8;        /* originX(2)+originY(2)+tag(4) */
+                out = stbi_load_from_memory(emoji_data + gd, (int)((gn - go) - 8), w, h, &comp, 4);
+            }
+        }
+    }
+    if(!out){                                      /* 2. bundled Twemoji atlas (default) */
+        for(i = 0; i < emoji_atlas_n; i++) if(emoji_atlas[i].cp == cp){
+            out = stbi_load_from_memory(emoji_atlas[i].png, emoji_atlas[i].len, w, h, &comp, 4);
+            break;
         }
     }
     edec[edec_n].cp = cp; edec[edec_n].rgba = out;
@@ -491,7 +536,7 @@ static void render_frame(unsigned char *fb, int pw, int ph){
         }
         gl = get_glyph(cell.cp);
         if(gl && gl->cov){
-            int ox = x*cellw + gl->xoff, oy = y*cellh + face[gl->face].baseline + gl->yoff;
+            int ox = x*cellw + gl->xoff, oy = y*cellh + (gl->bitmap ? 0 : face[gl->face].baseline) + gl->yoff;
             for(gy = 0; gy < gl->h; gy++) for(gx = 0; gx < gl->w; gx++){
                 int c = gl->cov[gy*gl->w+gx], px_ = ox+gx, py_ = oy+gy;
                 if(c && px_ >= 0 && px_ < pw && py_ >= 0 && py_ < ph)
@@ -567,6 +612,7 @@ int main(int argc, char **argv){
     if(bit_depth < 1 || bit_depth > 16) bit_depth = 16;
     if(cellh < 4) cellh = 16;
     font_init();                     /* outline face chain + cellw from the font */
+    cjk_init();                      /* bundled Unifont CJK bitmap fallback */
     emoji_init();                    /* colour emoji face (--system-emoji) */
     if(W > MAXW) W = MAXW; if(H > MAXH) H = MAXH;
     for(y = 0; y < H; y++) for(x = 0; x < W; x++){ g[y][x].cp=' '; g[y][x].fg=DEF_FG; g[y][x].bg=DEF_BG; g[y][x].attr=0; }

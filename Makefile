@@ -112,13 +112,21 @@ $(BLDDIR)/vt_render: $(TOOLDIR)/vt_render.c
 # vt_gif rasterizes a capture to pixels (PNG/GIF) INCLUDING Kitty images. Uses
 # vendored single-headers (stb, msf_gif) — relaxed warnings for that third-party
 # code; our own logic still builds under -Wall.
-$(BLDDIR)/vt_gif: $(TOOLDIR)/vt_gif.c $(TOOLDIR)/vendor/vt_font_ttf.h
+$(BLDDIR)/vt_gif: $(TOOLDIR)/vt_gif.c $(TOOLDIR)/vendor/vt_font_ttf.h $(TOOLDIR)/vendor/emoji_atlas.h $(TOOLDIR)/vendor/vt_font_cjk.h
 	@mkdir -p $(@D)
 	@$(CC) -std=c99 -O2 -Wall -Wno-unused-function $(TOOLDIR)/vt_gif.c -o $@ -lm
 
 # Regenerate the subset TTF face header from DejaVu Sans Mono (via nix: fonttools).
 gen-font-ttf: ## Regenerate tools/vendor/vt_font_ttf.h (subset DejaVu Sans Mono)
 	@nix-shell -p 'python3.withPackages(ps: [ps.fonttools])' dejavu_fonts --run 'python3 tools/gen_font_ttf.py'
+
+# Regenerate the bundled colour-emoji atlas from Twemoji (needs network, via nix).
+gen-emoji: ## Regenerate tools/vendor/emoji_atlas.h (curated Twemoji PNGs)
+	@nix-shell -p python3 --run 'python3 tools/gen_emoji.py'
+
+# Regenerate the bundled CJK bitmap face from GNU Unifont's .bdf (via nix: unifont).
+gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated)
+	@nix-shell -p python3 unifont --run 'python3 tools/gen_cjk.py'
 
 # Render the chat autoplay demo to an animated GIF *including* the Kitty images —
 # fully headless (no screen recorder needed): drive with a timing sidecar, then
@@ -156,29 +164,25 @@ check-vt-gif-glyphs: $(BLDDIR)/vt_gif ## Assert extended glyphs (é Ω © …) r
 	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) --cell-h scales output\n" \
 	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) --cell-h ignored\n"; exit 1; }
 
-# Assert CJK (Han + Hangul + Kana) renders via the --system-fonts face chain. On
-# macOS this must render (fails if blank); with no system CJK font it skips (the
-# bundled Unifont fallback covers that case once landed). Exercises the wide-glyph
-# two-pass renderer (a width-2 glyph must not be clipped by the next cell's bg).
-check-vt-gif-cjk: $(BLDDIR)/vt_gif ## Assert CJK renders (--system-fonts, macOS)
+# Assert CJK (Han + Hangul + Kana) renders from the BUNDLED Unifont bitmap face
+# (no flags → reproducible everywhere; --system-fonts adds nicer antialiased CJK).
+# Also exercises the wide-glyph two-pass renderer (a width-2 glyph must not be
+# clipped by the next cell's bg).
+check-vt-gif-cjk: $(BLDDIR)/vt_gif ## Assert CJK renders (bundled Unifont)
 	@printf '日本語中文한국어' > $(BLDDIR)/_vtg_cjk.raw
-	@./$(BLDDIR)/vt_gif --cols 12 --rows 1 --cell-h 20 --system-fonts --png $(BLDDIR)/_vtg_cjk.png $(BLDDIR)/_vtg_cjk.raw 2>/dev/null
-	@if nix-shell -p 'python3.withPackages(ps:[ps.pillow])' --run 'python3 tools/vtg_probe.py $(BLDDIR)/_vtg_cjk.png nonbg 60' >/dev/null 2>&1; then \
-	   printf "$(C_GREEN)✓ vt_gif$(C_RESET) CJK renders (--system-fonts)\n"; \
-	 elif ls /System/Library/Fonts/*.ttc >/dev/null 2>&1; then \
-	   printf "$(C_YELL)✗ vt_gif$(C_RESET) CJK blank despite system fonts\n"; exit 1; \
-	 else printf "$(C_YELL)~ skip$(C_RESET) vt_gif CJK: no system CJK font (bundled Unifont TODO)\n"; fi
+	@./$(BLDDIR)/vt_gif --cols 12 --rows 1 --cell-h 20 --png $(BLDDIR)/_vtg_cjk.png $(BLDDIR)/_vtg_cjk.raw 2>/dev/null
+	@nix-shell -p 'python3.withPackages(ps:[ps.pillow])' --run 'python3 tools/vtg_probe.py $(BLDDIR)/_vtg_cjk.png nonbg 60' >/dev/null 2>&1 \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) CJK renders (bundled Unifont)\n" \
+	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) bundled CJK blank\n"; exit 1; }
 
-# Assert colour emoji render via --system-emoji (macOS Apple Color Emoji sbix):
-# a chromatic (non-gray) region must appear. Skips without the emoji font.
-check-vt-gif-emoji: $(BLDDIR)/vt_gif ## Assert colour emoji render (--system-emoji, macOS)
+# Assert colour emoji render from the BUNDLED Twemoji atlas (no flags, so this is
+# reproducible everywhere): a chromatic (non-gray) region must appear.
+check-vt-gif-emoji: $(BLDDIR)/vt_gif ## Assert colour emoji render (bundled Twemoji)
 	@printf '👋🎉🚀' > $(BLDDIR)/_vtg_emoji.raw
-	@./$(BLDDIR)/vt_gif --cols 8 --rows 1 --cell-h 20 --system-emoji --png $(BLDDIR)/_vtg_emoji.png $(BLDDIR)/_vtg_emoji.raw 2>/dev/null
-	@if nix-shell -p 'python3.withPackages(ps:[ps.pillow])' --run 'python3 tools/vtg_probe.py $(BLDDIR)/_vtg_emoji.png colour 0 0 80 20' >/dev/null 2>&1; then \
-	   printf "$(C_GREEN)✓ vt_gif$(C_RESET) colour emoji render (--system-emoji)\n"; \
-	 elif ls "/System/Library/Fonts/Apple Color Emoji.ttc" >/dev/null 2>&1; then \
-	   printf "$(C_YELL)✗ vt_gif$(C_RESET) emoji blank despite Apple Color Emoji\n"; exit 1; \
-	 else printf "$(C_YELL)~ skip$(C_RESET) vt_gif emoji: no Apple Color Emoji (bundled Twemoji TODO)\n"; fi
+	@./$(BLDDIR)/vt_gif --cols 8 --rows 1 --cell-h 20 --png $(BLDDIR)/_vtg_emoji.png $(BLDDIR)/_vtg_emoji.raw 2>/dev/null
+	@nix-shell -p 'python3.withPackages(ps:[ps.pillow])' --run 'python3 tools/vtg_probe.py $(BLDDIR)/_vtg_emoji.png colour 0 0 80 20' >/dev/null 2>&1 \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) colour emoji render (bundled Twemoji)\n" \
+	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) bundled emoji blank\n"; exit 1; }
 
 # Assert the output controls: --width downscales to an exact pixel width, and
 # --frames-dir emits a PNG sequence (for ffmpeg -> MP4/WebP).
@@ -194,8 +198,26 @@ check-vt-gif-output: $(BLDDIR)/vt_gif ## Assert --width / --frames-dir output co
 	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) --frames-dir writes a PNG sequence\n" \
 	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) --frames-dir failed\n"; exit 1; }
 
-# Run every vt_gif renderer check (smoke · glyphs · CJK · emoji · output).
-check-vt-gif-all: check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output ## All vt_gif renderer checks
+# Golden-PNG regression: a fixed synthetic capture (text · bold · truecolour · CJK
+# · emoji, all from the BUNDLED faces) must render byte-for-byte identical.
+# Deterministic — stb_truetype is pure C and the fonts are vendored. Refresh the
+# golden with `make gen-golden-vtgif` when the render intentionally changes.
+GOLDEN_VTG := tests/golden/vt_gif_sample.png
+VTG_GOLDEN_CAP = printf 'Hi \033[1mbold\033[0m \033[38;2;255;140;0m中文\033[0m 👋'
+check-vt-gif-golden: $(BLDDIR)/vt_gif ## Compare a fixed render to the golden PNG
+	@$(VTG_GOLDEN_CAP) > $(BLDDIR)/_vtg_g.raw
+	@./$(BLDDIR)/vt_gif --cols 16 --rows 1 --cell-h 16 --png $(BLDDIR)/_vtg_g.png $(BLDDIR)/_vtg_g.raw 2>/dev/null
+	@cmp -s $(BLDDIR)/_vtg_g.png $(GOLDEN_VTG) \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) golden PNG matches\n" \
+	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) golden mismatch (make gen-golden-vtgif if intended)\n"; exit 1; }
+gen-golden-vtgif: $(BLDDIR)/vt_gif ## Refresh tests/golden/vt_gif_sample.png
+	@mkdir -p tests/golden
+	@$(VTG_GOLDEN_CAP) > $(BLDDIR)/_vtg_g.raw
+	@./$(BLDDIR)/vt_gif --cols 16 --rows 1 --cell-h 16 --png $(GOLDEN_VTG) $(BLDDIR)/_vtg_g.raw
+	@printf "$(C_CYAN)refreshed$(C_RESET) $(GOLDEN_VTG)\n"
+
+# Run every vt_gif renderer check (smoke · glyphs · CJK · emoji · output · golden).
+check-vt-gif-all: check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden ## All vt_gif renderer checks
 	@printf "$(C_GREEN)✓ vt_gif: all renderer checks passed$(C_RESET)\n"
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the

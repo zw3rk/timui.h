@@ -13,3 +13,13 @@ Vendored third-party single-header libraries — used ONLY by the dev tooling
   license; freely redistributable), embedded as a byte array. Regenerate with
   `make gen-font-ttf` (tools/gen_font_ttf.py). vt_gif rasterizes it at runtime
   with stb_truetype.
+
+- emoji_atlas.h — a curated set of Twemoji colour-emoji PNGs
+  (https://github.com/twitter/twemoji), graphics licensed CC-BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/), embedded as PNG byte arrays.
+  Regenerate with `make gen-emoji` (tools/gen_emoji.py).
+
+- vt_font_cjk.h — CJK 16x16 bitmaps from GNU Unifont (https://unifoundry.com/
+  unifont/), dual-licensed OFL-1.1 / GPLv2+-with-font-exception; used here under
+  the OFL. Packed + deflate-compressed; vt_gif inflates once at startup.
+  Regenerate with `make gen-cjk` (tools/gen_cjk.py).
