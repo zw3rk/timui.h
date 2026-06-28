@@ -23,7 +23,9 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "vendor/stb_image_write.h"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include "vendor/stb_image_resize2.h"
+#include "vendor/stb_image_resize2.h"   /* NB: UBSAN flags this lib's internal
+    * negative-index pointer arithmetic on the --width path; benign (output is
+    * correct), and only in a sanitizer build. vt_gif's own code is UBSAN-clean. */
 #define MSF_GIF_IMPL
 #include "vendor/msf_gif.h"
 #define STB_TRUETYPE_IMPLEMENTATION
@@ -38,6 +40,7 @@
 #define DEF_FG 0xCCCCCCu
 #define DEF_BG 0x0E0E14u
 /* attr bits */
+#define A_IT   16u
 #define A_BOLD 1u
 #define A_REV  2u
 #define A_UL   4u
@@ -96,9 +99,11 @@ static void sgr(const int *p, int np){
         if(v == 0){ cur_fg = DEF_FG; cur_bg = DEF_BG; cur_attr = 0; }
         else if(v == 1) cur_attr |= A_BOLD;
         else if(v == 2) cur_attr |= A_DIM;
+        else if(v == 3) cur_attr |= A_IT;
         else if(v == 4) cur_attr |= A_UL;
         else if(v == 7) cur_attr |= A_REV;
         else if(v == 22) cur_attr &= ~(A_BOLD | A_DIM);
+        else if(v == 23) cur_attr &= ~A_IT;
         else if(v == 24) cur_attr &= ~A_UL;
         else if(v == 27) cur_attr &= ~A_REV;
         else if(v >= 30 && v <= 37) cur_fg = ansi16[v - 30];
@@ -120,7 +125,7 @@ static void sgr(const int *p, int np){
 static long b64decode(const unsigned char *in, long n, unsigned char *out){
     static signed char T[256];
     static int init = 0;
-    long i, o = 0; int acc = 0, bits = 0;
+    long i, o = 0; unsigned int acc = 0; int bits = 0;
     if(!init){
         int k; const char *A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         for(k = 0; k < 256; k++) T[k] = -1;
@@ -130,8 +135,9 @@ static long b64decode(const unsigned char *in, long n, unsigned char *out){
     for(i = 0; i < n; i++){
         signed char d = T[in[i]];
         if(d < 0) continue;                 /* skip newlines / '=' padding */
-        acc = (acc << 6) | d; bits += 6;
-        if(bits >= 8){ bits -= 8; out[o++] = (unsigned char)((acc >> bits) & 0xFF); }
+        acc = (acc << 6) | (unsigned)d; bits += 6;
+        if(bits >= 8){ bits -= 8; out[o++] = (unsigned char)((acc >> bits) & 0xFF);
+                       acc &= (1u << bits) - 1u; }   /* keep only leftover bits (no overflow) */
     }
     return o;
 }
@@ -288,11 +294,13 @@ static long feed(const unsigned char *s, long n){
  * bitmaps by codepoint is a safe, contained optimization for a many-frame run. */
 static int cellw = 8, cellh = 16;   /* cellw derived from face 0; cellh from --cell-h */
 
-/* Ordered outline-face fallback chain: face 0 = bundled DejaVu (Latin/box/symbols),
- * then a CJK face (system PingFang via --system-fonts, else bundled Unifont). Each
- * face carries its own scale + baseline (metrics differ per font). */
+/* Primary text face = bundled DejaVu Sans Mono in 4 styles (regular/bold/oblique/
+ * bold-oblique); the variant is picked from the cell's bold/italic attributes.
+ * Fallback chain `face[]` holds the CJK outline faces (system fonts). */
+typedef struct { stbtt_fontinfo info; float scale; int baseline, loaded; } Face;
+static Face pface[4];                 /* 0=regular 1=bold 2=oblique 3=bold-oblique */
 #define MAXFACE 6
-static struct { stbtt_fontinfo info; float scale; int baseline; } face[MAXFACE];
+static Face face[MAXFACE];            /* CJK fallback faces (system) */
 static int nface;
 static int use_system_fonts;          /* --system-fonts: chain OS CJK fonts */
 static const char *cjk_font_override; /* --cjk-font PATH */
@@ -318,11 +326,22 @@ static void face_add(const unsigned char *data){
     face[nface].baseline = (int)(asc * face[nface].scale + 0.5f);
     nface++;
 }
+static void pface_load(Face *p, const unsigned char *data){
+    int asc, desc, gap;
+    if(!stbtt_InitFont(&p->info, data, stbtt_GetFontOffsetForIndex(data, 0))) return;
+    p->scale = stbtt_ScaleForPixelHeight(&p->info, (float)cellh);
+    stbtt_GetFontVMetrics(&p->info, &asc, &desc, &gap);
+    p->baseline = (int)(asc * p->scale + 0.5f);
+    p->loaded = 1;
+}
 static void font_init(void){
     int adv, lsb;
-    face_add(vt_font_ttf);                       /* face 0: DejaVu Sans Mono */
-    stbtt_GetCodepointHMetrics(&face[0].info, 'M', &adv, &lsb);
-    cellw = (int)(adv * face[0].scale + 0.5f);
+    pface_load(&pface[0], vt_font_ttf_regular);  /* primary DejaVu, 4 styles */
+    pface_load(&pface[1], vt_font_ttf_bold);
+    pface_load(&pface[2], vt_font_ttf_oblique);
+    pface_load(&pface[3], vt_font_ttf_boldob);
+    stbtt_GetCodepointHMetrics(&pface[0].info, 'M', &adv, &lsb);
+    cellw = (int)(adv * pface[0].scale + 0.5f);
     if(cellw < 1) cellw = 1;
     /* CJK face(s): an explicit --cjk-font, or (--system-fonts) the first few OS
      * CJK fonts found — chained so Han + Hangul + Kana are all covered. */
@@ -368,27 +387,35 @@ static const unsigned char *cjk_bitmap(unsigned int cp){   /* 32-byte 16x16 glyp
     return NULL;
 }
 
-/* Rasterized glyph: grayscale coverage + offsets + which face drew it (for that
- * face's baseline; bitmap glyphs sit at the cell top). Cached per cp; cov may be
- * NULL (space / missing / no outline). */
-typedef struct { unsigned int cp; unsigned char *cov; int w, h, xoff, yoff, face, bitmap; } Glyph;
+/* Rasterized glyph: grayscale coverage + offsets + baseline (bitmap glyphs sit at
+ * the cell top). Cached per (cp, style); cov may be NULL (space / missing). */
+typedef struct { unsigned int cp; int style; unsigned char *cov; int w, h, xoff, yoff, baseline, bitmap; } Glyph;
 static Glyph gcache[8192];
 static int   gcache_n;
-static Glyph *get_glyph(unsigned int cp){
+/* style: 0=regular 1=bold 2=italic 3=bold-italic (matches pface[]) */
+static Glyph *get_glyph(unsigned int cp, int style){
     int i, f;
     Glyph *g2;
-    for(i = 0; i < gcache_n; i++) if(gcache[i].cp == cp) return &gcache[i];
+    for(i = 0; i < gcache_n; i++) if(gcache[i].cp == cp && gcache[i].style == style) return &gcache[i];
     if(gcache_n >= (int)(sizeof gcache / sizeof gcache[0])) return NULL;
     g2 = &gcache[gcache_n++];
-    g2->cp = cp; g2->cov = NULL; g2->w = g2->h = g2->xoff = g2->yoff = 0; g2->face = 0; g2->bitmap = 0;
-    for(f = 0; f < nface; f++){                   /* first outline face with the glyph wins */
+    g2->cp = cp; g2->style = style; g2->cov = NULL;
+    g2->w = g2->h = g2->xoff = g2->yoff = g2->baseline = g2->bitmap = 0;
+    if(pface[0].loaded && stbtt_FindGlyphIndex(&pface[0].info, (int)cp) != 0){   /* primary DejaVu */
+        Face *p = pface[style & 3].loaded ? &pface[style & 3] : &pface[0];
+        g2->cov = stbtt_GetCodepointBitmap(&p->info, p->scale, p->scale,
+                                           (int)cp, &g2->w, &g2->h, &g2->xoff, &g2->yoff);
+        g2->baseline = p->baseline;
+        return g2;
+    }
+    for(f = 0; f < nface; f++){                   /* CJK outline fallback (system fonts) */
         if(stbtt_FindGlyphIndex(&face[f].info, (int)cp) == 0) continue;
         g2->cov = stbtt_GetCodepointBitmap(&face[f].info, face[f].scale, face[f].scale,
                                            (int)cp, &g2->w, &g2->h, &g2->xoff, &g2->yoff);
-        g2->face = f;
-        break;
+        g2->baseline = face[f].baseline;
+        return g2;
     }
-    if(!g2->cov && cjk_raw){                       /* bundled Unifont CJK bitmap fallback */
+    if(cjk_raw){                                   /* bundled Unifont CJK bitmap fallback */
         const unsigned char *bm = cjk_bitmap(cp);
         if(bm){
             int gw = 2*cellw, gh = cellh, py, px;  /* fullwidth: 2 cells */
@@ -534,9 +561,9 @@ static void render_frame(unsigned char *fb, int pw, int ph){
                 continue;                          /* emoji drawn; skip the outline glyph */
             }
         }
-        gl = get_glyph(cell.cp);
+        gl = get_glyph(cell.cp, ((cell.attr & A_BOLD) ? 1 : 0) | ((cell.attr & A_IT) ? 2 : 0));
         if(gl && gl->cov){
-            int ox = x*cellw + gl->xoff, oy = y*cellh + (gl->bitmap ? 0 : face[gl->face].baseline) + gl->yoff;
+            int ox = x*cellw + gl->xoff, oy = y*cellh + (gl->bitmap ? 0 : gl->baseline) + gl->yoff;
             for(gy = 0; gy < gl->h; gy++) for(gx = 0; gx < gl->w; gx++){
                 int c = gl->cov[gy*gl->w+gx], px_ = ox+gx, py_ = oy+gy;
                 if(c && px_ >= 0 && px_ < pw && py_ >= 0 && py_ < ph)

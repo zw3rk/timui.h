@@ -118,13 +118,15 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 - **`vt_gif` v2 — full glyphs, CJK, colour emoji, output controls**: text now
   rasterizes via **stb_truetype** (bundled DejaVu Sans Mono subset → any glyph the
   font has, antialiased, at a runtime `--cell-h`/`--scale` size) through an ordered
-  font **fallback chain**. `--system-fonts` chains the OS CJK fonts (macOS Hiragino
-  / AppleSDGothicNeo → Japanese/Chinese/Korean); `--system-emoji` renders **Apple
-  Color Emoji** from its `sbix` strikes. Output: `--width` (aspect downscale),
-  `--bit-depth`, `--frames-dir` (PNG sequence → `ffmpeg` MP4/WebP). Fixed a
-  wide-glyph clipping bug (two-pass render: backgrounds then glyphs).
-  `make check-vt-gif-all`; plan in `docs/research/vt-gif-v2-plan.md`. Bundled
-  Twemoji/Unifont (flag-free CJK/emoji) remain a follow-up.
+  font **fallback chain**. **CJK** renders flag-free from a bundled **Unifont**
+  bitmap face (`make gen-cjk`), or nicer antialiased CJK with `--system-fonts`
+  (macOS Hiragino/AppleSDGothicNeo → Japanese/Chinese/Korean). **Colour emoji**
+  render flag-free from a bundled **Twemoji** atlas (`make gen-emoji`), or native
+  with `--system-emoji` (Apple Color Emoji `sbix`). Output: `--width` (aspect
+  downscale), `--bit-depth`, `--frames-dir` (PNG sequence → `ffmpeg` MP4/WebP).
+  Fixed a wide-glyph clipping bug (two-pass render: backgrounds then glyphs). A
+  deterministic golden-PNG regression + `make check-vt-gif-all` (8 checks); plan in
+  `docs/research/vt-gif-v2-plan.md`.
 - **Five larger example applications** (`make run-<name>`): `editor` (text_area
   cursor editing), `file_manager` (MC-style dual-pane browser), `todo`
   (functional model/view/update), `procmon` (live `ps` table), `chat`

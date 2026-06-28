@@ -125,9 +125,11 @@ Implementation notes / limits (see `vt-gif-v2-plan.md` for the v2 detail):
   OS CJK fonts (macOS Hiragino / AppleSDGothicNeo / Arial Unicode); `--system-emoji`
   renders Apple Color Emoji from its `sbix` PNG strikes. Cell size is runtime
   (`--cell-h`/`--scale`), and `render_frame` is two-pass (backgrounds then glyphs)
-  so a width-2 CJK/emoji glyph isn't clipped by the next cell's fill.
-  *Remaining follow-up:* bundled **Twemoji** + **Unifont** so CJK/emoji also render
-  reproducibly with no flags (and on Linux/CI).
+  so a width-2 CJK/emoji glyph isn't clipped by the next cell's fill. CJK + colour
+  emoji also render **reproducibly with no flags** from bundled faces — **Unifont**
+  (a `.bdf` bitmap face, `tools/vendor/vt_font_cjk.h`, `make gen-cjk`) and
+  **Twemoji** (`tools/vendor/emoji_atlas.h`, `make gen-emoji`); the OS fonts are
+  preferred when the flag is set.
 - **Output (v2):** `--width` (aspect-preserving downscale, stb_image_resize2),
   `--bit-depth` (msf_gif quantization), `--frames-dir` (PNG sequence → `ffmpeg`
   MP4/WebP, vt_gif stays ffmpeg-free).
@@ -138,7 +140,8 @@ Implementation notes / limits (see `vt-gif-v2-plan.md` for the v2 detail):
 - **Timing:** `pty_drive --timing` logs `<ms> <byte-offset>` per chunk; `vt_gif`
   replays incrementally, and `feed()` stops before a sequence split across a
   chunk boundary (returns bytes consumed) so the parser never desyncs.
-- **Next:** golden-PNG hash test; bundled Twemoji/Unifont; Linux system fonts.
+- **Follow-ups:** Linux system fonts (Noto CJK/Emoji); ZWJ/skin-tone emoji; a
+  larger bundled Twemoji set; trimming the DejaVu subset.
 
 ## Sources
 

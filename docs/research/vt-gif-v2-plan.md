@@ -1,15 +1,19 @@
 # Plan: lift `vt_gif` v1 limits — full glyphs, colour emoji, output controls
 
-*Status: Phases 1–3 IMPLEMENTED (system-font paths). Date: 2026-07-06.*
+*Status: ALL PHASES IMPLEMENTED. Date: 2026-07-06.*
 *Builds on `docs/research/kitty-gif-renderer.md` (Path A, implemented).*
 
-> **Done:** P1 stb_truetype text face + `--cell-h`/`--scale` (any glyph the font
-> has, antialiased). P2 outline fallback chain + CJK via `--system-fonts` (macOS
-> Hiragino/AppleSDGothicNeo/…) + colour emoji via `--system-emoji` (Apple Color
-> Emoji `sbix`) — with a two-pass renderer fixing wide-glyph clipping. P3
-> `--width`/`--bit-depth`/`--frames-dir`. Checks: `make check-vt-gif-all`.
-> **Remaining:** bundled **Twemoji** + **Unifont** (reproducible defaults, no
-> flags / Linux-CI); the P4 golden-PNG test. See the Rollout note.
+> **Done (all of it).** P1 stb_truetype text face + `--cell-h`/`--scale`. P2
+> outline fallback chain; **CJK** — bundled **Unifont** bitmap face (flag-free
+> default, `make gen-cjk`) with `--system-fonts` (macOS Hiragino/AppleSDGothicNeo)
+> preferred when set; **colour emoji** — bundled **Twemoji** atlas (flag-free
+> default, `make gen-emoji`) with `--system-emoji` (Apple Color Emoji `sbix`)
+> preferred. Two-pass renderer fixes wide-glyph clipping. P3
+> `--width`/`--bit-depth`/`--frames-dir`. P4 golden-PNG regression. Verified by
+> `make check-vt-gif-all` (8 checks) + `make check` (196). Fonttools can't subset
+> Unifont's OTF, so CJK uses the `.bdf` bitmap route (see `gen-cjk.py`).
+> **Follow-ups only:** Linux system fonts; ZWJ/skin-tone emoji; a larger bundled
+> Twemoji set; trimming the DejaVu subset.
 
 ## Current state & the two limits
 

@@ -128,6 +128,10 @@ gen-emoji: ## Regenerate tools/vendor/emoji_atlas.h (curated Twemoji PNGs)
 gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated)
 	@nix-shell -p python3 unifont --run 'python3 tools/gen_cjk.py'
 
+# Regenerate the timui.h brand logo (t_ terminal, green cursor) — needs pillow.
+gen-logo: ## Regenerate examples/assets/logo.png
+	@nix-shell -p 'python3.withPackages(ps: [ps.pillow])' dejavu_fonts --run 'python3 tools/gen_logo.py'
+
 # Render the chat autoplay demo to an animated GIF *including* the Kitty images —
 # fully headless (no screen recorder needed): drive with a timing sidecar, then
 # rasterize each frame to pixels and encode the GIF.
@@ -216,8 +220,20 @@ gen-golden-vtgif: $(BLDDIR)/vt_gif ## Refresh tests/golden/vt_gif_sample.png
 	@./$(BLDDIR)/vt_gif --cols 16 --rows 1 --cell-h 16 --png $(GOLDEN_VTG) $(BLDDIR)/_vtg_g.raw
 	@printf "$(C_CYAN)refreshed$(C_RESET) $(GOLDEN_VTG)\n"
 
-# Run every vt_gif renderer check (smoke · glyphs · CJK · emoji · output · golden).
-check-vt-gif-all: check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden ## All vt_gif renderer checks
+# Assert bold/italic render distinctly (the SGR attrs pick the DejaVu variant).
+check-vt-gif-style: $(BLDDIR)/vt_gif ## Assert bold/italic use font variants
+	@printf 'a' > $(BLDDIR)/_vtg_r.raw
+	@printf '\033[1ma\033[0m' > $(BLDDIR)/_vtg_b.raw
+	@printf '\033[3ma\033[0m' > $(BLDDIR)/_vtg_i.raw
+	@./$(BLDDIR)/vt_gif --cols 2 --rows 1 --cell-h 32 --png $(BLDDIR)/_vtg_r.png $(BLDDIR)/_vtg_r.raw 2>/dev/null
+	@./$(BLDDIR)/vt_gif --cols 2 --rows 1 --cell-h 32 --png $(BLDDIR)/_vtg_b.png $(BLDDIR)/_vtg_b.raw 2>/dev/null
+	@./$(BLDDIR)/vt_gif --cols 2 --rows 1 --cell-h 32 --png $(BLDDIR)/_vtg_i.png $(BLDDIR)/_vtg_i.raw 2>/dev/null
+	@if cmp -s $(BLDDIR)/_vtg_r.png $(BLDDIR)/_vtg_b.png || cmp -s $(BLDDIR)/_vtg_r.png $(BLDDIR)/_vtg_i.png; then \
+	   printf "$(C_YELL)✗ vt_gif$(C_RESET) bold/italic == regular (variant not applied)\n"; exit 1; \
+	 else printf "$(C_GREEN)✓ vt_gif$(C_RESET) bold/italic use font variants\n"; fi
+
+# Run every vt_gif renderer check.
+check-vt-gif-all: check-vt-gif check-vt-gif-glyphs check-vt-gif-style check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden ## All vt_gif renderer checks
 	@printf "$(C_GREEN)✓ vt_gif: all renderer checks passed$(C_RESET)\n"
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
