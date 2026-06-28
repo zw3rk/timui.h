@@ -43,26 +43,38 @@ static void write_all(int fd, const char *b, size_t n){
     size_t off = 0;
     while(off < n){ ssize_t w = write(fd, b + off, n - off); if(w > 0) off += (size_t)w; else if(errno != EINTR) break; }
 }
+/* Output capture. cap_write appends to the raw file and, if a --timing sidecar is
+ * open, logs "<elapsed_ms> <cumulative_byte_offset>" per chunk so vt_gif can
+ * replay to any wall-clock moment and emit correctly-paced GIF frames. */
+static FILE *g_outf, *g_timing;
+static long  g_bytes, g_start;
+static void cap_write(const char *b, size_t n){
+    if(n == 0) return;
+    fwrite(b, 1, n, g_outf);
+    g_bytes += (long)n;
+    if(g_timing) fprintf(g_timing, "%ld %ld\n", now_ms() - g_start, g_bytes);
+}
 /* Wait `ms` while DRAINING the app's output — otherwise, pacing input with a
  * blocking sleep lets the app's output buffer fill, blocking its writes so it
  * stops reading input, which then arrives batched (breaking timed keystrokes). */
-static void drain_wait(int master, FILE *outf, int ms){
+static void drain_wait(int master, int ms){
     long end = now_ms() + ms, rem;
     while((rem = end - now_ms()) > 0){
         struct pollfd pfd; pfd.fd = master; pfd.events = POLLIN; pfd.revents = 0;
         if(poll(&pfd, 1, (int)rem) > 0 && (pfd.revents & POLLIN)){
             char buf[4096]; ssize_t n = read(master, buf, sizeof buf);
-            if(n > 0) fwrite(buf, 1, (size_t)n, outf); else break;
+            if(n > 0) cap_write(buf, (size_t)n); else break;
         }
     }
 }
 
 int main(int argc, char **argv){
-    const char *out_path = NULL;
+    const char *out_path = NULL, *timing_path = NULL;
     int cols = 80, rows = 24, delay_ms = 0, settle_ms = 600, run_ms = 8000;
     int i, cmd_start = -1;
     for(i = 1; i < argc; i++){
         if(!strcmp(argv[i], "--out") && i+1 < argc)          out_path  = argv[++i];
+        else if(!strcmp(argv[i], "--timing") && i+1 < argc)  timing_path = argv[++i];
         else if(!strcmp(argv[i], "--cols") && i+1 < argc)    cols      = atoi(argv[++i]);
         else if(!strcmp(argv[i], "--rows") && i+1 < argc)    rows      = atoi(argv[++i]);
         else if(!strcmp(argv[i], "--delay-ms") && i+1 < argc)delay_ms  = atoi(argv[++i]);
@@ -86,6 +98,8 @@ int main(int argc, char **argv){
 
     FILE *outf = fopen(out_path, "wb");
     if(!outf){ perror("fopen out"); return 1; }
+    g_outf = outf; g_start = now_ms();
+    if(timing_path){ g_timing = fopen(timing_path, "w"); if(!g_timing) perror("fopen timing"); }
 
     pid_t pid = fork();
     if(pid < 0){ perror("fork"); return 1; }
@@ -118,7 +132,7 @@ int main(int argc, char **argv){
 
         if(pfd[mi].revents & POLLIN){   /* app output -> capture */
             char buf[4096]; ssize_t r = read(master, buf, sizeof buf);
-            if(r > 0){ fwrite(buf, 1, (size_t)r, outf); app_ready = 1; }
+            if(r > 0){ cap_write(buf, (size_t)r); app_ready = 1; }
             else break;                 /* child closed the pty (exited) */
         }
         if(pfd[mi].revents & (POLLHUP | POLLERR)) break;
@@ -146,7 +160,7 @@ int main(int argc, char **argv){
                         }
                         write_all(master, buf + k, (size_t)seq);
                         k += seq;
-                        drain_wait(master, outf, delay_ms);   /* pace, but keep draining output */
+                        drain_wait(master, delay_ms);   /* pace, but keep draining output */
                     }
                 } else write_all(master, buf, (size_t)r);
             } else { stdin_open = 0; input_done_at = now_ms(); }   /* input EOF */
@@ -161,6 +175,7 @@ int main(int argc, char **argv){
     }
 
     fclose(outf);
+    if(g_timing) fclose(g_timing);
     close(master);
     { int st; waitpid(pid, &st, 0); }
     return 0;

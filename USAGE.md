@@ -56,6 +56,39 @@ run as an assertion:
     asciinema play recordings/chat.cast     # watch it back
     ./build/vt_render recordings/chat.raw    # or reconstruct the grid from a drive
 
+## GIF/PNG with Kitty images (`vt_gif`)
+
+asciinema/agg/VHS can't capture Kitty-graphics images (they're terminal pixels).
+`tools/vt_gif.c` rasterizes a capture to pixels — text + colour + composited
+images — as a PNG (final frame) or an animated GIF.
+
+| target / cmd | what |
+|---|---|
+| `make gif-chat-demo` | autoplay `chat --demo` → `recordings/chat-demo.gif` (headless, no screen recorder) |
+| `make check-vt-gif-all` | all renderer checks (smoke · glyphs · CJK · emoji · output) |
+| `make gen-font-ttf`  | regenerate the subset TTF face (`tools/vendor/vt_font_ttf.h`, fonttools via nix) |
+
+`vt_gif` renders text with `stb_truetype` (bundled DejaVu subset → any glyph it
+has, antialiased). Flags: `--cell-h N` / `--scale F` (size), `--system-fonts`
+(chain the OS CJK fonts — macOS Hiragino/AppleSDGothicNeo), `--system-emoji`
+(Apple Color Emoji), `--width N` (downscale), `--bit-depth N`, `--frames-dir DIR`
+(PNG sequence → ffmpeg MP4/WebP). *(Bundled Twemoji/Unifont for flag-free CJK/emoji
+are a follow-up — see `docs/research/vt-gif-v2-plan.md`.)*
+
+    # manual pipeline for any timui app (needs a --timing sidecar for frame pacing)
+    ./build/pty_drive --cols 90 --rows 22 --run-ms 30000 \
+        --out cap.raw --timing cap.timing -- ./build/chat --demo examples/chat.demo < /dev/null
+    ./build/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
+        --timing cap.timing --gif out.gif cap.raw
+    ./build/vt_gif --cols 90 --rows 22 --png out.png cap.raw            # single final frame
+    ./build/vt_gif --cols 90 --rows 22 --width 720 --frames-dir frames cap.raw   # -> ffmpeg mp4/webp
+
+    # turn the chat into a recorded GIF by hand: --demo autoplays for a screen recorder
+    ./build/chat --demo examples/chat.demo    # or `make run-chat-demo` / `rec-chat-demo`
+
+See `docs/research/kitty-gif-renderer.md` for design, limits, and the Path-B
+(libghostty) upgrade path.
+
 ## Debugging input (drag-drop / paste)
 
 Set `TIMUI_TRACE=<file>` to append a raw-input trace — one line per `read()` and

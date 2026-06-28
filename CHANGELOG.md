@@ -108,6 +108,23 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 - **Recording & headless-driving tooling**: `make rec-<name>` (asciinema),
   `make drive-<name>` (scripted-input pty capture), `make accept` (acceptance
   smoke); `tools/pty_drive.c` + `tools/vt_render.c`.
+- **`tools/vt_gif` — headless terminal→PNG/GIF renderer *with* Kitty images**
+  (what asciinema/agg/VHS can't do). Replays a capture through a VT model that
+  now carries SGR colour + attributes, base64-decodes the transmitted Kitty
+  PNGs, and composites them (source-crop aware) onto a font-rasterized cell grid.
+  `pty_drive --timing` adds a frame-pacing sidecar; `make gif-chat-demo` renders
+  the autoplay demo to `recordings/chat-demo.gif`. Vendored single-headers (stb,
+  msf_gif). `make check-vt-gif` smoke test. See `docs/research/kitty-gif-renderer.md`.
+- **`vt_gif` v2 — full glyphs, CJK, colour emoji, output controls**: text now
+  rasterizes via **stb_truetype** (bundled DejaVu Sans Mono subset → any glyph the
+  font has, antialiased, at a runtime `--cell-h`/`--scale` size) through an ordered
+  font **fallback chain**. `--system-fonts` chains the OS CJK fonts (macOS Hiragino
+  / AppleSDGothicNeo → Japanese/Chinese/Korean); `--system-emoji` renders **Apple
+  Color Emoji** from its `sbix` strikes. Output: `--width` (aspect downscale),
+  `--bit-depth`, `--frames-dir` (PNG sequence → `ffmpeg` MP4/WebP). Fixed a
+  wide-glyph clipping bug (two-pass render: backgrounds then glyphs).
+  `make check-vt-gif-all`; plan in `docs/research/vt-gif-v2-plan.md`. Bundled
+  Twemoji/Unifont (flag-free CJK/emoji) remain a follow-up.
 - **Five larger example applications** (`make run-<name>`): `editor` (text_area
   cursor editing), `file_manager` (MC-style dual-pane browser), `todo`
   (functional model/view/update), `procmon` (live `ps` table), `chat`

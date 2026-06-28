@@ -112,13 +112,91 @@ $(BLDDIR)/vt_render: $(TOOLDIR)/vt_render.c
 # vt_gif rasterizes a capture to pixels (PNG/GIF) INCLUDING Kitty images. Uses
 # vendored single-headers (stb, msf_gif) — relaxed warnings for that third-party
 # code; our own logic still builds under -Wall.
-$(BLDDIR)/vt_gif: $(TOOLDIR)/vt_gif.c $(TOOLDIR)/vendor/vt_font.h
+$(BLDDIR)/vt_gif: $(TOOLDIR)/vt_gif.c $(TOOLDIR)/vendor/vt_font_ttf.h
 	@mkdir -p $(@D)
 	@$(CC) -std=c99 -O2 -Wall -Wno-unused-function $(TOOLDIR)/vt_gif.c -o $@ -lm
 
-# Regenerate the baked bitmap font header from a monospace TTF (via nix: pillow).
-gen-font: ## Regenerate tools/vendor/vt_font.h (DejaVu Sans Mono, 8x16)
-	@nix-shell -p 'python3.withPackages(ps: [ps.pillow])' dejavu_fonts --run 'python3 tools/gen_font.py'
+# Regenerate the subset TTF face header from DejaVu Sans Mono (via nix: fonttools).
+gen-font-ttf: ## Regenerate tools/vendor/vt_font_ttf.h (subset DejaVu Sans Mono)
+	@nix-shell -p 'python3.withPackages(ps: [ps.fonttools])' dejavu_fonts --run 'python3 tools/gen_font_ttf.py'
+
+# Render the chat autoplay demo to an animated GIF *including* the Kitty images —
+# fully headless (no screen recorder needed): drive with a timing sidecar, then
+# rasterize each frame to pixels and encode the GIF.
+gif-chat-demo: $(BLDDIR)/chat $(BLDDIR)/pty_drive $(BLDDIR)/vt_gif ## Headless: chat demo -> recordings/chat-demo.gif
+	@mkdir -p $(RECDIR)
+	@TERM=xterm-kitty ./$(BLDDIR)/pty_drive --cols 90 --rows 22 --settle-ms 1500 --run-ms 30000 \
+	  --out $(RECDIR)/chat-demo.raw --timing $(RECDIR)/chat-demo.timing \
+	  -- ./$(BLDDIR)/chat --demo examples/chat.demo < /dev/null
+	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
+	  --timing $(RECDIR)/chat-demo.timing --gif $(RECDIR)/chat-demo.gif $(RECDIR)/chat-demo.raw
+	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.gif\n"
+
+# Smoke-test the pixel renderer: a synthetic capture (text + an SGR colour +
+# a malformed APC that must not crash the decoder) renders to a PNG of the
+# expected pixel dimensions (cols*8 x rows*16).
+check-vt-gif: $(BLDDIR)/vt_gif ## Smoke-test vt_gif (synthetic capture -> PNG)
+	@printf 'hi \033[38;2;255;0;0mred\033[0m \033_Gi=9,a=t,f=100;Z2FyYmFnZQ==\033\134\033_Gi=9,a=p,c=2,r=1\033\134' > $(BLDDIR)/_vtg.raw
+	@./$(BLDDIR)/vt_gif --cols 20 --rows 2 --png $(BLDDIR)/_vtg.png $(BLDDIR)/_vtg.raw >/dev/null 2>&1 \
+	  || { printf "$(C_YELL)vt_gif crashed$(C_RESET)\n"; exit 1; }
+	@file $(BLDDIR)/_vtg.png | grep -q '160 x 32' \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) renders 20x2 -> 160x32 PNG (malformed APC survived)\n" \
+	  || { printf "$(C_YELL)✗ vt_gif: unexpected PNG$(C_RESET)\n"; exit 1; }
+
+# Assert glyphs OUTSIDE the old ASCII+box baked set render (accented Latin, Greek,
+# symbols) — blank with the v1 bitmap font, filled once the TTF face lands.
+check-vt-gif-glyphs: $(BLDDIR)/vt_gif ## Assert extended glyphs (é Ω © …) render, not blank
+	@printf 'éΩ©àüÄßµ' > $(BLDDIR)/_vtg_glyph.raw
+	@./$(BLDDIR)/vt_gif --cols 8 --rows 1 --png $(BLDDIR)/_vtg_glyph.png $(BLDDIR)/_vtg_glyph.raw >/dev/null 2>&1
+	@nix-shell -p 'python3.withPackages(ps:[ps.pillow])' --run 'python3 tools/vtg_probe.py $(BLDDIR)/_vtg_glyph.png nonbg 20' \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) extended glyphs render\n" \
+	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) extended glyphs blank (expected until the TTF face)\n"; exit 1; }
+	@./$(BLDDIR)/vt_gif --cols 8 --rows 1 --cell-h 24 --png $(BLDDIR)/_vtg_big.png $(BLDDIR)/_vtg_glyph.raw >/dev/null 2>&1
+	@file $(BLDDIR)/_vtg_big.png | grep -q 'x 24' \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) --cell-h scales output\n" \
+	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) --cell-h ignored\n"; exit 1; }
+
+# Assert CJK (Han + Hangul + Kana) renders via the --system-fonts face chain. On
+# macOS this must render (fails if blank); with no system CJK font it skips (the
+# bundled Unifont fallback covers that case once landed). Exercises the wide-glyph
+# two-pass renderer (a width-2 glyph must not be clipped by the next cell's bg).
+check-vt-gif-cjk: $(BLDDIR)/vt_gif ## Assert CJK renders (--system-fonts, macOS)
+	@printf '日本語中文한국어' > $(BLDDIR)/_vtg_cjk.raw
+	@./$(BLDDIR)/vt_gif --cols 12 --rows 1 --cell-h 20 --system-fonts --png $(BLDDIR)/_vtg_cjk.png $(BLDDIR)/_vtg_cjk.raw 2>/dev/null
+	@if nix-shell -p 'python3.withPackages(ps:[ps.pillow])' --run 'python3 tools/vtg_probe.py $(BLDDIR)/_vtg_cjk.png nonbg 60' >/dev/null 2>&1; then \
+	   printf "$(C_GREEN)✓ vt_gif$(C_RESET) CJK renders (--system-fonts)\n"; \
+	 elif ls /System/Library/Fonts/*.ttc >/dev/null 2>&1; then \
+	   printf "$(C_YELL)✗ vt_gif$(C_RESET) CJK blank despite system fonts\n"; exit 1; \
+	 else printf "$(C_YELL)~ skip$(C_RESET) vt_gif CJK: no system CJK font (bundled Unifont TODO)\n"; fi
+
+# Assert colour emoji render via --system-emoji (macOS Apple Color Emoji sbix):
+# a chromatic (non-gray) region must appear. Skips without the emoji font.
+check-vt-gif-emoji: $(BLDDIR)/vt_gif ## Assert colour emoji render (--system-emoji, macOS)
+	@printf '👋🎉🚀' > $(BLDDIR)/_vtg_emoji.raw
+	@./$(BLDDIR)/vt_gif --cols 8 --rows 1 --cell-h 20 --system-emoji --png $(BLDDIR)/_vtg_emoji.png $(BLDDIR)/_vtg_emoji.raw 2>/dev/null
+	@if nix-shell -p 'python3.withPackages(ps:[ps.pillow])' --run 'python3 tools/vtg_probe.py $(BLDDIR)/_vtg_emoji.png colour 0 0 80 20' >/dev/null 2>&1; then \
+	   printf "$(C_GREEN)✓ vt_gif$(C_RESET) colour emoji render (--system-emoji)\n"; \
+	 elif ls "/System/Library/Fonts/Apple Color Emoji.ttc" >/dev/null 2>&1; then \
+	   printf "$(C_YELL)✗ vt_gif$(C_RESET) emoji blank despite Apple Color Emoji\n"; exit 1; \
+	 else printf "$(C_YELL)~ skip$(C_RESET) vt_gif emoji: no Apple Color Emoji (bundled Twemoji TODO)\n"; fi
+
+# Assert the output controls: --width downscales to an exact pixel width, and
+# --frames-dir emits a PNG sequence (for ffmpeg -> MP4/WebP).
+check-vt-gif-output: $(BLDDIR)/vt_gif ## Assert --width / --frames-dir output controls
+	@printf 'hello world' > $(BLDDIR)/_vtg_o.raw
+	@./$(BLDDIR)/vt_gif --cols 20 --rows 2 --width 200 --png $(BLDDIR)/_vtg_o.png $(BLDDIR)/_vtg_o.raw >/dev/null 2>&1
+	@file $(BLDDIR)/_vtg_o.png | grep -q '200 x' \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) --width downscales to 200px\n" \
+	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) --width failed\n"; exit 1; }
+	@rm -rf $(BLDDIR)/_vtg_frames && mkdir -p $(BLDDIR)/_vtg_frames
+	@./$(BLDDIR)/vt_gif --cols 20 --rows 2 --frames-dir $(BLDDIR)/_vtg_frames $(BLDDIR)/_vtg_o.raw >/dev/null 2>&1
+	@test "$$(ls $(BLDDIR)/_vtg_frames/*.png 2>/dev/null | wc -l | tr -d ' ')" -ge 1 \
+	  && printf "$(C_GREEN)✓ vt_gif$(C_RESET) --frames-dir writes a PNG sequence\n" \
+	  || { printf "$(C_YELL)✗ vt_gif$(C_RESET) --frames-dir failed\n"; exit 1; }
+
+# Run every vt_gif renderer check (smoke · glyphs · CJK · emoji · output).
+check-vt-gif-all: check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output ## All vt_gif renderer checks
+	@printf "$(C_GREEN)✓ vt_gif: all renderer checks passed$(C_RESET)\n"
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
 # raw byte stream, viewable with `asciinema play` and analysable by the verifier.

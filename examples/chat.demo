@@ -8,6 +8,8 @@ wait 700
 msg alice: hey! did the new chat land? 👋
 wait 800
 msg bob: yep — inline images, markdown, scrollback. try `make run-chat`
+wait 500
+msg yuki: こんにちは 🌏 — 中文 also works, 한국어 too! 🎉
 wait 400
 say Nice! Let me try a few things.
 wait 500

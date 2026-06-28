@@ -22,9 +22,13 @@
 #include "vendor/stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "vendor/stb_image_write.h"
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "vendor/stb_image_resize2.h"
 #define MSF_GIF_IMPL
 #include "vendor/msf_gif.h"
-#include "vendor/vt_font.h"
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "vendor/stb_truetype.h"
+#include "vendor/vt_font_ttf.h"   /* subset DejaVu Sans Mono (make gen-font-ttf) */
 
 #define MAXW 400
 #define MAXH 200
@@ -209,64 +213,157 @@ static void kitty(const unsigned char *s, long ks, long ke, long ps, long pe){
     else if(action == 'd' && (delkind == 'a' || delkind == 0)) pl_n = 0;   /* delete all placements */
 }
 
-static void feed(const unsigned char *s, long n){
+/* Replay bytes into the model. Returns the number of bytes CONSUMED: if the
+ * chunk ends mid-sequence (a CSI/OSC/APC/UTF-8 split across a read boundary, as
+ * the --timing offsets do), it stops before the partial tail so the caller can
+ * re-feed it with the next chunk. Feeding a split sequence would desync the
+ * parser and smear cells — the bug that put stray text on the image row. */
+static long feed(const unsigned char *s, long n){
     long i = 0;
     while(i < n){
         unsigned char c = s[i];
-        if(c == 0x1b && i+1 < n && s[i+1] == '['){          /* CSI */
-            long j = i + 2; int priv = 0, p[32], np = 1, k;
-            for(k = 0; k < 32; k++) p[k] = 0;
-            if(j < n && (s[j] == '?' || s[j] == '>' || s[j] == '=')){ priv = 1; j++; }
-            while(j < n && ((s[j] >= '0' && s[j] <= '9') || s[j] == ';' || s[j] == ':')){
-                if(s[j] == ';' || s[j] == ':'){ if(np < 32) np++; }
-                else if(np-1 < 32) p[np-1] = p[np-1]*10 + (s[j]-'0');
-                j++;
-            }
-            if(j < n){
-                char f = (char)s[j];
-                if(!priv && f == 'H'){ cy=(np>=1?p[0]:1)-1; cx=(np>=2?p[1]:1)-1; if(cx<0)cx=0; if(cy<0)cy=0; pending=0; }
-                else if(!priv && f == 'm') sgr(p, np);
-                else if(priv && p[0] == 7 && (f=='l'||f=='h')) autowrap = (f=='h');
+        if(c == 0x1b){
+            if(i+1 >= n) return i;                          /* incomplete: lone ESC */
+            if(s[i+1] == '['){                              /* CSI */
+                long j = i + 2; int priv = 0, p[32], np = 1, k;
+                for(k = 0; k < 32; k++) p[k] = 0;
+                if(j < n && (s[j] == '?' || s[j] == '>' || s[j] == '=')){ priv = 1; j++; }
+                while(j < n && ((s[j] >= '0' && s[j] <= '9') || s[j] == ';' || s[j] == ':')){
+                    if(s[j] == ';' || s[j] == ':'){ if(np < 32) np++; }
+                    else if(np-1 < 32) p[np-1] = p[np-1]*10 + (s[j]-'0');
+                    j++;
+                }
+                if(j >= n) return i;                        /* incomplete: no final byte */
+                { char f = (char)s[j];
+                  if(!priv && f == 'H'){ cy=(np>=1?p[0]:1)-1; cx=(np>=2?p[1]:1)-1; if(cx<0)cx=0; if(cy<0)cy=0; pending=0; }
+                  else if(!priv && f == 'm') sgr(p, np);
+                  else if(priv && p[0] == 7 && (f=='l'||f=='h')) autowrap = (f=='h'); }
                 i = j + 1; continue;
             }
-        }
-        if(c == 0x1b && i+1 < n && s[i+1] == ']'){          /* OSC ... ST/BEL */
-            long j = i + 2;
-            while(j < n && s[j] != 0x07 && !(s[j]==0x1b && j+1<n && s[j+1]=='\\')) j++;
-            if(j < n && s[j] == 0x1b) j++;
-            i = (j < n) ? j + 1 : n; continue;
-        }
-        if(c == 0x1b && i+1 < n && s[i+1] == '_'){          /* APC — Kitty graphics */
-            long j = i + 2;
-            if(j < n && s[j] == 'G'){
-                long ks, ke, ps, pe;
-                j++; ks = j;
-                while(j < n && s[j] != ';' && !(s[j]==0x1b && j+1<n && s[j+1]=='\\')) j++;
-                ke = j;
-                ps = (j < n && s[j] == ';') ? j + 1 : j; pe = ps;
-                while(pe < n && !(s[pe]==0x1b && pe+1<n && s[pe+1]=='\\')) pe++;
-                kitty(s, ks, ke, ps, pe);
-                j = (pe < n) ? pe + 2 : pe;
-            } else {
-                while(j < n && !(s[j]==0x1b && j+1<n && s[j+1]=='\\')) j++;
-                if(j < n) j += 2;
+            if(s[i+1] == ']'){                              /* OSC ... ST/BEL */
+                long j = i + 2;
+                while(j < n && s[j] != 0x07 && !(s[j]==0x1b && j+1<n && s[j+1]=='\\')) j++;
+                if(j >= n) return i;                        /* incomplete: no terminator */
+                i = (s[j] == 0x1b) ? j + 2 : j + 1; continue;
             }
-            i = j; continue;
+            if(s[i+1] == '_'){                              /* APC — Kitty graphics */
+                long j = i + 2;
+                if(j < n && s[j] == 'G'){
+                    long ks, ke, ps, pe;
+                    j++; ks = j;
+                    while(j < n && s[j] != ';' && !(s[j]==0x1b && j+1<n && s[j+1]=='\\')) j++;
+                    ke = j;
+                    ps = (j < n && s[j] == ';') ? j + 1 : j; pe = ps;
+                    while(pe < n && !(s[pe]==0x1b && pe+1<n && s[pe+1]=='\\')) pe++;
+                    if(pe >= n) return i;                   /* incomplete: no ST — re-feed */
+                    kitty(s, ks, ke, ps, pe);
+                    i = pe + 2; continue;
+                } else {
+                    long j2 = i + 2;
+                    while(j2 < n && !(s[j2]==0x1b && j2+1<n && s[j2+1]=='\\')) j2++;
+                    if(j2 >= n) return i;
+                    i = j2 + 2; continue;
+                }
+            }
+            i += 2; continue;                               /* other 2-byte ESC (have both) */
         }
-        if(c == 0x1b){ i += 2; continue; }
         if(c == '\r'){ cx = 0; pending = 0; i++; continue; }
         if(c == '\n'){ cy++; if(cy >= H){ scroll_up(); cy = H-1; } pending = 0; i++; continue; }
         if(c == '\b'){ if(cx > 0) cx--; pending = 0; i++; continue; }
         if(c < 0x20){ i++; continue; }
-        { unsigned int cp; int adv = utf8(s + i, (int)(n - i), &cp); put(cp); i += adv; }
+        { int need = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+          unsigned int cp; int adv;
+          if(n - i < need) return i;                       /* incomplete UTF-8 at boundary */
+          adv = utf8(s + i, (int)(n - i), &cp); put(cp); i += adv; }
     }
+    return i;
 }
 
 /* ---- rasterization ------------------------------------------------------ */
-static const unsigned char *glyph(unsigned int cp){
-    int k;
-    for(k = 0; k < vt_font_n; k++) if(vt_font[k].cp == cp) return vt_font[k].cov;
-    return NULL;
+/* ---- text face: stb_truetype outline rasterizer + glyph cache ------------ *
+ * The cache is the tool's one deliberate mutable global: glyph rasterization is
+ * pure given (cp, scale) and the scale is fixed per run, so memoizing coverage
+ * bitmaps by codepoint is a safe, contained optimization for a many-frame run. */
+static int cellw = 8, cellh = 16;   /* cellw derived from face 0; cellh from --cell-h */
+
+/* Ordered outline-face fallback chain: face 0 = bundled DejaVu (Latin/box/symbols),
+ * then a CJK face (system PingFang via --system-fonts, else bundled Unifont). Each
+ * face carries its own scale + baseline (metrics differ per font). */
+#define MAXFACE 6
+static struct { stbtt_fontinfo info; float scale; int baseline; } face[MAXFACE];
+static int nface;
+static int use_system_fonts;          /* --system-fonts: chain OS CJK fonts */
+static const char *cjk_font_override; /* --cjk-font PATH */
+
+/* read a whole file into a malloc'd buffer (a system font); leaked for the run */
+static unsigned char *load_file(const char *path, long *out_len){
+    FILE *f = fopen(path, "rb");
+    unsigned char *b; long n;
+    if(!f) return NULL;
+    fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
+    b = (unsigned char *)malloc((size_t)(n > 0 ? n : 1));
+    if(!b || fread(b, 1, (size_t)n, f) != (size_t)n){ free(b); b = NULL; }
+    fclose(f);
+    if(out_len) *out_len = n;
+    return b;
+}
+static void face_add(const unsigned char *data){
+    int asc, desc, gap;
+    if(nface >= MAXFACE || !data) return;
+    if(!stbtt_InitFont(&face[nface].info, data, stbtt_GetFontOffsetForIndex(data, 0))) return;
+    face[nface].scale = stbtt_ScaleForPixelHeight(&face[nface].info, (float)cellh);
+    stbtt_GetFontVMetrics(&face[nface].info, &asc, &desc, &gap);
+    face[nface].baseline = (int)(asc * face[nface].scale + 0.5f);
+    nface++;
+}
+static void font_init(void){
+    int adv, lsb;
+    face_add(vt_font_ttf);                       /* face 0: DejaVu Sans Mono */
+    stbtt_GetCodepointHMetrics(&face[0].info, 'M', &adv, &lsb);
+    cellw = (int)(adv * face[0].scale + 0.5f);
+    if(cellw < 1) cellw = 1;
+    /* CJK face(s): an explicit --cjk-font, or (--system-fonts) the first few OS
+     * CJK fonts found — chained so Han + Hangul + Kana are all covered. */
+    if(cjk_font_override){
+        long n; unsigned char *d = load_file(cjk_font_override, &n);
+        if(d) face_add(d);
+        else fprintf(stderr, "vt_gif: --cjk-font: cannot read %s\n", cjk_font_override);
+    } else if(use_system_fonts){
+        static const char *cands[] = {
+            "/System/Library/Fonts/PingFang.ttc",          /* modern macOS CJK  */
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",  /* Han (C/J)         */
+            "/System/Library/Fonts/AppleSDGothicNeo.ttc",  /* Hangul (Korean)   */
+            "/System/Library/Fonts/Arial Unicode.ttf",     /* broad BMP fallback*/
+            NULL };
+        int i, added = 0;
+        for(i = 0; cands[i] && nface < MAXFACE; i++){
+            long n; unsigned char *d = load_file(cands[i], &n);
+            if(d){ face_add(d); added = 1; }
+        }
+        if(!added) fprintf(stderr, "vt_gif: --system-fonts: no CJK font found (falling back)\n");
+    }
+}
+
+/* Rasterized glyph: grayscale coverage + offsets + which face drew it (for that
+ * face's baseline), cached per cp. cov may be NULL (space / missing / no outline). */
+typedef struct { unsigned int cp; unsigned char *cov; int w, h, xoff, yoff, face; } Glyph;
+static Glyph gcache[8192];
+static int   gcache_n;
+static Glyph *get_glyph(unsigned int cp){
+    int i, f;
+    Glyph *g2;
+    for(i = 0; i < gcache_n; i++) if(gcache[i].cp == cp) return &gcache[i];
+    if(gcache_n >= (int)(sizeof gcache / sizeof gcache[0])) return NULL;
+    g2 = &gcache[gcache_n++];
+    g2->cp = cp; g2->cov = NULL; g2->w = g2->h = g2->xoff = g2->yoff = 0; g2->face = 0;
+    for(f = 0; f < nface; f++){                   /* first face that has the glyph wins */
+        if(stbtt_FindGlyphIndex(&face[f].info, (int)cp) == 0) continue;
+        g2->cov = stbtt_GetCodepointBitmap(&face[f].info, face[f].scale, face[f].scale,
+                                           (int)cp, &g2->w, &g2->h, &g2->xoff, &g2->yoff);
+        g2->face = f;
+        break;
+    }
+    return g2;
 }
 /* decoded-image cache (decode each transmitted id once) */
 static struct { unsigned id; unsigned char *rgba; int w, h; } dec[MAXIMG];
@@ -293,31 +390,120 @@ static void blend(unsigned char *px, unsigned int col, int cov){
     px[2] = (unsigned char)((px[2]*(255-cov) + b*cov)/255);
     px[3] = 255;
 }
+/* ---- colour emoji face ---------------------------------------------------- *
+ * --system-emoji reads the macOS Apple Color Emoji font and pulls the PNG for a
+ * codepoint from its `sbix` bitmap-strike table (cmap -> glyphID via stbtt,
+ * largest strike). Bundled Twemoji is a follow-up; this is the native path. */
+static unsigned char *emoji_data;
+static stbtt_fontinfo emoji_font;
+static long emoji_strike_off;
+static int  emoji_ready, use_system_emoji;
+
+static unsigned      u16be_(const unsigned char *p){ return ((unsigned)p[0]<<8)|p[1]; }
+static unsigned long u32be_(const unsigned char *p){
+    return ((unsigned long)p[0]<<24)|((unsigned long)p[1]<<16)|((unsigned long)p[2]<<8)|p[3]; }
+static long sfnt_table(const unsigned char *d, long fo, const char *tag){
+    int n = (int)u16be_(d + fo + 4), i; long rec = fo + 12;
+    for(i = 0; i < n; i++, rec += 16) if(memcmp(d + rec, tag, 4) == 0) return (long)u32be_(d + rec + 8);
+    return -1;
+}
+static void emoji_init(void){
+    long fo, sbix, n; int nstr, i, best = 0;
+    if(!use_system_emoji) return;
+    emoji_data = load_file("/System/Library/Fonts/Apple Color Emoji.ttc", &n);
+    if(!emoji_data){ fprintf(stderr, "vt_gif: --system-emoji: Apple Color Emoji not found\n"); return; }
+    fo = stbtt_GetFontOffsetForIndex(emoji_data, 0);
+    if(!stbtt_InitFont(&emoji_font, emoji_data, fo)){ emoji_data = NULL; return; }
+    sbix = sfnt_table(emoji_data, fo, "sbix");
+    if(sbix < 0){ fprintf(stderr, "vt_gif: --system-emoji: no sbix table\n"); emoji_data = NULL; return; }
+    nstr = (int)u32be_(emoji_data + sbix + 4);
+    for(i = 0; i < nstr; i++){                     /* pick the largest-ppem strike */
+        long so = sbix + (long)u32be_(emoji_data + sbix + 8 + 4*i);
+        int ppem = (int)u16be_(emoji_data + so);
+        if(ppem >= best){ best = ppem; emoji_strike_off = so; }
+    }
+    emoji_ready = 1;
+}
+static int is_emoji(unsigned int cp){
+    return cp >= 0x1F000 || (cp >= 0x2600 && cp <= 0x27BF) ||
+           (cp >= 0x2B00 && cp <= 0x2BFF) || (cp >= 0x1F1E6 && cp <= 0x1F1FF);
+}
+/* decoded-emoji cache: cp -> RGBA (NULL if the font has no colour glyph) */
+static struct { unsigned int cp; unsigned char *rgba; int w, h; } edec[512];
+static int edec_n;
+static int get_emoji(unsigned int cp, unsigned char **rgba, int *w, int *h){
+    int i, gid, comp; const unsigned char *st; long go, gn, gd; unsigned char *out = NULL;
+    if(!emoji_ready) return 0;
+    for(i = 0; i < edec_n; i++) if(edec[i].cp == cp){ *rgba = edec[i].rgba; *w = edec[i].w; *h = edec[i].h; return edec[i].rgba != NULL; }
+    if(edec_n >= (int)(sizeof edec / sizeof edec[0])) return 0;
+    gid = stbtt_FindGlyphIndex(&emoji_font, (int)cp);
+    if(gid > 0 && gid < emoji_font.numGlyphs){
+        st = emoji_data + emoji_strike_off + 4;    /* skip ppem, ppi */
+        go = (long)u32be_(st + 4*gid); gn = (long)u32be_(st + 4*(gid+1));
+        if(gn - go > 8 && (unsigned)u32be_(emoji_data + emoji_strike_off + go + 4) == 0x706E6720u){ /* 'png ' */
+            gd = emoji_strike_off + go + 8;        /* originX(2)+originY(2)+tag(4) */
+            out = stbi_load_from_memory(emoji_data + gd, (int)((gn - go) - 8), w, h, &comp, 4);
+        }
+    }
+    edec[edec_n].cp = cp; edec[edec_n].rgba = out;
+    edec[edec_n].w = out ? *w : 0; edec[edec_n].h = out ? *h : 0; edec_n++;
+    *rgba = out;
+    return out != NULL;
+}
+
 static void render_frame(unsigned char *fb, int pw, int ph){
     int y, x, gy, gx, k;
-    (void)ph;
+    /* Pass 1 — backgrounds. Kept separate from glyphs so a wide (2-cell) glyph
+     * drawn in pass 2 isn't overpainted by the NEXT cell's background fill. */
     for(y = 0; y < H; y++) for(x = 0; x < W; x++){
         Cell cell = g[y][x];
-        unsigned int fg = cell.fg, bg = cell.bg;
-        const unsigned char *cov;
-        if(cell.attr & A_REV){ unsigned int t = fg; fg = bg; bg = t; }
-        if(cell.attr & A_DIM) fg = ((fg>>1)&0x7F7F7F);
-        for(gy = 0; gy < VT_FONT_CH; gy++) for(gx = 0; gx < VT_FONT_CW; gx++){
-            unsigned char *px = fb + ((long)(y*VT_FONT_CH+gy)*pw + (x*VT_FONT_CW+gx))*4;
+        unsigned int bg = (cell.attr & A_REV) ? cell.fg : cell.bg;
+        for(gy = 0; gy < cellh; gy++) for(gx = 0; gx < cellw; gx++){
+            unsigned char *px = fb + ((long)(y*cellh+gy)*pw + (x*cellw+gx))*4;
             px[0]=(unsigned char)((bg>>16)&0xFF); px[1]=(unsigned char)((bg>>8)&0xFF);
             px[2]=(unsigned char)(bg&0xFF);       px[3]=255;
         }
-        cov = (cell.cp && cell.cp != ' ') ? glyph(cell.cp) : NULL;
-        if(cov) for(gy = 0; gy < VT_FONT_CH; gy++) for(gx = 0; gx < VT_FONT_CW; gx++){
-            int c = cov[gy*VT_FONT_CW+gx];
-            if(c) blend(fb + ((long)(y*VT_FONT_CH+gy)*pw + (x*VT_FONT_CW+gx))*4, fg, c);
+    }
+    /* Pass 2 — glyphs on top. */
+    for(y = 0; y < H; y++) for(x = 0; x < W; x++){
+        Cell cell = g[y][x];
+        unsigned int fg = (cell.attr & A_REV) ? cell.bg : cell.fg;
+        Glyph *gl;
+        if(cell.attr & A_DIM) fg = ((fg>>1)&0x7F7F7F);
+        if(!cell.cp || cell.cp == ' ') continue;
+        if(is_emoji(cell.cp)){                    /* colour emoji: composite RGBA */
+            unsigned char *er; int ew, eh;
+            if(get_emoji(cell.cp, &er, &ew, &eh)){
+                int nc = cp_width(cell.cp) >= 2 ? 2 : 1;
+                int dw = nc*cellw, dh = cellh, dx0 = x*cellw, dy0 = y*cellh, dy2, dx2;
+                for(dy2 = 0; dy2 < dh; dy2++) for(dx2 = 0; dx2 < dw; dx2++){
+                    int sx = dx2*ew/dw, sy = dy2*eh/dh, px_ = dx0+dx2, py_ = dy0+dy2, a;
+                    unsigned char *s2, *d2;
+                    if(px_ >= pw || py_ >= ph) continue;
+                    s2 = er + ((long)sy*ew+sx)*4; d2 = fb + ((long)py_*pw+px_)*4; a = s2[3];
+                    d2[0]=(unsigned char)((d2[0]*(255-a)+s2[0]*a)/255);
+                    d2[1]=(unsigned char)((d2[1]*(255-a)+s2[1]*a)/255);
+                    d2[2]=(unsigned char)((d2[2]*(255-a)+s2[2]*a)/255);
+                    d2[3]=255;
+                }
+                continue;                          /* emoji drawn; skip the outline glyph */
+            }
+        }
+        gl = get_glyph(cell.cp);
+        if(gl && gl->cov){
+            int ox = x*cellw + gl->xoff, oy = y*cellh + face[gl->face].baseline + gl->yoff;
+            for(gy = 0; gy < gl->h; gy++) for(gx = 0; gx < gl->w; gx++){
+                int c = gl->cov[gy*gl->w+gx], px_ = ox+gx, py_ = oy+gy;
+                if(c && px_ >= 0 && px_ < pw && py_ >= 0 && py_ < ph)
+                    blend(fb + ((long)py_*pw + px_)*4, fg, c);
+            }
         }
     }
     /* composite Kitty images on top, cropped to their source sub-rect */
     for(k = 0; k < pl_n; k++){
         unsigned char *src; int iw, ih;
-        int dx0 = pl[k].x*VT_FONT_CW, dy0 = pl[k].y*VT_FONT_CH;
-        int dw = pl[k].c*VT_FONT_CW, dh = pl[k].r*VT_FONT_CH;
+        int dx0 = pl[k].x*cellw, dy0 = pl[k].y*cellh;
+        int dw = pl[k].c*cellw, dh = pl[k].r*cellh;
         int cxr, cyr, cwr, chr, dy2, dx2;
         if(dw <= 0 || dh <= 0 || !decode_image(pl[k].id, &src, &iw, &ih) || iw <= 0 || ih <= 0) continue;
         cxr = pl[k].sw > 0 ? pl[k].sx : 0;   cyr = pl[k].sh > 0 ? pl[k].sy : 0;
@@ -338,18 +524,50 @@ static void render_frame(unsigned char *fb, int pw, int ph){
     }
 }
 
+/* Downscale the rendered frame to (ow x oh) if requested, and write it as a
+ * numbered PNG when --frames-dir is set; returns the buffer to feed the encoder. */
+static unsigned char *frame_emit(unsigned char *fb, int pw, int ph, unsigned char *rb,
+                                 int ow, int oh, const char *frames_dir, int *frame_no){
+    unsigned char *o = fb;
+    if(ow != pw || oh != ph){
+        stbir_resize_uint8_srgb(fb, pw, ph, 0, rb, ow, oh, 0, STBIR_RGBA);
+        o = rb;
+    }
+    if(frames_dir){
+        char p[600];
+        snprintf(p, sizeof p, "%s/frame_%05d.png", frames_dir, (*frame_no)++);
+        stbi_write_png(p, ow, oh, 4, o, ow*4);
+    }
+    return o;
+}
+
 /* ---- main --------------------------------------------------------------- */
 int main(int argc, char **argv){
-    const char *path = NULL, *png_out = NULL, *gif_out = NULL;
-    int i, x, y, pw, ph;
-    unsigned char *buf, *fb; long cap = 1<<16, len = 0; FILE *fp;
+    const char *path = NULL, *png_out = NULL, *gif_out = NULL, *timing_path = NULL, *frames_dir = NULL;
+    int i, x, y, pw, ph, fps = 15, out_width = 0, bit_depth = 16, ow, oh;
+    unsigned char *buf, *fb, *rb = NULL; long cap = 1<<16, len = 0; FILE *fp;
     for(i = 1; i < argc; i++){
         if(!strcmp(argv[i], "--cols") && i+1 < argc) W = atoi(argv[++i]);
         else if(!strcmp(argv[i], "--rows") && i+1 < argc) H = atoi(argv[++i]);
         else if(!strcmp(argv[i], "--png") && i+1 < argc) png_out = argv[++i];
         else if(!strcmp(argv[i], "--gif") && i+1 < argc) gif_out = argv[++i];
+        else if(!strcmp(argv[i], "--timing") && i+1 < argc) timing_path = argv[++i];
+        else if(!strcmp(argv[i], "--fps") && i+1 < argc) fps = atoi(argv[++i]);
+        else if(!strcmp(argv[i], "--cell-h") && i+1 < argc) cellh = atoi(argv[++i]);
+        else if(!strcmp(argv[i], "--scale") && i+1 < argc) cellh = (int)(16 * atof(argv[++i]) + 0.5);
+        else if(!strcmp(argv[i], "--system-fonts")) use_system_fonts = 1;
+        else if(!strcmp(argv[i], "--system-emoji")) use_system_emoji = 1;
+        else if(!strcmp(argv[i], "--cjk-font") && i+1 < argc) cjk_font_override = argv[++i];
+        else if(!strcmp(argv[i], "--width") && i+1 < argc) out_width = atoi(argv[++i]);
+        else if(!strcmp(argv[i], "--bit-depth") && i+1 < argc) bit_depth = atoi(argv[++i]);
+        else if(!strcmp(argv[i], "--frames-dir") && i+1 < argc) frames_dir = argv[++i];
         else path = argv[i];
     }
+    if(fps < 1) fps = 15;
+    if(bit_depth < 1 || bit_depth > 16) bit_depth = 16;
+    if(cellh < 4) cellh = 16;
+    font_init();                     /* outline face chain + cellw from the font */
+    emoji_init();                    /* colour emoji face (--system-emoji) */
     if(W > MAXW) W = MAXW; if(H > MAXH) H = MAXH;
     for(y = 0; y < H; y++) for(x = 0; x < W; x++){ g[y][x].cp=' '; g[y][x].fg=DEF_FG; g[y][x].bg=DEF_BG; g[y][x].attr=0; }
     fp = path ? fopen(path, "rb") : stdin;
@@ -359,21 +577,99 @@ int main(int argc, char **argv){
         if(len >= cap){ cap *= 2; buf = (unsigned char *)realloc(buf, (size_t)cap); }
         buf[len++] = (unsigned char)ch; }
     if(path) fclose(fp);
-    feed(buf, len);
-    free(buf);
 
-    pw = W*VT_FONT_CW; ph = H*VT_FONT_CH;
+    pw = W*cellw; ph = H*cellh;
     fb = (unsigned char *)malloc((size_t)pw*ph*4);
-    render_frame(fb, pw, ph);
-    if(png_out){
-        if(!stbi_write_png(png_out, pw, ph, 4, fb, pw*4)){ fprintf(stderr, "png write failed\n"); return 1; }
-        fprintf(stderr, "wrote %s (%dx%d px)\n", png_out, pw, ph);
-    } else if(gif_out){
-        fprintf(stderr, "gif output needs frame timing — not yet wired (see --png)\n");
+    /* optional downscale to --width (aspect preserved) for smaller output */
+    ow = out_width > 0 ? out_width : pw;
+    oh = out_width > 0 ? (int)((long)out_width * ph / pw) : ph;
+    if(oh < 1) oh = 1;
+    if(ow != pw || oh != ph) rb = (unsigned char *)malloc((size_t)ow*oh*4);
+
+    if(gif_out || frames_dir){
+        /* Incremental replay: at each frame tick feed the bytes captured up to
+         * that wall-clock moment (from the --timing sidecar; even byte slices if
+         * absent), render, and append a GIF frame. */
+        long *tms = NULL, *toff = NULL; int tn = 0, tcap = 0;
+        int interval = 1000 / fps, cs = (interval + 5) / 10, nframes = 0, frame_no = 0;
+        long fed = 0, total, T;
+        MsfGifState gs;
+        MsfGifResult res;
+        unsigned char *o;
+        if(cs < 1) cs = 1;
+        if(timing_path){
+            FILE *tf = fopen(timing_path, "r"); long a, b;
+            if(tf){
+                while(fscanf(tf, "%ld %ld", &a, &b) == 2){
+                    if(tn >= tcap){ tcap = tcap ? tcap*2 : 1024;
+                        tms = realloc(tms, (size_t)tcap*sizeof(long)); toff = realloc(toff, (size_t)tcap*sizeof(long)); }
+                    tms[tn] = a; toff[tn] = b; tn++;
+                }
+                fclose(tf);
+            }
+        }
+        total = tn > 0 ? tms[tn-1] : 0;
+        if(gif_out) msf_gif_begin(&gs, ow, oh);
+        if(tn > 0){
+            int k = 0;
+            for(T = 0; T <= total; T += interval){
+                long target = 0;
+                while(k < tn && tms[k] <= T){ target = toff[k]; k++; }
+                if(k > 0 && target == 0) target = toff[k-1];
+                if(target > len) target = len;
+                /* advance by CONSUMED bytes; a partial trailing sequence waits
+                 * for the next tick's larger target (feed() stops before it). */
+                while(fed < target){ long got = feed(buf + fed, target - fed); if(got == 0) break; fed += got; }
+                render_frame(fb, pw, ph);
+                o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);
+                if(gif_out) msf_gif_frame(&gs, o, cs, bit_depth, ow*4);
+                nframes++;
+            }
+        } else {                                   /* no timing: 60 even byte slices */
+            int N = 60, fr;
+            for(fr = 1; fr <= N; fr++){
+                long target = len * fr / N;
+                while(fed < target){ long got = feed(buf + fed, target - fed); if(got == 0) break; fed += got; }
+                render_frame(fb, pw, ph);
+                o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);
+                if(gif_out) msf_gif_frame(&gs, o, cs, bit_depth, ow*4);
+                nframes++;
+            }
+        }
+        while(fed < len){ long got = feed(buf + fed, len - fed); if(got == 0) break; fed += got; }
+        render_frame(fb, pw, ph);                  /* final settled frame, held ~1s */
+        o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);
+        if(gif_out) msf_gif_frame(&gs, o, 100, bit_depth, ow*4);
+        nframes++;
+        if(gif_out){
+            res = msf_gif_end(&gs);
+            if(res.data){ FILE *of = fopen(gif_out, "wb");
+                if(of){ fwrite(res.data, 1, res.dataSize, of); fclose(of); }
+                fprintf(stderr, "wrote %s (%d frames, %dx%d px, %.1f KB)\n",
+                        gif_out, nframes, ow, oh, res.dataSize/1024.0);
+            } else fprintf(stderr, "gif encode failed\n");
+            msf_gif_free(res);
+        }
+        if(frames_dir)
+            fprintf(stderr, "wrote %d frames to %s/frame_%%05d.png — e.g.\n"
+                    "  ffmpeg -framerate %d -i %s/frame_%%05d.png -c:v libx264 -pix_fmt yuv420p out.mp4\n",
+                    frame_no, frames_dir, fps, frames_dir);
+        free(tms); free(toff);
     } else {
-        fprintf(stderr, "usage: vt_gif --cols N --rows M (--png OUT | --gif OUT) [FILE]\n");
+        feed(buf, len);
+        render_frame(fb, pw, ph);
+        if(png_out){
+            int dummy = 0;
+            unsigned char *o = frame_emit(fb, pw, ph, rb, ow, oh, NULL, &dummy);
+            if(!stbi_write_png(png_out, ow, oh, 4, o, ow*4)){ fprintf(stderr, "png write failed\n"); return 1; }
+            fprintf(stderr, "wrote %s (%dx%d px)\n", png_out, ow, oh);
+        } else {
+            fprintf(stderr, "usage: vt_gif --cols N --rows M "
+                    "(--png OUT | --gif OUT | --frames-dir DIR) "
+                    "[--timing F --fps N --width N --scale F --cell-h N --bit-depth N "
+                    "--system-fonts --system-emoji] [FILE]\n");
+        }
     }
-    free(fb);
-    (void)gif_out;
+    free(buf); free(fb); free(rb);
     return 0;
 }

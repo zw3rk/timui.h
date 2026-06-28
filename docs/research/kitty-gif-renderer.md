@@ -1,6 +1,12 @@
 # Research: headless terminal→GIF recorder that captures Kitty graphics
 
-*Status: investigation + plan (no code yet). Date: 2026-07-06.*
+*Status: **Path A IMPLEMENTED** (`tools/vt_gif.c`). Date: 2026-07-06.*
+
+> **Built.** `tools/vt_gif.c` renders a capture to pixels — font + SGR colour +
+> composited Kitty images — and emits a PNG (final frame) or an animated GIF.
+> `tools/pty_drive.c` gained a `--timing` sidecar for frame pacing. End-to-end:
+> **`make gif-chat-demo`** → `recordings/chat-demo.gif`, fully headless. See
+> **Usage** at the bottom. Path B stays the documented fidelity escape hatch.
 
 ## Problem
 
@@ -89,6 +95,50 @@ fidelity escape hatch** so switching later is a deliberate, informed choice.
 autoplay self-drives the chat while you screen-record the real Ghostty window
 (Kap / QuickTime) → `ffmpeg -i cap.mov -vf 'fps=15,scale=900:-1:flags=lanczos'
 chat.gif`. See `examples/chat.demo` for the script format.
+
+## Usage (implemented)
+
+```sh
+# One-shot: autoplay the chat demo -> animated GIF with the inline images.
+make gif-chat-demo                      # -> recordings/chat-demo.gif
+
+# Manual pipeline (any timui app):
+build/pty_drive --cols 90 --rows 22 --run-ms 30000 \
+  --out cap.raw --timing cap.timing -- ./build/chat --demo examples/chat.demo < /dev/null
+build/vt_gif --cols 90 --rows 22 --fps 12 --timing cap.timing --gif out.gif cap.raw
+
+# Single still frame (final state) — handy for debugging the rasterizer:
+build/vt_gif --cols 90 --rows 22 --png out.png cap.raw
+
+# CJK + colour emoji from the OS fonts (macOS), at a chosen size:
+build/vt_gif --cols 90 --rows 22 --cell-h 24 --system-fonts --system-emoji --gif out.gif cap.raw
+build/vt_gif --cols 90 --rows 22 --width 720 --frames-dir frames cap.raw   # PNG seq -> ffmpeg
+
+make check-vt-gif-all  # smoke · glyphs · CJK · emoji · output controls
+make gen-font-ttf      # regenerate tools/vendor/vt_font_ttf.h (fonttools, via nix)
+```
+
+Implementation notes / limits (see `vt-gif-v2-plan.md` for the v2 detail):
+- **Fonts (v2):** an ordered fallback chain — bundled **DejaVu Sans Mono** (subset
+  TTF `tools/vendor/vt_font_ttf.h`, `make gen-font-ttf`) rasterized with
+  **stb_truetype** → a CJK face → a colour-emoji face. `--system-fonts` chains the
+  OS CJK fonts (macOS Hiragino / AppleSDGothicNeo / Arial Unicode); `--system-emoji`
+  renders Apple Color Emoji from its `sbix` PNG strikes. Cell size is runtime
+  (`--cell-h`/`--scale`), and `render_frame` is two-pass (backgrounds then glyphs)
+  so a width-2 CJK/emoji glyph isn't clipped by the next cell's fill.
+  *Remaining follow-up:* bundled **Twemoji** + **Unifont** so CJK/emoji also render
+  reproducibly with no flags (and on Linux/CI).
+- **Output (v2):** `--width` (aspect-preserving downscale, stb_image_resize2),
+  `--bit-depth` (msf_gif quantization), `--frames-dir` (PNG sequence → `ffmpeg`
+  MP4/WebP, vt_gif stays ffmpeg-free).
+- **SGR:** reset/bold/dim/underline/reverse + 16 / 256 / truecolour fg+bg.
+- **Kitty:** `f=100` PNG transmit (chunked `m=1`), direct placement `a=p` with
+  source-crop `x/y/w/h`, and `a=d` delete-all. Skips raw `f=24/32`, zlib `o=z`,
+  Unicode-placeholder placements, and animation (we control the emitter).
+- **Timing:** `pty_drive --timing` logs `<ms> <byte-offset>` per chunk; `vt_gif`
+  replays incrementally, and `feed()` stops before a sequence split across a
+  chunk boundary (returns bytes consumed) so the parser never desyncs.
+- **Next:** golden-PNG hash test; bundled Twemoji/Unifont; Linux system fonts.
 
 ## Sources
 
