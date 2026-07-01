@@ -171,38 +171,77 @@ static int arjoin_type(unsigned int cp){   /* 0=not-joining 1=right-joining 2=du
 static int enc_utf8(unsigned int cp, char *out){
     if(cp < 0x80){ out[0] = (char)cp; return 1; }
     if(cp < 0x800){ out[0] = (char)(0xC0|(cp>>6)); out[1] = (char)(0x80|(cp&0x3F)); return 2; }
-    out[0] = (char)(0xE0|(cp>>12)); out[1] = (char)(0x80|((cp>>6)&0x3F)); out[2] = (char)(0x80|(cp&0x3F)); return 3;
+    if(cp < 0x10000){ out[0] = (char)(0xE0|(cp>>12)); out[1] = (char)(0x80|((cp>>6)&0x3F));
+                      out[2] = (char)(0x80|(cp&0x3F)); return 3; }
+    out[0] = (char)(0xF0|(cp>>18)); out[1] = (char)(0x80|((cp>>12)&0x3F));   /* astral (emoji) — was */
+    out[2] = (char)(0x80|((cp>>6)&0x3F)); out[3] = (char)(0x80|(cp&0x3F)); return 4;  /* corrupting these */
 }
-static void rtl_shape(const char *in, char *out, size_t cap){
+static int is_ltr_strong(unsigned int cp){        /* strong LTR: Latin letter or digit */
+    return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= '0' && cp <= '9');
+}
+/* Lay a message body out in visual order for positional cell rendering. A cheap
+ * 2-level bidi (NOT full UAX #9 — see docs; FriBidi is the correct engine): Arabic
+ * is shaped in logical order first, then
+ *   base_rtl: the whole body is level-1 (reverse it, so a trailing emoji / "!" lands
+ *             at the visual LEFT per UBA N1/N2), and embedded Latin/number runs are
+ *             level-2 (reversed back to reading order);
+ *   base_ltr: only RTL runs are reversed in place.
+ * Good enough for chat lines; embedded numbers-in-RTL / nesting want a real UBA. */
+static void bidi_visual(const char *in, char *out, size_t cap, int base_rtl){
     unsigned int cp[512], orig[512];
-    int n = 0, k, o = 0;
+    int n = 0, k, o = 0, a, b;
     size_t i = 0, len = strlen(in);
-    while(in[i] && n < 512){ uint32_t c; int a = timui_utf8_decode(in + i, len - i, &c); if(a <= 0) a = 1; cp[n++] = c; i += (size_t)a; }
+    while(in[i] && n < 512){ uint32_t c; int adv = timui_utf8_decode(in + i, len - i, &c); if(adv <= 0) adv = 1; cp[n++] = c; i += (size_t)adv; }
     memcpy(orig, cp, (size_t)n * sizeof cp[0]);
-    for(k = 0; k < n; k++){                          /* Arabic contextual shaping */
-        size_t j; const void *found = NULL; unsigned int iso = 0; int dual = 0, prevj, nextj;
+    for(k = 0; k < n; k++){                          /* Arabic contextual shaping (logical order) */
+        size_t j; int found = 0; unsigned int iso = 0; int dual = 0, prevj, nextj;
         for(j = 0; j < sizeof ARJOIN / sizeof ARJOIN[0]; j++)
-            if(ARJOIN[j].base == orig[k]){ found = &ARJOIN[j]; iso = ARJOIN[j].iso; dual = ARJOIN[j].dual; break; }
+            if(ARJOIN[j].base == orig[k]){ found = 1; iso = ARJOIN[j].iso; dual = ARJOIN[j].dual; break; }
         if(!found) continue;
-        prevj = k > 0 && arjoin_type(orig[k-1]) == 2;           /* prev joins forward */
+        prevj = k > 0 && arjoin_type(orig[k-1]) == 2;
         nextj = dual && k + 1 < n && arjoin_type(orig[k+1]) != 0;
         cp[k] = prevj && nextj ? iso + 3 : prevj ? iso + 1 : nextj ? iso + 2 : iso;
     }
-    for(k = 0; k < n;){                               /* reverse maximal RTL runs (incl. interior spaces) */
-        if(is_rtl_cp(cp[k])){
-            int e = k, a, b;
-            while(e < n && (is_rtl_cp(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_rtl_cp(cp[e+1])))) e++;
-            for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
-            k = e;
-        } else k++;
+    if(base_rtl){                                    /* reverse all (level 1) … */
+        for(a = 0, b = n - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
+        for(k = 0; k < n;){                          /* … un-reverse Latin/number runs (level 2) */
+            if(is_ltr_strong(cp[k])){
+                int e = k;
+                while(e < n && (is_ltr_strong(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_ltr_strong(cp[e+1])))) e++;
+                for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
+                k = e;
+            } else k++;
+        }
+    } else {                                         /* base LTR: reverse maximal RTL runs in place */
+        for(k = 0; k < n;){
+            if(is_rtl_cp(cp[k])){
+                int e = k;
+                while(e < n && (is_rtl_cp(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_rtl_cp(cp[e+1])))) e++;
+                for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
+                k = e;
+            } else k++;
+        }
     }
     for(k = 0; k < n && o < (int)cap - 4; k++) o += enc_utf8(cp[k], out + o);
     out[o] = '\0';
 }
+/* Base direction of a body: the first strong character (UAX #9 P2/P3). */
+static int first_strong_rtl(const char *s){
+    size_t i = 0, len = strlen(s);
+    while(s[i]){
+        uint32_t cp; int a = timui_utf8_decode(s + i, len - i, &cp); if(a <= 0) a = 1;
+        if(is_rtl_cp(cp)) return 1;
+        if((cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z')) return 0;
+        i += (size_t)a;
+    }
+    return 0;
+}
 
-static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
-                      uint32_t base_fg, uint32_t bg,
-                      uint32_t code_fg, uint32_t link_fg){
+/* Draw rich text left-to-right from x, stopping at maxx; returns the ending x.
+ * With measure=1 nothing is drawn — used to pre-measure width for RTL right-align. */
+static int draw_rich_ex(TimuiFrame *f, int x, int y, int maxx, const char *s,
+                        uint32_t base_fg, uint32_t bg,
+                        uint32_t code_fg, uint32_t link_fg, int measure){
     size_t i = 0, len = strlen(s);
     uint32_t attrs = 0;
     int code = 0;
@@ -222,11 +261,11 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
                     TimuiStr alt;
                     if(ul > sizeof uri - 1) ul = sizeof uri - 1;
                     memcpy(uri, s + u, ul); uri[ul] = '\0';
-                    timui_label(f, x, y, TIMUI_STR_LIT("\xF0\x9F\x93\xB7 "),   /* 📷 + space (emoji-width, unambiguous) */
+                    if(!measure) timui_label(f, x, y, TIMUI_STR_LIT("\xF0\x9F\x93\xB7 "),  /* 📷 + space */
                                 timui_style_make(code_fg, bg, 0));
                     x += 3;                                    /* emoji width 2 + space */
                     alt.ptr = s + a; alt.len = ae - a;
-                    timui_label_hyperlink(f, x, y, alt, uri,
+                    if(!measure) timui_label_hyperlink(f, x, y, alt, uri,
                                           timui_style_make(link_fg, bg, TIMUI_ATTR_UNDERLINE));
                     for(k = a; k < ae;){                       /* advance x by alt's width */
                         uint32_t cp; int adv = timui_utf8_decode(s + k, ae - k, &cp);
@@ -246,7 +285,7 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
             ul = j - i; if(ul > sizeof uri - 1) ul = sizeof uri - 1;
             memcpy(uri, s + i, ul); uri[ul] = '\0';
             span.ptr = s + i; span.len = j - i;
-            timui_label_hyperlink(f, x, y, span, uri,
+            if(!measure) timui_label_hyperlink(f, x, y, span, uri,
                                   timui_style_make(link_fg, bg, TIMUI_ATTR_UNDERLINE));
             x += (int)(j - i);                                 /* URLs are ASCII: width == len */
             i = j;
@@ -257,7 +296,7 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
         if(s[i] == '`'){ code = !code;               i++; continue; }
         { size_t cl; const char *em = shortcode_at(s + i, &cl);   /* :name: -> emoji */
           if(em){
-              if(x < maxx) timui_label(f, x, y, timui_str_from_cstr(em),
+              if(!measure && x < maxx) timui_label(f, x, y, timui_str_from_cstr(em),
                                        timui_style_make(base_fg, bg, attrs));
               x += 2; i += cl; continue;
           } }
@@ -269,13 +308,19 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
             if(adv <= 0) adv = 1;
             glyph_w = timui_utf8_width(cp);
             ch.ptr = s + i; ch.len = (size_t)adv;
-            timui_label(f, x, y, ch,
+            if(!measure) timui_label(f, x, y, ch,
                         timui_style_make(code ? code_fg : base_fg, bg,
                                          attrs | (code ? TIMUI_ATTR_DIM : 0u)));
             x += glyph_w > 0 ? glyph_w : 0;
             i += (size_t)adv;
         }
     }
+    return x;
+}
+/* Convenience wrapper: draw (non-measuring) rich text. */
+static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
+                      uint32_t base_fg, uint32_t bg, uint32_t code_fg, uint32_t link_fg){
+    draw_rich_ex(f, x, y, maxx, s, base_fg, bg, code_fg, link_fg, 0);
 }
 
 /* ---- Inline images ----------------------------------------------------- *
@@ -541,11 +586,29 @@ static void draw_message(TimuiFrame *f, const char *ts, const char *s, TimuiRect
     /* Caption row (timestamp + rich text) — only when it lands in the pane, so a
      * partly-scrolled message doesn't draw into the header/composer. */
     if(y >= by0 && y <= by1){
-        char shaped[MSG_MAX];
-        rtl_shape(s, shaped, sizeof shaped);          /* lay out Hebrew/Arabic RTL */
+        char vis[MSG_MAX];
+        int lx = body.x + 1 + TS_COLS, maxx = body.x + body.w;
+        const char *colon = strstr(s, ": ");          /* split "sender: body" */
+        const char *btext = colon ? colon + 2 : s;
+        int senderw = colon ? (int)(colon + 2 - s) : 0;   /* ASCII sender width */
         timui_label(f, body.x + 1, y, timui_str_from_cstr(ts),
                     timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM));
-        draw_rich(f, body.x + 1 + TS_COLS, y, body.x + body.w, shaped, fg, panel.bg, code_fg, link_fg);
+        if(colon && first_strong_rtl(btext)){
+            /* Sender label stays LTR chrome on the left; only the body flips — a
+             * base-RTL paragraph laid out flush-right (see docs/research). */
+            char sender[80];
+            int sl = senderw < (int)sizeof sender ? senderw : (int)sizeof sender - 1;
+            memcpy(sender, s, (size_t)sl); sender[sl] = '\0';
+            draw_rich(f, lx, y, maxx, sender, fg, panel.bg, code_fg, link_fg);
+            bidi_visual(btext, vis, sizeof vis, 1);
+            { int w  = draw_rich_ex(f, 0, y, 1 << 20, vis, fg, panel.bg, code_fg, link_fg, 1);
+              int bx = maxx - w, minx = lx + senderw;
+              if(bx < minx) bx = minx;
+              draw_rich(f, bx, y, maxx, vis, fg, panel.bg, code_fg, link_fg); }
+        } else {
+            bidi_visual(s, vis, sizeof vis, 0);        /* LTR line; RTL words flipped in place */
+            draw_rich(f, lx, y, maxx, vis, fg, panel.bg, code_fg, link_fg);
+        }
     }
     /* Inline image (rows y+1 .. y+h-1), CLIPPED to the pane so it slides off
      * smoothly instead of hiding oddly. */
@@ -861,7 +924,10 @@ int main(int argc, char **argv){
                     case D_WAIT:  demo_at = now + st->arg; demo_i++; break;
                     case D_MSG: {
                         const char *b, *e;
-                        log_append(&transcript, st->text); scroll = 0;
+                        /* Others' message: do NOT snap to bottom — if the reader is
+                         * scrolled up, the anchor block below keeps the view put and
+                         * grows the "↓ N below" counter (only your own sends snap). */
+                        log_append(&transcript, st->text);
                         /* if the message carries a local ![alt](path), remember it so a
                          * following `open` can show it fullscreen (e.g. the design post). */
                         if((b = strstr(st->text, "](")) && (e = strchr(b + 2, ')'))){
@@ -873,7 +939,7 @@ int main(int argc, char **argv){
                                 snprintf(demo_img_alt, sizeof demo_img_alt, "%s", base ? base + 1 : demo_img_path);
                             }
                         }
-                        demo_at = now + 650; demo_i++;
+                        demo_at = now + 220; demo_i++;   /* others' messages arrive briskly */
                     } break;
                     case D_SAY: {
                         int len = (int)strlen(st->text);
@@ -1003,9 +1069,14 @@ int main(int argc, char **argv){
             timui_draw_hline(buf, rule.x, rule.y, rule.w, timui_style_make(sys_fg, panel.bg, 0));
             if(scroll > 0){
                 char jb[80];
-                int jx;
+                int jx, mb = 0, start = 0, j;   /* count MESSAGES below the fold, not lines */
+                int first = transcript.count > LOG_CAP ? transcript.count - LOG_CAP : 0;
+                for(j = transcript.count - 1; j >= first && start < scroll; j--){
+                    mb++;                        /* this message has ≥1 row hidden below */
+                    start += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
+                }
                 snprintf(jb, sizeof jb,
-                         "  \xE2\x86\x93 %d below \xE2\x80\x94 Ctrl+End / Enter for latest \xE2\x86\x93  ", scroll);
+                         "  \xE2\x86\x93 %d new below \xE2\x80\x94 Ctrl+End / Enter for latest \xE2\x86\x93  ", mb);
                 jx = rule.x + (rule.w - disp_w(jb)) / 2;
                 if(jx < rule.x) jx = rule.x;
                 timui_label(f, jx, rule.y, timui_str_from_cstr(jb),

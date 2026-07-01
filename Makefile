@@ -133,7 +133,7 @@ gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated
 # rasterize each frame to pixels and encode the GIF.
 gif-chat-demo: $(BLDDIR)/chat $(BLDDIR)/pty_drive $(BLDDIR)/vt_gif ## Headless: chat demo -> recordings/chat-demo.gif
 	@mkdir -p $(RECDIR)
-	@TERM=xterm-kitty ./$(BLDDIR)/pty_drive --cols 90 --rows 22 --settle-ms 1500 --run-ms 78000 \
+	@TERM=xterm-kitty ./$(BLDDIR)/pty_drive --cols 90 --rows 22 --settle-ms 1500 --run-ms 86000 \
 	  --out $(RECDIR)/chat-demo.raw --timing $(RECDIR)/chat-demo.timing \
 	  -- ./$(BLDDIR)/chat --demo examples/chat.demo < /dev/null
 	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
@@ -141,19 +141,19 @@ gif-chat-demo: $(BLDDIR)/chat $(BLDDIR)/pty_drive $(BLDDIR)/vt_gif ## Headless: 
 	  --timing $(RECDIR)/chat-demo.timing --gif $(RECDIR)/chat-demo.gif $(RECDIR)/chat-demo.raw
 	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.gif\n"
 
-# Same demo, but as an animated WebP (and MP4) — smaller + truecolour vs GIF.
-# vt_gif --frames-dir dumps a PNG sequence; ffmpeg muxes it. Needs the raw from
-# `make gif-chat-demo` first (reuses the capture).
-webp-chat-demo: $(BLDDIR)/vt_gif $(RECDIR)/chat-demo.raw ## chat demo -> recordings/chat-demo.{webp,mp4}
+# Same demo as smaller MP4 + animated WebP (both far smaller than the GIF).
+# MP4 via ffmpeg over vt_gif's --frames-dir PNG sequence (truecolour, tiny with
+# H.264); WebP via gif2webp, which does inter-frame delta (ffmpeg's libwebp muxer
+# does NOT, and balloons to ~15 MB). Runs gif-chat-demo first to get the capture.
+webp-chat-demo: gif-chat-demo ## chat demo -> recordings/chat-demo.{webp,mp4} (smaller than GIF)
 	@rm -rf $(RECDIR)/frames && mkdir -p $(RECDIR)/frames
 	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
 	  --outro 'https://timui.dev 👀' --timing $(RECDIR)/chat-demo.timing \
 	  --frames-dir $(RECDIR)/frames $(RECDIR)/chat-demo.raw
 	@nix run nixpkgs#ffmpeg -- -y -framerate 12 -i $(RECDIR)/frames/frame_%05d.png \
-	  -c:v libwebp -lossless 0 -q:v 72 -loop 0 -preset picture $(RECDIR)/chat-demo.webp 2>/dev/null
-	@nix run nixpkgs#ffmpeg -- -y -framerate 12 -i $(RECDIR)/frames/frame_%05d.png \
 	  -c:v libx264 -pix_fmt yuv420p -movflags +faststart $(RECDIR)/chat-demo.mp4 2>/dev/null
-	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.webp + .mp4\n"
+	@nix shell nixpkgs#libwebp -c gif2webp -q 65 -m 4 $(RECDIR)/chat-demo.gif -o $(RECDIR)/chat-demo.webp 2>/dev/null
+	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.{mp4,webp}\n"
 
 # Smoke-test the pixel renderer: a synthetic capture (text + an SGR colour +
 # a malformed APC that must not crash the decoder) renders to a PNG of the
