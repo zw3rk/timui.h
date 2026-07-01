@@ -615,7 +615,7 @@ static unsigned char *frame_emit(unsigned char *fb, int pw, int ph, unsigned cha
 
 /* ---- main --------------------------------------------------------------- */
 int main(int argc, char **argv){
-    const char *path = NULL, *png_out = NULL, *gif_out = NULL, *timing_path = NULL, *frames_dir = NULL;
+    const char *path = NULL, *png_out = NULL, *gif_out = NULL, *timing_path = NULL, *frames_dir = NULL, *outro = NULL;
     int i, x, y, pw, ph, fps = 15, out_width = 0, bit_depth = 16, ow, oh;
     unsigned char *buf, *fb, *rb = NULL; long cap = 1<<16, len = 0; FILE *fp;
     for(i = 1; i < argc; i++){
@@ -633,6 +633,7 @@ int main(int argc, char **argv){
         else if(!strcmp(argv[i], "--width") && i+1 < argc) out_width = atoi(argv[++i]);
         else if(!strcmp(argv[i], "--bit-depth") && i+1 < argc) bit_depth = atoi(argv[++i]);
         else if(!strcmp(argv[i], "--frames-dir") && i+1 < argc) frames_dir = argv[++i];
+        else if(!strcmp(argv[i], "--outro") && i+1 < argc) outro = argv[++i];
         else path = argv[i];
     }
     if(fps < 1) fps = 15;
@@ -714,6 +715,34 @@ int main(int argc, char **argv){
         o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);
         if(gif_out) msf_gif_frame(&gs, o, 100, bit_depth, ow*4);
         nframes++;
+        if(outro){                                  /* slow crossfade to a centred splash */
+            unsigned char *content = (unsigned char *)malloc((size_t)pw*ph*4);
+            unsigned char *cf = (unsigned char *)malloc((size_t)pw*ph*4);
+            int N = 26, fr, tw = 0, tx, ty, col; long pp, tot = (long)pw*ph*4;
+            size_t oi = 0, olen = strlen(outro);
+            memcpy(content, fb, (size_t)tot);
+            pl_n = 0;                               /* drop image placements so no logo bleeds into the splash */
+            for(y = 0; y < H; y++) for(x = 0; x < W; x++){ g[y][x].cp=' '; g[y][x].fg=0xE6E6E6; g[y][x].bg=0x000000; g[y][x].attr=0; }
+            while(oi < olen){ unsigned int cp; int a = utf8((const unsigned char*)outro+oi, (int)(olen-oi), &cp);
+                              tw += cp_width(cp); oi += a>0?a:1; }
+            tx = (W - tw)/2; if(tx < 0) tx = 0; ty = H/2; col = tx; oi = 0;
+            while(oi < olen){ unsigned int cp; int a = utf8((const unsigned char*)outro+oi, (int)(olen-oi), &cp);
+                              int w = cp_width(cp);
+                              if(w > 0 && ty >= 0 && ty < H && col >= 0 && col < W) g[ty][col].cp = cp;
+                              col += w; oi += a>0?a:1; }
+            render_frame(fb, pw, ph);               /* fb = splash */
+            for(fr = 1; fr <= N; fr++){
+                int aa = fr*255/N;
+                for(pp = 0; pp < tot; pp++) cf[pp] = (unsigned char)((content[pp]*(255-aa) + fb[pp]*aa)/255);
+                o = frame_emit(cf, pw, ph, rb, ow, oh, frames_dir, &frame_no);
+                if(gif_out) msf_gif_frame(&gs, o, cs, bit_depth, ow*4);
+                nframes++;
+            }
+            o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);   /* hold the splash */
+            if(gif_out) msf_gif_frame(&gs, o, 180, bit_depth, ow*4);
+            nframes++;
+            free(content); free(cf);
+        }
         if(gif_out){
             res = msf_gif_end(&gs);
             if(res.data){ FILE *of = fopen(gif_out, "wb");

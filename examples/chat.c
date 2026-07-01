@@ -28,8 +28,9 @@
 #include <string.h>    /* strlen / strncmp / memcpy */
 #include <stdio.h>     /* snprintf / fopen / fread */
 #include <stdlib.h>    /* malloc / free */
-#include <unistd.h>    /* fork / execlp / _exit — open a clicked link */
+#include <unistd.h>    /* fork / execvp / _exit — open links, fetch remote images */
 #include <sys/wait.h>  /* waitpid */
+#include <fcntl.h>     /* open (/dev/null for the fetch children) */
 
 /* An inline image message reserves IMG_ROWS rows (a caption line + the picture,
  * IMG_COLS wide). Kitty-graphics terminals draw the real PNG; others show the
@@ -112,6 +113,33 @@ static void *chat_worker(void *arg){
  * `code`, and http(s):// links (drawn as OSC 8 hyperlinks). Markers toggle
  * their attribute (an unmatched marker simply runs to end of line). Draws one
  * glyph at a time so wide chars (CJK, emoji) advance by two cells. */
+/* Emoji shortcodes (:name:) — expanded at render time so `:eyes:` shows as 👀.
+ * Every emoji here is in the bundled Twemoji atlas so it renders in a recording
+ * without --system-emoji too. */
+static const struct { const char *code; const char *emoji; } SHORTCODES[] = {
+    {":eyes:", "\xF0\x9F\x91\x80"},        {":wave:", "\xF0\x9F\x91\x8B"},
+    {":thumbsup:", "\xF0\x9F\x91\x8D"},    {":thumbs-up:", "\xF0\x9F\x91\x8D"},
+    {":+1:", "\xF0\x9F\x91\x8D"},          {":tada:", "\xF0\x9F\x8E\x89"},
+    {":fire:", "\xF0\x9F\x94\xA5"},        {":rocket:", "\xF0\x9F\x9A\x80"},
+    {":heart:", "\xE2\x9D\xA4"},           {":sparkles:", "\xE2\x9C\xA8"},
+    {":bulb:", "\xF0\x9F\x92\xA1"},        {":clap:", "\xF0\x9F\x91\x8F"},
+    {":brain:", "\xF0\x9F\xA7\xA0"},       {":zap:", "\xE2\x9A\xA1"},
+    {":star:", "\xE2\xAD\x90"},            {":joy:", "\xF0\x9F\xA4\xA3"},
+    {":raised_hands:", "\xF0\x9F\x99\x8C"},{":bow:", "\xF0\x9F\x99\x87"},
+    {":party:", "\xF0\x9F\xA5\xB3"},       {":bug:", "\xF0\x9F\x90\x9B"},
+    {":globe:", "\xF0\x9F\x8C\x8D"},       {":boom:", "\xF0\x9F\x92\xA5"},
+};
+/* If a :shortcode: starts at s, return its emoji + set *clen to the code length. */
+static const char *shortcode_at(const char *s, size_t *clen){
+    size_t k;
+    if(s[0] != ':') return NULL;
+    for(k = 0; k < sizeof SHORTCODES / sizeof SHORTCODES[0]; k++){
+        size_t cl = strlen(SHORTCODES[k].code);
+        if(strncmp(s, SHORTCODES[k].code, cl) == 0){ *clen = cl; return SHORTCODES[k].emoji; }
+    }
+    return NULL;
+}
+
 static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
                       uint32_t base_fg, uint32_t bg,
                       uint32_t code_fg, uint32_t link_fg){
@@ -167,6 +195,12 @@ static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
         if(s[i] == '*'){ attrs ^= TIMUI_ATTR_BOLD;   i++; continue; }
         if(s[i] == '_'){ attrs ^= TIMUI_ATTR_ITALIC; i++; continue; }
         if(s[i] == '`'){ code = !code;               i++; continue; }
+        { size_t cl; const char *em = shortcode_at(s + i, &cl);   /* :name: -> emoji */
+          if(em){
+              if(x < maxx) timui_label(f, x, y, timui_str_from_cstr(em),
+                                       timui_style_make(base_fg, bg, attrs));
+              x += 2; i += cl; continue;
+          } }
         {
             uint32_t cp;
             int adv = timui_utf8_decode(s + i, len - i, &cp);
@@ -236,20 +270,196 @@ static int is_png_path(const char *s){
 }
 
 /* Extract the LOCAL (non-http) path from the first ![alt](path) in `s`. */
+/* ---- remote image fetch (http/https/ipfs) ------------------------------- *
+ * A small async cache: the first time a remote image URL is seen we spawn a
+ * detached thread that curls it to a temp PNG (converting via sips if needed);
+ * once done the message renders it inline like a local image. ipfs:// resolves
+ * through the ipfs.io gateway. Kept tiny + demo-grade (bounded cache, no retry). */
+typedef struct { char url[512]; char path[256]; int state; } Fetch;   /* 0=pending 1=done 2=failed */
+static Fetch g_fetch[16];
+static int g_fetch_n;
+static pthread_mutex_t g_fetch_lock = PTHREAD_MUTEX_INITIALIZER;
+
+typedef struct { char url[512]; char raw[256]; char png[256]; int idx; } FetchJob;
+/* exec a command with stdout+stderr silenced (they share the app's pty, so any
+ * child chatter — sips echoes the output path — would corrupt the display). */
+static void run_quiet(char *const argv[]){
+    int devnull = open("/dev/null", O_WRONLY);
+    if(devnull >= 0){ dup2(devnull, 1); dup2(devnull, 2); close(devnull); }
+    execvp(argv[0], argv);
+    _exit(127);
+}
+static void *fetch_thread(void *arg){
+    FetchJob *j = (FetchJob *)arg;
+    int ok = 0, st;
+    pid_t pid = fork();
+    if(pid == 0){   /* curl -sL to the raw temp file (no shell → no injection) */
+        char *av[] = { "curl", "-sL", "--max-time", "20", "--max-filesize", "8000000", "-o", j->raw, j->url, NULL };
+        run_quiet(av);
+    }
+    if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+        /* normalize to PNG (Kitty f=100 needs it); sips is macOS-native. */
+        pid = fork();
+        if(pid == 0){ char *av[] = { "sips", "-s", "format", "png", j->raw, "--out", j->png, NULL }; run_quiet(av); }
+        if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+            FILE *fp = fopen(j->png, "rb"); if(fp){ ok = 1; fclose(fp); }
+        }
+    }
+    pthread_mutex_lock(&g_fetch_lock);
+    g_fetch[j->idx].state = ok ? 1 : 2;
+    pthread_mutex_unlock(&g_fetch_lock);
+    free(j);
+    return NULL;
+}
+/* Resolve a remote URL to a local PNG path: 1 + path if fetched, else 0 (enqueues). */
+static int resolve_remote(const char *url, char *out, size_t cap){
+    int i, done = 0;
+    pthread_mutex_lock(&g_fetch_lock);
+    for(i = 0; i < g_fetch_n; i++) if(strcmp(g_fetch[i].url, url) == 0){
+        if(g_fetch[i].state == 1){ snprintf(out, cap, "%s", g_fetch[i].path); done = 1; }
+        pthread_mutex_unlock(&g_fetch_lock);
+        return done;
+    }
+    if(g_fetch_n < (int)(sizeof g_fetch / sizeof g_fetch[0])){
+        FetchJob *j = (FetchJob *)malloc(sizeof *j);
+        i = g_fetch_n++;
+        snprintf(g_fetch[i].url, sizeof g_fetch[i].url, "%s", url);
+        snprintf(g_fetch[i].path, sizeof g_fetch[i].path, "/tmp/timui-fetch-%d.png", i);
+        g_fetch[i].state = 0;
+        if(j){
+            pthread_t t;
+            snprintf(j->raw, sizeof j->raw, "/tmp/timui-fetch-%d.raw", i);
+            snprintf(j->png, sizeof j->png, "%s", g_fetch[i].path);
+            j->idx = i;
+            if(strncmp(url, "ipfs://", 7) == 0) snprintf(j->url, sizeof j->url, "https://ipfs.io/ipfs/%s", url + 7);
+            else snprintf(j->url, sizeof j->url, "%s", url);
+            if(pthread_create(&t, NULL, fetch_thread, j) == 0) pthread_detach(t); else { free(j); g_fetch[i].state = 2; }
+        }
+    }
+    pthread_mutex_unlock(&g_fetch_lock);
+    return 0;
+}
+/* ---- link preview cards (OpenGraph) ------------------------------------- *
+ * Post a plain URL and we fetch the page, scrape <meta og:image>/<og:title>,
+ * fetch that image, and render it as a preview — like the cards on chat apps. */
+typedef struct { char url[512]; char img[256]; char title[160]; int state; } Card;
+static Card g_card[8];
+static int g_card_n;
+static pthread_mutex_t g_card_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Pull the content="" of the <meta> tag carrying `prop` from an HTML buffer. */
+static void find_meta(const char *html, const char *prop, char *out, size_t cap){
+    const char *p = html;
+    out[0] = '\0';
+    while((p = strstr(p, prop)) != NULL){
+        const char *lt = p, *gt = strchr(p, '>'), *c;
+        while(lt > html && *lt != '<') lt--;
+        if(gt && (c = strstr(lt, "content=")) != NULL && c < gt){
+            const char *q = strchr(c, '"'), *q2;
+            if(q && q < gt && (q2 = strchr(q + 1, '"')) != NULL){
+                size_t n = (size_t)(q2 - (q + 1));
+                if(n && n < cap){ memcpy(out, q + 1, n); out[n] = '\0'; return; }
+            }
+        }
+        p += strlen(prop);
+    }
+}
+typedef struct { char url[512]; char html[256]; char img[256]; char title[160]; int idx; } CardJob;
+static void *card_thread(void *arg){
+    CardJob *j = (CardJob *)arg;
+    int st, ok = 0; pid_t pid; char imgurl[512] = {0};
+    pid = fork();
+    if(pid == 0){ char *av[] = { "curl", "-sL", "--max-time", "20", "-o", j->html, j->url, NULL }; run_quiet(av); }
+    if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+        FILE *fp = fopen(j->html, "rb");
+        if(fp){                                     /* scrape og:image + og:title from the head */
+            char *html = (char *)malloc(262144); size_t got = html ? fread(html, 1, 262143, fp) : 0;
+            fclose(fp);
+            if(html){ html[got] = '\0';
+                find_meta(html, "og:image", imgurl, sizeof imgurl);
+                find_meta(html, "og:title", j->title, sizeof j->title);
+                free(html);
+            }
+        }
+        if(imgurl[0] && (strncmp(imgurl, "http", 4) == 0)){   /* fetch + normalize the preview image */
+            char raw[256]; snprintf(raw, sizeof raw, "%s.raw", j->img);
+            pid = fork();
+            if(pid == 0){ char *av[] = { "curl","-sL","--max-time","20","--max-filesize","8000000","-o",raw,imgurl,NULL }; run_quiet(av); }
+            if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+                pid = fork();
+                if(pid == 0){ char *av[] = { "sips","-s","format","png",raw,"--out",j->img,NULL }; run_quiet(av); }
+                if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+                    FILE *pf = fopen(j->img, "rb"); if(pf){ ok = 1; fclose(pf); }
+                }
+            }
+        }
+    }
+    pthread_mutex_lock(&g_card_lock);
+    snprintf(g_card[j->idx].title, sizeof g_card[0].title, "%s", j->title);
+    g_card[j->idx].state = ok ? 1 : 2;
+    pthread_mutex_unlock(&g_card_lock);
+    free(j);
+    return NULL;
+}
+/* Resolve a page URL to its preview {og:image path, og:title}: 1 if ready. */
+static int resolve_card(const char *url, char *img_out, size_t icap, char *title_out, size_t tcap){
+    int i, done = 0;
+    pthread_mutex_lock(&g_card_lock);
+    for(i = 0; i < g_card_n; i++) if(strcmp(g_card[i].url, url) == 0){
+        if(g_card[i].state == 1){ snprintf(img_out, icap, "%s", g_card[i].img);
+                                  snprintf(title_out, tcap, "%s", g_card[i].title); done = 1; }
+        pthread_mutex_unlock(&g_card_lock);
+        return done;
+    }
+    if(g_card_n < (int)(sizeof g_card / sizeof g_card[0])){
+        CardJob *j = (CardJob *)malloc(sizeof *j);
+        i = g_card_n++;
+        snprintf(g_card[i].url, sizeof g_card[i].url, "%s", url);
+        snprintf(g_card[i].img, sizeof g_card[i].img, "/tmp/timui-card-%d.png", i);
+        g_card[i].title[0] = '\0'; g_card[i].state = 0;
+        if(j){ pthread_t t;
+            snprintf(j->url, sizeof j->url, "%s", url);
+            snprintf(j->html, sizeof j->html, "/tmp/timui-card-%d.html", i);
+            snprintf(j->img, sizeof j->img, "%s", g_card[i].img);
+            j->title[0] = '\0'; j->idx = i;
+            if(pthread_create(&t, NULL, card_thread, j) == 0) pthread_detach(t); else { free(j); g_card[i].state = 2; }
+        }
+    }
+    pthread_mutex_unlock(&g_card_lock);
+    return 0;
+}
+/* First plain http(s) URL in a message (not an ![](...) image), else NULL-out. */
+static int msg_link(const char *s, char *out, size_t cap){
+    const char *u = s;
+    while((u = strstr(u, "http")) != NULL){
+        if((strncmp(u, "http://", 7) == 0 || strncmp(u, "https://", 8) == 0) &&
+           !(u >= s + 2 && u[-1] == '(' && u[-2] == ']')){   /* skip ![alt](http…) */
+            size_t n = 0;
+            while(u[n] && u[n] != ' ' && u[n] != '\t' && u[n] != ')' && n < cap - 1){ out[n] = u[n]; n++; }
+            out[n] = '\0';
+            return n > 0;
+        }
+        u += 4;
+    }
+    return 0;
+}
 static int msg_image_path(const char *s, char *out, size_t cap){
     const char *p = strstr(s, "![");
     const char *e;
     size_t n;
-    if(!p) return 0;
-    p = strchr(p, '(');
-    if(!p) return 0;
-    p++;
-    if(strncmp(p, "http://", 7) == 0 || strncmp(p, "https://", 8) == 0) return 0;   /* remote: badge only */
-    e = strchr(p, ')');
-    if(!e) return 0;
-    n = (size_t)(e - p); if(n >= cap) n = cap - 1;
-    memcpy(out, p, n); out[n] = '\0';
-    return n > 0;
+    char url[512];
+    if(p && (p = strchr(p, '(')) != NULL && (e = strchr(++p, ')')) != NULL){
+        n = (size_t)(e - p); if(n >= sizeof url) n = sizeof url - 1;
+        memcpy(url, p, n); url[n] = '\0';
+        if(strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0 || strncmp(url, "ipfs://", 7) == 0)
+            return resolve_remote(url, out, cap);   /* fetched temp PNG, or 0 while loading */
+        snprintf(out, cap, "%s", url);              /* local path */
+        return url[0] != '\0';
+    }
+    { char link[512], title[160];                   /* no image: a plain URL -> preview card */
+      if(msg_link(s, link, sizeof link)) return resolve_card(link, out, cap, title, sizeof title);
+    }
+    return 0;
 }
 /* Row count for a message: IMG_ROWS only when the terminal can actually draw an
  * inline image (Kitty graphics) AND the local PNG loads. Otherwise 1 row — the
@@ -426,6 +636,37 @@ static int demo_load(const char *path, DemoStep *out, int max){
     return n;
 }
 
+/* Overlay markdown styling on the composer as you type: bold/italic/code on the
+ * marked spans, KEEPING the markers (dim) so the display width — and thus the
+ * input field's cursor — stay exact. Redraws over the field's plain text. */
+static void draw_compose_styled(TimuiFrame *f, TimuiRect r, const char *s, int scroll_x,
+                                uint32_t fg, uint32_t bg, uint32_t code_fg, uint32_t dim_fg){
+    size_t i = 0, len = strlen(s);
+    uint32_t attrs = 0;
+    int code = 0, col = 0;
+    while(s[i]){
+        int x = r.x + col - scroll_x;
+        if(s[i] == '*' || s[i] == '_' || s[i] == '`'){          /* marker: keep it, dim */
+            if(x >= r.x && x < r.x + r.w){
+                char m[2]; m[0] = s[i]; m[1] = '\0';
+                timui_label(f, x, r.y, timui_str_from_cstr(m), timui_style_make(dim_fg, bg, 0));
+            }
+            if(s[i] == '*') attrs ^= TIMUI_ATTR_BOLD;
+            else if(s[i] == '_') attrs ^= TIMUI_ATTR_ITALIC;
+            else code = !code;
+            col++; i++; continue;
+        }
+        { uint32_t cp; int adv = timui_utf8_decode(s + i, len - i, &cp);
+          int w = timui_utf8_width(cp);
+          if(adv <= 0) adv = 1;
+          if(x >= r.x && x < r.x + r.w){
+              TimuiStr ch; ch.ptr = s + i; ch.len = (size_t)adv;
+              timui_label(f, x, r.y, ch, timui_style_make(code ? code_fg : fg, bg, attrs));
+          }
+          col += w; i += (size_t)adv; }
+    }
+}
+
 /* Fullscreen image viewer: a dark backdrop, the image aspect-fit into most of the
  * screen (a cell is ~2× taller than wide), and the alt text centered below. */
 static void draw_fullscreen(TimuiFrame *f, TimuiRect root, TimuiImage *img, const char *alt){
@@ -547,14 +788,6 @@ int main(int argc, char **argv){
             }
             sz = sizeof recv_buf - 1;
         }
-        /* Keep the view anchored while scrolled up: the new messages' line-heights
-         * push the offset so the same history stays put. */
-        if(scroll > 0){
-            int j, nl = 0;
-            for(j = count_before; j < transcript.count; j++)
-                nl += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
-            scroll += nl;
-        }
 
         /* Demo autoplay: advance the script on its timeline, driving the same
          * state a user would (transcript, composer, scroll, fullscreen). */
@@ -564,7 +797,22 @@ int main(int argc, char **argv){
                 DemoStep *st = &demo_steps[demo_i];
                 switch(st->kind){
                     case D_WAIT:  demo_at = now + st->arg; demo_i++; break;
-                    case D_MSG:   log_append(&transcript, st->text); scroll = 0; demo_at = now + 650; demo_i++; break;
+                    case D_MSG: {
+                        const char *b, *e;
+                        log_append(&transcript, st->text); scroll = 0;
+                        /* if the message carries a local ![alt](path), remember it so a
+                         * following `open` can show it fullscreen (e.g. the design post). */
+                        if((b = strstr(st->text, "](")) && (e = strchr(b + 2, ')'))){
+                            size_t n = (size_t)(e - (b + 2));
+                            if(n && n < sizeof demo_img_path){
+                                const char *base;
+                                memcpy(demo_img_path, b + 2, n); demo_img_path[n] = '\0';
+                                base = strrchr(demo_img_path, '/');
+                                snprintf(demo_img_alt, sizeof demo_img_alt, "%s", base ? base + 1 : demo_img_path);
+                            }
+                        }
+                        demo_at = now + 650; demo_i++;
+                    } break;
                     case D_SAY: {
                         int len = (int)strlen(st->text);
                         if(demo_typed < len){                 /* reveal one char (animated typing) */
@@ -602,6 +850,16 @@ int main(int argc, char **argv){
                     case D_QUIT:  timui_quit(ui); demo_i++; break;
                 }
             }
+        }
+
+        /* Keep the view anchored while scrolled up: any messages added this frame
+         * (worker recv OR demo posts) push the offset so the same history stays
+         * put — and the "↓ N below" counter climbs. */
+        if(scroll > 0){
+            int j, nl = 0;
+            for(j = count_before; j < transcript.count; j++)
+                nl += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
+            scroll += nl;
         }
 
         /* F10 quits from anywhere. The fullscreen image viewer is modal: while it
@@ -741,6 +999,9 @@ int main(int argc, char **argv){
             compose_state.scroll_x = 0;
             scroll = 0;
         }
+        /* Live markdown styling over what you're typing (bold/italic/code). */
+        draw_compose_styled(f, input, compose, compose_state.scroll_x,
+                            text_fg, panel.bg, code_fg, sys_fg);
 
         /* Dim hint line — deliberately NOT the green status bar, so the composer
          * above no longer reads as the same surface as the row below it. */

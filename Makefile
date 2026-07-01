@@ -128,19 +128,16 @@ gen-emoji: ## Regenerate tools/vendor/emoji_atlas.h (curated Twemoji PNGs)
 gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated)
 	@nix-shell -p python3 unifont --run 'python3 tools/gen_cjk.py'
 
-# Regenerate the timui.h brand logo (t_ terminal, green cursor) — needs pillow.
-gen-logo: ## Regenerate examples/assets/logo.png
-	@nix-shell -p 'python3.withPackages(ps: [ps.pillow])' dejavu_fonts --run 'python3 tools/gen_logo.py'
-
 # Render the chat autoplay demo to an animated GIF *including* the Kitty images —
 # fully headless (no screen recorder needed): drive with a timing sidecar, then
 # rasterize each frame to pixels and encode the GIF.
 gif-chat-demo: $(BLDDIR)/chat $(BLDDIR)/pty_drive $(BLDDIR)/vt_gif ## Headless: chat demo -> recordings/chat-demo.gif
 	@mkdir -p $(RECDIR)
-	@TERM=xterm-kitty ./$(BLDDIR)/pty_drive --cols 90 --rows 22 --settle-ms 1500 --run-ms 30000 \
+	@TERM=xterm-kitty ./$(BLDDIR)/pty_drive --cols 90 --rows 22 --settle-ms 1500 --run-ms 46000 \
 	  --out $(RECDIR)/chat-demo.raw --timing $(RECDIR)/chat-demo.timing \
 	  -- ./$(BLDDIR)/chat --demo examples/chat.demo < /dev/null
 	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
+	  --outro 'https://timui.dev 👀' \
 	  --timing $(RECDIR)/chat-demo.timing --gif $(RECDIR)/chat-demo.gif $(RECDIR)/chat-demo.raw
 	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.gif\n"
 

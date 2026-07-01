@@ -8,26 +8,61 @@ wait 700
 msg alice: hey! did the new chat land? 👋
 wait 800
 msg bob: yep — inline images, markdown, scrollback. try `make run-chat`
-wait 500
-msg yuki: こんにちは 🌏 — 中文 also works, 한국어 too! 🎉
-wait 400
-say Nice! Let me try a few things.
-wait 500
-say Markdown works: *bold*, _italic_ and `code`.
+wait 600
+msg yuki: こんにちは 🌏 日本語も完璧です！
 wait 700
-say And a real inline image:
-img examples/assets/logo.png
-wait 1500
+msg jihoon: 안녕하세요! 한국어도 아주 잘 됩니다 👍
+wait 700
+msg wei: 你好！中文也完全没问题 🎉
+wait 700
+msg kaming: 早晨！廣東話都做得到 😎
+wait 500
+say Nice — unicode all the way! :sparkles:
+wait 700
+msg bob: c99 never looked this *sexy* on a terminal :eyes:
+wait 700
+say Markdown works: *bold*, _italic_ and `code` :fire:
+wait 900
+msg maya: fresh from the design team — new logo drop! :sparkles:
+wait 500
+msg maya: ![t_ logo](examples/assets/logo.png)
+wait 1600
 open
 wait 2600
 close
 wait 600
-say Click an image and it opens fullscreen 🎉
+say :heart: love it — click any image and it opens fullscreen
 wait 800
-scroll 9
-wait 1500
-scroll -9
+msg alice: graphics? someone call the kitty! :rocket:
+wait 800
+msg bob: works great in ghostty — even remote! :zap:
+wait 900
+msg bob: works great with ghosts... eh ..^Wtty! :joy:
+wait 900
+say let me scroll up to re-read that ↑
+wait 700
+scroll 11
+wait 1300
+msg alice: (psst — new messages arrive while you're scrolled up 👀)
+wait 900
+msg wei: 计数器在增加! :tada:
+wait 900
+msg bob: see the "↓ N below" counter climb? :eyes:
+wait 1600
+scroll -30
+wait 1200
+say caught up! and :name: shortcodes too :thumbsup: :tada:
 wait 900
 say Links too — https://github.com for the source.
-wait 1800
+wait 2800
+say Thanks all — bye! :wave:
+wait 900
+msg alice: bye! :wave:
+wait 700
+msg wei: 再见! :tada:
+wait 700
+msg yuki: またね :wave:
+wait 1400
+say See you at https://timui.dev :eyes:
+wait 2600
 quit
