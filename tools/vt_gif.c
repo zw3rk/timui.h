@@ -156,7 +156,10 @@ static int cp_width(unsigned int cp){
     if((cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0xA4CF) ||
        (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) ||
        (cp >= 0xFE30 && cp <= 0xFE6F) || (cp >= 0xFF00 && cp <= 0xFF60) ||
-       (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F300 && cp <= 0x1FAFF)) return 2;
+       (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F000)) return 2;
+    /* emoji-presentation BMP (✨ ❤ ⚡ ⭐ …) render as square 2-cell glyphs, not
+     * squished into one cell — matches how terminals show them. */
+    if((cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0x2B00 && cp <= 0x2BFF)) return 2;
     return 1;
 }
 static void set_cell(int y, int x, unsigned int cp){
@@ -299,8 +302,8 @@ static int cellw = 8, cellh = 16;   /* cellw derived from face 0; cellh from --c
  * Fallback chain `face[]` holds the CJK outline faces (system fonts). */
 typedef struct { stbtt_fontinfo info; float scale; int baseline, loaded; } Face;
 static Face pface[4];                 /* 0=regular 1=bold 2=oblique 3=bold-oblique */
-#define MAXFACE 6
-static Face face[MAXFACE];            /* CJK fallback faces (system) */
+#define MAXFACE 8
+static Face face[MAXFACE];            /* CJK/RTL fallback faces (system) */
 static int nface;
 static int use_system_fonts;          /* --system-fonts: chain OS CJK fonts */
 static const char *cjk_font_override; /* --cjk-font PATH */
@@ -350,7 +353,9 @@ static void font_init(void){
         if(d) face_add(d);
         else fprintf(stderr, "vt_gif: --cjk-font: cannot read %s\n", cjk_font_override);
     } else if(use_system_fonts){
-        static const char *cands[] = {
+        static const char *cands[] = {                     /* script-specific first, so a */
+            "/System/Library/Fonts/ArialHB.ttc",           /* CJK font can't shadow these */
+            "/System/Library/Fonts/GeezaPro.ttc",          /* Arabic            */
             "/System/Library/Fonts/PingFang.ttc",          /* modern macOS CJK  */
             "/System/Library/Fonts/Hiragino Sans GB.ttc",  /* Han (C/J)         */
             "/System/Library/Fonts/AppleSDGothicNeo.ttc",  /* Hangul (Korean)   */

@@ -140,6 +140,66 @@ static const char *shortcode_at(const char *s, size_t *clen){
     return NULL;
 }
 
+/* ---- RTL: Hebrew/Arabic (basic bidi + Arabic joining) -------------------- *
+ * A terminal renders cells positionally (no reordering), so the app must lay RTL
+ * out itself: shape Arabic base letters to their contextual presentation forms,
+ * then reverse RTL runs for visual order. Simplified — no full UAX#9, no lam-alef
+ * ligature — but enough to show Hebrew/Arabic messages correctly. */
+static int is_rtl_cp(unsigned int cp){
+    return (cp >= 0x0590 && cp <= 0x05FF) || (cp >= 0x0600 && cp <= 0x06FF) ||
+           (cp >= 0x0750 && cp <= 0x077F) || (cp >= 0xFB1D && cp <= 0xFEFF);
+}
+/* Arabic letters: base -> isolated presentation form (FExx) + dual-joining flag.
+ * For dual: final=iso+1, initial=iso+2, medial=iso+3; right-joining has iso+final only. */
+static const struct { unsigned int base, iso; int dual; } ARJOIN[] = {
+    {0x0621,0xFE80,0},{0x0622,0xFE81,0},{0x0623,0xFE83,0},{0x0624,0xFE85,0},
+    {0x0625,0xFE87,0},{0x0626,0xFE89,1},{0x0627,0xFE8D,0},{0x0628,0xFE8F,1},
+    {0x0629,0xFE93,0},{0x062A,0xFE95,1},{0x062B,0xFE99,1},{0x062C,0xFE9D,1},
+    {0x062D,0xFEA1,1},{0x062E,0xFEA5,1},{0x062F,0xFEA9,0},{0x0630,0xFEAB,0},
+    {0x0631,0xFEAD,0},{0x0632,0xFEAF,0},{0x0633,0xFEB1,1},{0x0634,0xFEB5,1},
+    {0x0635,0xFEB9,1},{0x0636,0xFEBD,1},{0x0637,0xFEC1,1},{0x0638,0xFEC5,1},
+    {0x0639,0xFEC9,1},{0x063A,0xFECD,1},{0x0641,0xFED1,1},{0x0642,0xFED5,1},
+    {0x0643,0xFED9,1},{0x0644,0xFEDD,1},{0x0645,0xFEE1,1},{0x0646,0xFEE5,1},
+    {0x0647,0xFEE9,1},{0x0648,0xFEED,0},{0x0649,0xFEEF,0},{0x064A,0xFEF1,1},
+};
+static int arjoin_type(unsigned int cp){   /* 0=not-joining 1=right-joining 2=dual */
+    size_t k;
+    for(k = 0; k < sizeof ARJOIN / sizeof ARJOIN[0]; k++)
+        if(ARJOIN[k].base == cp) return ARJOIN[k].dual ? 2 : 1;
+    return 0;
+}
+static int enc_utf8(unsigned int cp, char *out){
+    if(cp < 0x80){ out[0] = (char)cp; return 1; }
+    if(cp < 0x800){ out[0] = (char)(0xC0|(cp>>6)); out[1] = (char)(0x80|(cp&0x3F)); return 2; }
+    out[0] = (char)(0xE0|(cp>>12)); out[1] = (char)(0x80|((cp>>6)&0x3F)); out[2] = (char)(0x80|(cp&0x3F)); return 3;
+}
+static void rtl_shape(const char *in, char *out, size_t cap){
+    unsigned int cp[512], orig[512];
+    int n = 0, k, o = 0;
+    size_t i = 0, len = strlen(in);
+    while(in[i] && n < 512){ uint32_t c; int a = timui_utf8_decode(in + i, len - i, &c); if(a <= 0) a = 1; cp[n++] = c; i += (size_t)a; }
+    memcpy(orig, cp, (size_t)n * sizeof cp[0]);
+    for(k = 0; k < n; k++){                          /* Arabic contextual shaping */
+        size_t j; const void *found = NULL; unsigned int iso = 0; int dual = 0, prevj, nextj;
+        for(j = 0; j < sizeof ARJOIN / sizeof ARJOIN[0]; j++)
+            if(ARJOIN[j].base == orig[k]){ found = &ARJOIN[j]; iso = ARJOIN[j].iso; dual = ARJOIN[j].dual; break; }
+        if(!found) continue;
+        prevj = k > 0 && arjoin_type(orig[k-1]) == 2;           /* prev joins forward */
+        nextj = dual && k + 1 < n && arjoin_type(orig[k+1]) != 0;
+        cp[k] = prevj && nextj ? iso + 3 : prevj ? iso + 1 : nextj ? iso + 2 : iso;
+    }
+    for(k = 0; k < n;){                               /* reverse maximal RTL runs (incl. interior spaces) */
+        if(is_rtl_cp(cp[k])){
+            int e = k, a, b;
+            while(e < n && (is_rtl_cp(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_rtl_cp(cp[e+1])))) e++;
+            for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
+            k = e;
+        } else k++;
+    }
+    for(k = 0; k < n && o < (int)cap - 4; k++) o += enc_utf8(cp[k], out + o);
+    out[o] = '\0';
+}
+
 static void draw_rich(TimuiFrame *f, int x, int y, int maxx, const char *s,
                       uint32_t base_fg, uint32_t bg,
                       uint32_t code_fg, uint32_t link_fg){
@@ -481,9 +541,11 @@ static void draw_message(TimuiFrame *f, const char *ts, const char *s, TimuiRect
     /* Caption row (timestamp + rich text) — only when it lands in the pane, so a
      * partly-scrolled message doesn't draw into the header/composer. */
     if(y >= by0 && y <= by1){
+        char shaped[MSG_MAX];
+        rtl_shape(s, shaped, sizeof shaped);          /* lay out Hebrew/Arabic RTL */
         timui_label(f, body.x + 1, y, timui_str_from_cstr(ts),
                     timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM));
-        draw_rich(f, body.x + 1 + TS_COLS, y, body.x + body.w, s, fg, panel.bg, code_fg, link_fg);
+        draw_rich(f, body.x + 1 + TS_COLS, y, body.x + body.w, shaped, fg, panel.bg, code_fg, link_fg);
     }
     /* Inline image (rows y+1 .. y+h-1), CLIPPED to the pane so it slides off
      * smoothly instead of hiding oddly. */
@@ -819,7 +881,7 @@ int main(int argc, char **argv){
                             demo_typed++;
                             snprintf(compose, sizeof compose, "%.*s", demo_typed, st->text);
                             compose_state.cursor = strlen(compose);
-                            demo_at = now + 45;
+                            demo_at = now + 32;   /* ~30 chars/s — snappy typing */
                         } else {                               /* done -> send */
                             char sent[MSG_MAX];
                             snprintf(sent, sizeof sent, "you: %s", st->text);

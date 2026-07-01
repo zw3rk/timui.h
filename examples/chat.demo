@@ -26,20 +26,22 @@ wait 900
 msg maya: fresh from the design team — new logo drop! :sparkles:
 wait 500
 msg maya: ![t_ logo](examples/assets/logo.png)
-wait 1600
+wait 1400
 open
-wait 2600
+wait 1500
 close
 wait 600
 say :heart: love it — click any image and it opens fullscreen
 wait 800
 msg alice: graphics? someone call the kitty! :rocket:
-wait 800
-msg bob: works great in ghostty — even remote! :zap:
 wait 900
 msg bob: works great with ghosts... eh ..^Wtty! :joy:
-wait 900
-say let me scroll up to re-read that ↑
+wait 1000
+msg maya: hosted images work too ![gh](https://github.com/fluidicon.png)
+wait 3600
+msg alice: ...and link previews 👀 https://github.com
+wait 4800
+say let me scroll up to re-read all that ↑
 wait 700
 scroll 11
 wait 1300
@@ -53,8 +55,8 @@ scroll -30
 wait 1200
 say caught up! and :name: shortcodes too :thumbsup: :tada:
 wait 900
-say Links too — https://github.com for the source.
-wait 2800
+say grab it: `make run-chat` — c99, single header :sparkles:
+wait 2200
 say Thanks all — bye! :wave:
 wait 900
 msg alice: bye! :wave:
@@ -62,7 +64,5 @@ wait 700
 msg wei: 再见! :tada:
 wait 700
 msg yuki: またね :wave:
-wait 1400
-say See you at https://timui.dev :eyes:
-wait 2600
+wait 2400
 quit
