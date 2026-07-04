@@ -49,6 +49,7 @@
 typedef struct { unsigned int cp, fg, bg; unsigned char attr; } Cell;
 static Cell g[MAXH][MAXW];
 static int W = 100, H = 30, cx, cy, pending, autowrap = 1;
+static int sync_active;   /* inside a ?2026 synchronized update (a frame in flight) */
 static unsigned int cur_fg = DEF_FG, cur_bg = DEF_BG;
 static unsigned char cur_attr = 0;
 
@@ -57,6 +58,11 @@ static struct { unsigned id; unsigned char *b64; long len, cap; } tx[MAXIMG];
 static int tx_n;
 static struct { unsigned id, place; int x, y, c, r, sx, sy, sw, sh; } pl[MAXIMG];
 static int pl_n;
+/* The chat repositions images every frame by emitting delete-all THEN re-place.
+ * If a frame boundary lands in that gap we'd render zero images (a blink). So a
+ * delete-all is DEFERRED (keep the old placements) and only applied by the next
+ * re-placement — or, if none is imminent, by settle_placements() (a genuine clear). */
+static int pl_pending_clear;
 static unsigned cur_tx;
 
 static int tx_index(unsigned id){
@@ -153,13 +159,14 @@ static int cp_width(unsigned int cp){
     if((cp >= 0x0300 && cp <= 0x036F) || (cp >= 0x1AB0 && cp <= 0x1AFF) ||
        (cp >= 0x1DC0 && cp <= 0x1DFF) || (cp >= 0x20D0 && cp <= 0x20FF) ||
        (cp >= 0xFE20 && cp <= 0xFE2F)) return 0;
+    /* MUST match src/timui_render.c timui_utf8_width exactly: the chat advances
+     * its cursor by that width, and vt_gif replays that cursor — any disagreement
+     * desyncs the column and smears stale cells (the stray-'n' bug). Emoji are
+     * drawn square in render_frame regardless of this layout width. */
     if((cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0xA4CF) ||
        (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) ||
        (cp >= 0xFE30 && cp <= 0xFE6F) || (cp >= 0xFF00 && cp <= 0xFF60) ||
-       (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F000)) return 2;
-    /* emoji-presentation BMP (✨ ❤ ⚡ ⭐ …) render as square 2-cell glyphs, not
-     * squished into one cell — matches how terminals show them. */
-    if((cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0x2B00 && cp <= 0x2BFF)) return 2;
+       (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F300 && cp <= 0x1FAFF)) return 2;
     return 1;
 }
 static void set_cell(int y, int x, unsigned int cp){
@@ -215,13 +222,14 @@ static void kitty(const unsigned char *s, long ks, long ke, long ps, long pe){
     if(action == 't'){ cur_tx = id; tx_append(id, s + ps, pe - ps); }
     else if(action == 0 && cur_tx){ tx_append(cur_tx, s + ps, pe - ps); }   /* continuation chunk */
     else if(action == 'p'){
+        if(pl_pending_clear){ pl_n = 0; pl_pending_clear = 0; }   /* apply the deferred delete-all now */
         if(pl_n < MAXIMG){
             pl[pl_n].id = id; pl[pl_n].place = place; pl[pl_n].x = cx; pl[pl_n].y = cy;
             pl[pl_n].c = cc; pl[pl_n].r = rr; pl[pl_n].sx = sx; pl[pl_n].sy = sy;
             pl[pl_n].sw = sw; pl[pl_n].sh = sh; pl_n++;
         }
     }
-    else if(action == 'd' && (delkind == 'a' || delkind == 0)) pl_n = 0;   /* delete all placements */
+    else if(action == 'd' && (delkind == 'a' || delkind == 0)) pl_pending_clear = 1;   /* defer delete-all */
 }
 
 /* Replay bytes into the model. Returns the number of bytes CONSUMED: if the
@@ -248,7 +256,8 @@ static long feed(const unsigned char *s, long n){
                 { char f = (char)s[j];
                   if(!priv && f == 'H'){ cy=(np>=1?p[0]:1)-1; cx=(np>=2?p[1]:1)-1; if(cx<0)cx=0; if(cy<0)cy=0; pending=0; }
                   else if(!priv && f == 'm') sgr(p, np);
-                  else if(priv && p[0] == 7 && (f=='l'||f=='h')) autowrap = (f=='h'); }
+                  else if(priv && p[0] == 7 && (f=='l'||f=='h')) autowrap = (f=='h');
+                  else if(priv && p[0] == 2026 && (f=='l'||f=='h')) sync_active = (f=='h'); }
                 i = j + 1; continue;
             }
             if(s[i+1] == ']'){                              /* OSC ... ST/BEL */
@@ -528,6 +537,37 @@ static int get_emoji(unsigned int cp, unsigned char **rgba, int *w, int *h){
     return out != NULL;
 }
 
+/* Resolve a deferred delete-all before a frame is rendered: if no re-placement is
+ * imminent in the un-fed bytes, it's a genuine "remove images", so apply it (else
+ * a scroll's delete+replace is in flight — keep the current placements). */
+static void settle_placements(const unsigned char *buf, long fed, long len){
+    long j; int place_imminent = 0;
+    if(!pl_pending_clear) return;
+    for(j = fed; j < len && j < fed + 512; j++){
+        if(buf[j] == 0x1b && j+2 < len && buf[j+1] == '_' && buf[j+2] == 'G'){
+            long k = j + 3;
+            while(k+2 < len && buf[k] != ';' && buf[k] != 0x1b){
+                if(buf[k] == 'a' && buf[k+1] == '=' && buf[k+2] == 'p'){ place_imminent = 1; break; }
+                k++;
+            }
+            break;                     /* judge by the first upcoming APC only */
+        }
+    }
+    if(!place_imminent){ pl_n = 0; pl_pending_clear = 0; }
+}
+/* Offset just past the next end-of-frame marker (ESC[?2026l). The chat brackets
+ * each rendered frame in a ?2026 synchronized update; when a frame-render target
+ * lands INSIDE one, feeding through to here first makes vt_gif present only a
+ * COMPLETE frame — the terminal's own double-buffer signal — so no half-drawn
+ * frame (mid image-reposition OR mid text-diff) is ever shown. */
+static long sync_end(const unsigned char *buf, long fed, long len){
+    long f;
+    for(f = fed; f + 7 < len; f++)
+        if(buf[f]==0x1b && buf[f+1]=='[' && buf[f+2]=='?' && buf[f+3]=='2' &&
+           buf[f+4]=='0' && buf[f+5]=='2' && buf[f+6]=='6' && buf[f+7]=='l')
+            return f + 8;
+    return len;                                      /* no end marker ahead — feed to the end */
+}
 static void render_frame(unsigned char *fb, int pw, int ph){
     int y, x, gy, gx, k;
     /* Pass 1 — backgrounds. Kept separate from glyphs so a wide (2-cell) glyph
@@ -551,10 +591,13 @@ static void render_frame(unsigned char *fb, int pw, int ph){
         if(is_emoji(cell.cp)){                    /* colour emoji: composite RGBA */
             unsigned char *er; int ew, eh;
             if(get_emoji(cell.cp, &er, &ew, &eh)){
-                int nc = cp_width(cell.cp) >= 2 ? 2 : 1;
-                int dw = nc*cellw, dh = cellh, dx0 = x*cellw, dy0 = y*cellh, dy2, dx2;
-                for(dy2 = 0; dy2 < dh; dy2++) for(dx2 = 0; dx2 < dw; dx2++){
-                    int sx = dx2*ew/dw, sy = dy2*eh/dh, px_ = dx0+dx2, py_ = dy0+dy2, a;
+                /* Draw the emoji SQUARE (side = cellh ≈ 2 cells) regardless of the
+                 * cell's layout width — so a width-1 BMP emoji (✨ ❤) isn't squished.
+                 * It fills this cell + the next (a continuation/gap cell); pass-1
+                 * already laid both backgrounds, so nothing overpaints it. */
+                int side = cellh, dx0 = x*cellw, dy0 = y*cellh, dy2, dx2;
+                for(dy2 = 0; dy2 < side; dy2++) for(dx2 = 0; dx2 < side; dx2++){
+                    int sx = dx2*ew/side, sy = dy2*eh/side, px_ = dx0+dx2, py_ = dy0+dy2, a;
                     unsigned char *s2, *d2;
                     if(px_ >= pw || py_ >= ph) continue;
                     s2 = er + ((long)sy*ew+sx)*4; d2 = fb + ((long)py_*pw+px_)*4; a = s2[3];
@@ -699,6 +742,9 @@ int main(int argc, char **argv){
                 /* advance by CONSUMED bytes; a partial trailing sequence waits
                  * for the next tick's larger target (feed() stops before it). */
                 while(fed < target){ long got = feed(buf + fed, target - fed); if(got == 0) break; fed += got; }
+                if(sync_active){ long se = sync_end(buf, fed, len);  /* finish the in-flight frame first */
+                    while(fed < se){ long g2 = feed(buf + fed, se - fed); if(g2 == 0) break; fed += g2; } }
+                settle_placements(buf, fed, len);
                 render_frame(fb, pw, ph);
                 o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);
                 if(gif_out) msf_gif_frame(&gs, o, cs, bit_depth, ow*4);
@@ -709,6 +755,9 @@ int main(int argc, char **argv){
             for(fr = 1; fr <= N; fr++){
                 long target = len * fr / N;
                 while(fed < target){ long got = feed(buf + fed, target - fed); if(got == 0) break; fed += got; }
+                if(sync_active){ long se = sync_end(buf, fed, len);  /* finish the in-flight frame first */
+                    while(fed < se){ long g2 = feed(buf + fed, se - fed); if(g2 == 0) break; fed += g2; } }
+                settle_placements(buf, fed, len);
                 render_frame(fb, pw, ph);
                 o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);
                 if(gif_out) msf_gif_frame(&gs, o, cs, bit_depth, ow*4);
@@ -716,6 +765,7 @@ int main(int argc, char **argv){
             }
         }
         while(fed < len){ long got = feed(buf + fed, len - fed); if(got == 0) break; fed += got; }
+        settle_placements(buf, fed, len);
         render_frame(fb, pw, ph);                  /* final settled frame, held ~1s */
         o = frame_emit(fb, pw, ph, rb, ow, oh, frames_dir, &frame_no);
         if(gif_out) msf_gif_frame(&gs, o, 100, bit_depth, ow*4);
@@ -726,7 +776,7 @@ int main(int argc, char **argv){
             int N = 26, fr, tw = 0, tx, ty, col; long pp, tot = (long)pw*ph*4;
             size_t oi = 0, olen = strlen(outro);
             memcpy(content, fb, (size_t)tot);
-            pl_n = 0;                               /* drop image placements so no logo bleeds into the splash */
+            pl_n = 0; pl_pending_clear = 0;          /* drop image placements so no logo bleeds into the splash */
             for(y = 0; y < H; y++) for(x = 0; x < W; x++){ g[y][x].cp=' '; g[y][x].fg=0xE6E6E6; g[y][x].bg=0x000000; g[y][x].attr=0; }
             while(oi < olen){ unsigned int cp; int a = utf8((const unsigned char*)outro+oi, (int)(olen-oi), &cp);
                               tw += cp_width(cp); oi += a>0?a:1; }
@@ -764,6 +814,7 @@ int main(int argc, char **argv){
         free(tms); free(toff);
     } else {
         feed(buf, len);
+        settle_placements(buf, len, len);          /* fully fed: apply any pending clear */
         render_frame(fb, pw, ph);
         if(png_out){
             int dummy = 0;

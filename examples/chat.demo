@@ -4,77 +4,87 @@
 #           scroll <n> | open | close | quit
 # '#'/blank lines are ignored.
 
-wait 500
-msg alice: hey! did the new chat land? 👋
-wait 300
-msg bob: yep — inline images, markdown, scrollback. try `make run-chat`
-wait 350
-msg yuki: こんにちは 🌏 日本語も完璧です！
-wait 250
-msg jihoon: 안녕하세요! 한국어도 아주 잘 됩니다 👍
-wait 250
-msg wei: 你好！中文也完全没问题 🎉
-wait 250
-msg kaming: 早晨！廣東話都做得到 😎
-wait 250
-msg dmitri: Привет! русский и греческий тоже 👍
-wait 250
-msg elena: Γειά σου! τα ελληνικά επίσης ✨
-wait 250
-msg avi: עברית עובדת מצוין 👀
-wait 250
-msg omar: العربية تعمل بشكل رائع 🎉
-wait 500
-say Nice — unicode, LTR + RTL, all the way! :sparkles:
-wait 500
-msg bob: c99 never looked this *sexy* on a terminal :eyes:
-wait 500
-say Markdown works: *bold*, _italic_ and `code` :fire:
-wait 700
-msg maya: fresh from the design team — new logo drop! :sparkles:
-wait 350
-msg maya: ![t_ logo](examples/assets/logo.png)
-wait 1100
-open
 wait 400
-close
-wait 500
-say :heart: love it — click any image and it opens fullscreen
+msg alice: hey! did the new chat land? 👋
+wait 150
+msg bob: yep — images, markdown, scrollback, the lot. try `make run-chat`
+wait 180
+msg yuki: こんにちは 🌏 日本語も完璧です！
+wait 130
+msg jihoon: 안녕하세요! 한국어도 잘 나오네요 👍
+wait 130
+msg wei: 你好！中文完全没问题 🎉
+wait 130
+msg kaming: 早晨！廣東話都得 😎
+wait 130
+msg dmitri: Привет! русский тоже работает 👍
+wait 130
+msg elena: Γειά σου! και ελληνικά ✨
+wait 130
+msg avi: שלום! עברית עובדת מצוין 👀
+wait 130
+msg omar: مرحبا! والعربية أيضا 🎉
+wait 350
+say every script, LTR *and* RTL — it just works :sparkles:
+wait 300
+msg jihoon: 오 대박 👀
+wait 250
+msg bob: c99 never looked this *sexy* on a terminal :eyes:
+wait 300
+say and markdown too — *bold*, _italic_, `code` :fire:
+wait 400
+msg maya: fresh from the design team — new logo! :sparkles:
+wait 250
+msg maya: ![t_ logo](examples/assets/logo.png)
 wait 600
+open
+wait 350
+close
+wait 300
+msg kaming: 個 logo 好正 😎
+wait 300
+say :heart: love it — and click any image for fullscreen
+wait 400
 msg alice: graphics? someone call the kitty! :rocket:
-wait 500
+wait 300
 msg bob: works great with ghosts... eh ..^Wtty! :joy:
-wait 700
-msg maya: hosted images work too ![gh](https://github.com/fluidicon.png)
-wait 2800
-msg alice: ...and link previews 👀 https://github.com
-wait 3400
-say let me scroll up to re-read — chat keeps flowing though ↑
-wait 800
-scroll 7
-wait 1200
-msg alice: (psst — still chatting down here 👋)
-wait 1000
-msg wei: 计数器在增加! :tada:
-wait 1000
-msg bob: watch "↓ N new below" climb as we read ↑ :eyes:
-wait 1000
-msg yuki: 新着メッセージ 🌏
-wait 1000
-msg kaming: 仲有更多喇 😎
-wait 1600
-scroll -40
-wait 1400
-say caught up! and :name: shortcodes too :thumbsup: :tada:
-wait 800
-say grab it: `make run-chat` — c99, single header :sparkles:
+wait 400
+msg maya: works with remote images too ![gh](https://github.com/fluidicon.png)
 wait 1800
-say Thanks all — bye! :wave:
+msg alice: ...and link previews 👀 https://github.com
+wait 2400
+say let me scroll up to re-read
 wait 500
-msg alice: bye! :wave:
+scroll 11
+wait 900
+msg dmitri: а мы всё пишем сюда 👋
+wait 600
+msg wei: 计数器还在涨! :tada:
+wait 600
+msg elena: κι άλλο μήνυμα ✨
+wait 600
+msg omar: ورسالة أخرى 👀
+wait 600
+msg avi: ועוד אחת 🎉
+wait 1000
+scroll -40
+wait 900
+say caught up! and :name: shortcodes work too :thumbsup: :tada:
+wait 500
+say c99, single header only! :sparkles:
+wait 1000
+say thanks all — bye! :wave:
 wait 300
-msg wei: 再见! :tada:
-wait 300
-msg yuki: またね :wave:
-wait 2000
+msg alice: bye! 👋
+wait 200
+msg kaming: 拜拜! 😎
+wait 200
+msg dmitri: пока! 👋
+wait 200
+msg omar: مع السلامة 🎉
+wait 200
+msg jihoon: 안녕! 👋
+wait 200
+msg yuki: またね ✨
+wait 1500
 quit

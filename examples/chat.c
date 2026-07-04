@@ -939,7 +939,7 @@ int main(int argc, char **argv){
                                 snprintf(demo_img_alt, sizeof demo_img_alt, "%s", base ? base + 1 : demo_img_path);
                             }
                         }
-                        demo_at = now + 220; demo_i++;   /* others' messages arrive briskly */
+                        demo_at = now + 120; demo_i++;   /* others' messages arrive briskly */
                     } break;
                     case D_SAY: {
                         int len = (int)strlen(st->text);
@@ -953,7 +953,7 @@ int main(int argc, char **argv){
                             snprintf(sent, sizeof sent, "you: %s", st->text);
                             log_append(&transcript, sent);
                             compose[0] = '\0'; compose_state.cursor = 0; scroll = 0;
-                            demo_typed = 0; demo_at = now + 650; demo_i++;
+                            demo_typed = 0; demo_at = now + 350; demo_i++;
                         }
                     } break;
                     case D_IMG: {
@@ -972,9 +972,9 @@ int main(int argc, char **argv){
                             snprintf(fs_alt,  sizeof fs_alt,  "%s", demo_img_alt);
                             fs_active = 1;
                         }
-                        demo_at = now + 1400; demo_i++;
+                        demo_at = now + 250; demo_i++;   /* fullscreen dwell = this + any wait before close */
                         break;
-                    case D_CLOSE: fs_active = 0; demo_at = now + 650; demo_i++; break;
+                    case D_CLOSE: fs_active = 0; demo_at = now + 350; demo_i++; break;
                     case D_QUIT:  timui_quit(ui); demo_i++; break;
                 }
             }
