@@ -1,0 +1,25 @@
+Goal: four INDEPENDENT additions to timui.h — (1) optional full-bidi via vendored SheenBidi, (2) a pandoc man page, (3) a terminal internet-radio player example, (4) a SQLite TUI example. Idiomatic C99; work only via nix develop -c make <target>. Vendor ONLY permissive / public-domain single-file libs (record each license in tools/vendor/NOTICE).
+
+RUN T1..T4 AS PARALLEL SUBAGENTS — each owns its own files and adds its own Makefile target; the only shared files are Makefile + tools/vendor/NOTICE, so append (never clobber) and let a final pass reconcile them + run the gate.
+
+T1 — SheenBidi opt-in (Apache-2.0):
+ Vendor SheenBidi (its single-TU amalgamation) under tools/vendor/. Add a WITH_SHEENBIDI=1 build path; when set, examples/chat_text.h bidi_visual() delegates to SheenBidi log2vis (correct UAX #9) instead of the 2-level approximation — which stays the always-on DEFAULT. Keep the Arabic shaping as a pre-bidi step. TDD: a test (make check-chat-text or a new target) asserting SheenBidi vs the approximation on known Hebrew/Arabic/mixed+number vectors.
+
+T2 — man page:
+ docs/timui.1.md (Markdown, real man structure: NAME / SYNOPSIS / DESCRIPTION / TARGETS / EXAMPLES / FILES / SEE ALSO). `make man` -> `pandoc -s -t man docs/timui.1.md -o build/timui.1` (pandoc via nix run nixpkgs#pandoc). Verify it renders (`man ./build/timui.1`). Add `make install-man` (DESTDIR/PREFIX aware).
+
+T3 — radio player (examples/radio.c) — replicate the @kmdrfx UI:
+ Vendor minimp3 (CC0), miniaudio (public-domain/MIT-0), a small FFT (kissfft BSD-3 or pocketfft). Stream an icecast MP3 over HTTP (a socket GET, or a curl subprocess) -> minimp3 decode -> miniaudio output -> FFT -> 8 log bands (63 Hz..16 kHz). TUI: a URL bar + 5 station-preset tabs, a spectrum BAR-CHART (per-band gradient + peak-hold caps), PEAK/RMS meters, a stream-telemetry key/value panel (state, buffer progress bar, decoded/played frames, underruns, reconnects, volume/pan), and a controls hint bar. Decode+audio run OFF the UI thread; telemetry crosses via timui_post (threading contract in docs/THREADING.md). macOS links -framework CoreAudio -framework AudioToolbox -framework CoreFoundation. NO crypto. TDD the pure bits (FFT->band binning, peak-hold decay).
+
+T4 — SQLite TUI (examples/sqlite_tui.c):
+ Vendor the sqlite3 amalgamation (public domain). Open a DB from argv; a schema TREE (tables -> columns), a results TABLE widget (columns, horizontal+vertical scroll, row selection), and a query editor (reuse the chat multi-line composer + chat_highlight for SQL). Run the query, show rows/errors, status line with row count + timing. TDD the pure bits (column-width fit, table paging).
+
+NON-NEGOTIABLE:
+- TDD for every testable unit (bidi vectors, FFT binning, table layout); a regression test precedes any bugfix. Keep files <=~1000 lines (split if needed).
+- MUST NOT regress the chat work: make test (>=196), check-vt-gif-all, check-chat-text, check-chat-highlight all green; the ?2026 flicker fix; cp_width == timui_utf8_width.
+- NO hand-rolled crypto or DSP primitives beyond a vetted FFT lib. Vendored libs must be permissive/public-domain, cited in tools/vendor/NOTICE.
+- Apache-2.0 header + copyright "Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd." on OUR files. Commits single-purpose, imperative subject <=72 chars, body = why; NO banned trailers (Co-authored-by / Signed-off-by / Generated...). FF-only to master; never push or --force without an explicit ask.
+
+ACCEPTANCE: make test + check-vt-gif-all + check-chat-* green; a `WITH_SHEENBIDI=1` build + its test green; `make man` yields a valid roff; `radio` and `sqlite_tui` build clean under the project CFLAGS and run (a headless smoke where feasible). Each concern committed separately and fast-forwarded to master (parity 0/0).
+
+PARALLELIZE: run T1 || T2 || T3 || T4 as independent agents; a final pass reconciles Makefile + tools/vendor/NOTICE and runs the full gate.

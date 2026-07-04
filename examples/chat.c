@@ -28,9 +28,10 @@
 #include <string.h>    /* strlen / strncmp / memcpy */
 #include <stdio.h>     /* snprintf / fopen / fread */
 #include <stdlib.h>    /* malloc / free */
-#include <unistd.h>    /* fork / execvp / _exit — open links, fetch remote images */
+#include <unistd.h>    /* _exit — open links */
 #include <sys/wait.h>  /* waitpid */
-#include <fcntl.h>     /* open (/dev/null for the fetch children) */
+#include <fcntl.h>     /* O_* flags for the /dev/null redirects */
+#include <spawn.h>     /* posix_spawn — fork-safe child launch from worker threads */
 #include "chat_text.h"      /* shortcodes, bidi, display-width metrics + word wrap */
 #include "chat_highlight.h" /* syntax highlighter for fenced code blocks */
 
@@ -267,27 +268,35 @@ static int g_fetch_n;
 static pthread_mutex_t g_fetch_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct { char url[512]; char raw[256]; char png[256]; int idx; } FetchJob;
-/* exec a command with stdout+stderr silenced (they share the app's pty, so any
- * child chatter — sips echoes the output path — would corrupt the display). */
-static void run_quiet(char *const argv[]){
-    int devnull = open("/dev/null", O_WRONLY);
-    if(devnull >= 0){ dup2(devnull, 1); dup2(devnull, 2); close(devnull); }
-    execvp(argv[0], argv);
-    _exit(127);
+extern char **environ;
+/* Launch argv, wait for it, return 0 iff it exited 0. Uses posix_spawn rather than
+ * fork()+execvp(): fork() from a worker thread is unsafe — if another thread holds
+ * the malloc lock at the fork instant, the child can deadlock in execvp's PATH
+ * search (which allocates). posix_spawn runs no user code between fork and exec, so
+ * it is safe from any thread. stdin/stdout/stderr are sent to /dev/null so child
+ * chatter (sips echoes its output path) can't corrupt the shared pty. */
+static int spawn_quiet(char *const argv[]){
+    posix_spawn_file_actions_t fa;
+    pid_t pid; int st, rc;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    rc = posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    if(rc != 0) return -1;
+    if(waitpid(pid, &st, 0) != pid) return -1;
+    return (WIFEXITED(st) && WEXITSTATUS(st) == 0) ? 0 : -1;
 }
 static void *fetch_thread(void *arg){
     FetchJob *j = (FetchJob *)arg;
-    int ok = 0, st;
-    pid_t pid = fork();
-    if(pid == 0){   /* curl -sL to the raw temp file (no shell → no injection) */
-        char *av[] = { "curl", "-sL", "--max-time", "20", "--max-filesize", "8000000", "-o", j->raw, j->url, NULL };
-        run_quiet(av);
-    }
-    if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+    int ok = 0;
+    /* curl -sL to the raw temp file (no shell → no injection) */
+    char *curl_av[] = { "curl", "-sL", "--max-time", "20", "--max-filesize", "8000000", "-o", j->raw, j->url, NULL };
+    if(spawn_quiet(curl_av) == 0){
         /* normalize to PNG (Kitty f=100 needs it); sips is macOS-native. */
-        pid = fork();
-        if(pid == 0){ char *av[] = { "sips", "-s", "format", "png", j->raw, "--out", j->png, NULL }; run_quiet(av); }
-        if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+        char *sips_av[] = { "sips", "-s", "format", "png", j->raw, "--out", j->png, NULL };
+        if(spawn_quiet(sips_av) == 0){
             FILE *fp = fopen(j->png, "rb"); if(fp){ ok = 1; fclose(fp); }
         }
     }
@@ -353,10 +362,9 @@ static void find_meta(const char *html, const char *prop, char *out, size_t cap)
 typedef struct { char url[512]; char html[256]; char img[256]; char title[160]; int idx; } CardJob;
 static void *card_thread(void *arg){
     CardJob *j = (CardJob *)arg;
-    int st, ok = 0; pid_t pid; char imgurl[512] = {0};
-    pid = fork();
-    if(pid == 0){ char *av[] = { "curl", "-sL", "--max-time", "20", "-o", j->html, j->url, NULL }; run_quiet(av); }
-    if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+    int ok = 0; char imgurl[512] = {0};
+    char *html_av[] = { "curl", "-sL", "--max-time", "20", "-o", j->html, j->url, NULL };
+    if(spawn_quiet(html_av) == 0){
         FILE *fp = fopen(j->html, "rb");
         if(fp){                                     /* scrape og:image + og:title from the head */
             char *html = (char *)malloc(262144); size_t got = html ? fread(html, 1, 262143, fp) : 0;
@@ -369,12 +377,10 @@ static void *card_thread(void *arg){
         }
         if(imgurl[0] && (strncmp(imgurl, "http", 4) == 0)){   /* fetch + normalize the preview image */
             char raw[256]; snprintf(raw, sizeof raw, "%s.raw", j->img);
-            pid = fork();
-            if(pid == 0){ char *av[] = { "curl","-sL","--max-time","20","--max-filesize","8000000","-o",raw,imgurl,NULL }; run_quiet(av); }
-            if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
-                pid = fork();
-                if(pid == 0){ char *av[] = { "sips","-s","format","png",raw,"--out",j->img,NULL }; run_quiet(av); }
-                if(pid > 0 && waitpid(pid, &st, 0) > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0){
+            char *img_av[] = { "curl","-sL","--max-time","20","--max-filesize","8000000","-o",raw,imgurl,NULL };
+            if(spawn_quiet(img_av) == 0){
+                char *sips_av[] = { "sips","-s","format","png",raw,"--out",j->img,NULL };
+                if(spawn_quiet(sips_av) == 0){
                     FILE *pf = fopen(j->img, "rb"); if(pf){ ok = 1; fclose(pf); }
                 }
             }
@@ -639,23 +645,29 @@ static int disp_w(const char *s){
     return w;
 }
 
-/* Open an http(s) URL in the default browser. Double-fork so the opener is
- * reparented (no zombie); exec directly (no shell -> no injection). */
+/* Open an http(s) URL in the default browser via posix_spawn (fork-safe even while
+ * a fetch worker holds a lock; no shell -> no injection). Detaches the opener from
+ * our session (POSIX_SPAWN_SETSID) so it survives our exit; tries `open` (macOS)
+ * then `xdg-open` (linux). `open`/`xdg-open` return promptly after handing off. */
 static void open_url(const char *url){
-    pid_t pid;
+    posix_spawn_file_actions_t fa; posix_spawnattr_t attr;
+    pid_t pid; int st;
+    char *open_av[] = { "open", (char *)url, NULL };
+    char *xdg_av[]  = { "xdg-open", (char *)url, NULL };
     if(!url) return;
     if(strncmp(url, "http://", 7) != 0 && strncmp(url, "https://", 8) != 0) return;
-    pid = fork();
-    if(pid == 0){
-        if(fork() == 0){
-            setsid();
-            execlp("open", "open", url, (char *)NULL);         /* macOS */
-            execlp("xdg-open", "xdg-open", url, (char *)NULL);  /* linux */
-            _exit(127);
-        }
-        _exit(0);
-    }
-    if(pid > 0){ int st; waitpid(pid, &st, 0); }
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    posix_spawnattr_init(&attr);
+#ifdef POSIX_SPAWN_SETSID
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
+#endif
+    if(posix_spawnp(&pid, "open", &fa, &attr, open_av, environ) == 0) waitpid(pid, &st, 0);
+    else if(posix_spawnp(&pid, "xdg-open", &fa, &attr, xdg_av, environ) == 0) waitpid(pid, &st, 0);
+    posix_spawnattr_destroy(&attr);
+    posix_spawn_file_actions_destroy(&fa);
 }
 
 /* ---- Demo autoplay (for screen recordings) ------------------------------- *
@@ -669,7 +681,7 @@ static void open_url(const char *url){
  *   open / close  open / close the fullscreen viewer for the last image
  *   quit          end the demo
  * Lines that are blank or start with '#' are ignored. */
-enum { D_WAIT, D_MSG, D_SAY, D_IMG, D_SCROLL, D_OPEN, D_CLOSE, D_QUIT };
+enum { D_WAIT, D_MSG, D_SAY, D_IMG, D_SCROLL, D_OPEN, D_CLOSE, D_QUIT, D_PREFETCH };
 typedef struct { int kind; int arg; char text[MSG_MAX]; } DemoStep;
 
 static long now_ms(void){
@@ -707,6 +719,7 @@ static int demo_load(const char *path, DemoStep *out, int max){
         else if(strcmp(s, "msg")    == 0){ out[n].kind = D_MSG;   unescape_nl(out[n].text, rest, MSG_MAX); }
         else if(strcmp(s, "say")    == 0){ out[n].kind = D_SAY;   unescape_nl(out[n].text, rest, MSG_MAX); }
         else if(strcmp(s, "img")    == 0){ out[n].kind = D_IMG;   snprintf(out[n].text, MSG_MAX, "%s", rest); }
+        else if(strcmp(s, "prefetch")==0){ out[n].kind = D_PREFETCH; snprintf(out[n].text, MSG_MAX, "%s", rest); }
         else if(strcmp(s, "scroll") == 0){ out[n].kind = D_SCROLL; out[n].arg = atoi(rest); }
         else if(strcmp(s, "open")   == 0){ out[n].kind = D_OPEN; }
         else if(strcmp(s, "close")  == 0){ out[n].kind = D_CLOSE; }
@@ -926,6 +939,17 @@ int main(int argc, char **argv){
                         snprintf(demo_img_path, sizeof demo_img_path, "%s", st->text);
                         snprintf(demo_img_alt,  sizeof demo_img_alt,  "%s", base);
                         demo_at = now + 900; demo_i++;
+                    } break;
+                    case D_PREFETCH: {  /* warm the remote-image / card cache off-screen so the
+                                         * demo shows them the instant their message posts (the
+                                         * live app keeps the realistic async pop-in). */
+                        char tmp[512], title[256];
+                        int is_img = strstr(st->text, ".png") || strstr(st->text, ".jpg") ||
+                                     strstr(st->text, ".jpeg") || strstr(st->text, ".gif") ||
+                                     strstr(st->text, ".webp");
+                        if(is_img) (void)resolve_remote(st->text, tmp, sizeof tmp);
+                        else       (void)resolve_card(st->text, tmp, sizeof tmp, title, sizeof title);
+                        demo_at = now + 20; demo_i++;
                     } break;
                     case D_SCROLL: scroll += st->arg; if(scroll < 0) scroll = 0; demo_at = now + 450; demo_i++; break;
                     case D_OPEN:

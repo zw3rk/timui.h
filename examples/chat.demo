@@ -1,9 +1,14 @@
 # timui.h chat — autoplay demo for screen recordings.
 #   run:  ./build/chat --demo examples/chat.demo   (or: make run-chat-demo)
 # Actions:  wait <ms> | msg <text> | say <text> | img <path>
-#           scroll <n> | open | close | quit
+#           prefetch <url> | scroll <n> | open | close | quit
 # '#'/blank lines are ignored.
 
+# Warm the remote-image + link-card caches during the intro (the card's og:image
+# can take 10s+), so both render the instant their messages post further down. The
+# live app keeps the realistic async pop-in — this only helps the scripted demo.
+prefetch https://github.com/fluidicon.png
+prefetch https://github.com
 wait 400
 msg alice: hey! did the new chat land? 👋
 wait 150
