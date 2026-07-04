@@ -32,7 +32,15 @@ wait 250
 msg bob: c99 never looked this *sexy* on a terminal :eyes:
 wait 300
 say and markdown too — *bold*, _italic_, `code` :fire:
-wait 400
+wait 500
+msg dev: here's the summation helper:\n```c\nint add(int a, int b) {\n    return a + b; // wide-add\n}\n```\ncompiles clean!
+wait 1900
+msg alice: long messages wrap now — this line flows across several rows instead of clipping, and the timestamp only shows once 👀
+wait 1500
+msg avi: וגם עברית ארוכה נעטפת יפה על פני כמה שורות, מיושרת לימין 🎉
+wait 1500
+say Shift+Enter composes multi-line:\n  • word wrap\n  • fenced code blocks
+wait 1600
 msg maya: fresh from the design team — new logo! :sparkles:
 wait 250
 msg maya: ![t_ logo](examples/assets/logo.png)

@@ -31,12 +31,16 @@
 #include <unistd.h>    /* fork / execvp / _exit — open links, fetch remote images */
 #include <sys/wait.h>  /* waitpid */
 #include <fcntl.h>     /* open (/dev/null for the fetch children) */
+#include "chat_text.h"      /* shortcodes, bidi, display-width metrics + word wrap */
+#include "chat_highlight.h" /* syntax highlighter for fenced code blocks */
 
 /* An inline image message reserves IMG_ROWS rows (a caption line + the picture,
  * IMG_COLS wide). Kitty-graphics terminals draw the real PNG; others show the
  * "[img]" cell placeholder from timui_image_draw. */
 #define IMG_ROWS 7
 #define IMG_COLS 20
+#define CODE_BG  0x1B1E2Bu               /* fenced code-block background */
+#define CODE_FG  0xD6DEEBu               /* default code text colour */
 
 /* Message type carried over the MPSC queue. */
 enum { MSG_LINE = 1 };
@@ -113,129 +117,6 @@ static void *chat_worker(void *arg){
  * `code`, and http(s):// links (drawn as OSC 8 hyperlinks). Markers toggle
  * their attribute (an unmatched marker simply runs to end of line). Draws one
  * glyph at a time so wide chars (CJK, emoji) advance by two cells. */
-/* Emoji shortcodes (:name:) — expanded at render time so `:eyes:` shows as 👀.
- * Every emoji here is in the bundled Twemoji atlas so it renders in a recording
- * without --system-emoji too. */
-static const struct { const char *code; const char *emoji; } SHORTCODES[] = {
-    {":eyes:", "\xF0\x9F\x91\x80"},        {":wave:", "\xF0\x9F\x91\x8B"},
-    {":thumbsup:", "\xF0\x9F\x91\x8D"},    {":thumbs-up:", "\xF0\x9F\x91\x8D"},
-    {":+1:", "\xF0\x9F\x91\x8D"},          {":tada:", "\xF0\x9F\x8E\x89"},
-    {":fire:", "\xF0\x9F\x94\xA5"},        {":rocket:", "\xF0\x9F\x9A\x80"},
-    {":heart:", "\xE2\x9D\xA4"},           {":sparkles:", "\xE2\x9C\xA8"},
-    {":bulb:", "\xF0\x9F\x92\xA1"},        {":clap:", "\xF0\x9F\x91\x8F"},
-    {":brain:", "\xF0\x9F\xA7\xA0"},       {":zap:", "\xE2\x9A\xA1"},
-    {":star:", "\xE2\xAD\x90"},            {":joy:", "\xF0\x9F\xA4\xA3"},
-    {":raised_hands:", "\xF0\x9F\x99\x8C"},{":bow:", "\xF0\x9F\x99\x87"},
-    {":party:", "\xF0\x9F\xA5\xB3"},       {":bug:", "\xF0\x9F\x90\x9B"},
-    {":globe:", "\xF0\x9F\x8C\x8D"},       {":boom:", "\xF0\x9F\x92\xA5"},
-};
-/* If a :shortcode: starts at s, return its emoji + set *clen to the code length. */
-static const char *shortcode_at(const char *s, size_t *clen){
-    size_t k;
-    if(s[0] != ':') return NULL;
-    for(k = 0; k < sizeof SHORTCODES / sizeof SHORTCODES[0]; k++){
-        size_t cl = strlen(SHORTCODES[k].code);
-        if(strncmp(s, SHORTCODES[k].code, cl) == 0){ *clen = cl; return SHORTCODES[k].emoji; }
-    }
-    return NULL;
-}
-
-/* ---- RTL: Hebrew/Arabic (basic bidi + Arabic joining) -------------------- *
- * A terminal renders cells positionally (no reordering), so the app must lay RTL
- * out itself: shape Arabic base letters to their contextual presentation forms,
- * then reverse RTL runs for visual order. Simplified — no full UAX#9, no lam-alef
- * ligature — but enough to show Hebrew/Arabic messages correctly. */
-static int is_rtl_cp(unsigned int cp){
-    return (cp >= 0x0590 && cp <= 0x05FF) || (cp >= 0x0600 && cp <= 0x06FF) ||
-           (cp >= 0x0750 && cp <= 0x077F) || (cp >= 0xFB1D && cp <= 0xFEFF);
-}
-/* Arabic letters: base -> isolated presentation form (FExx) + dual-joining flag.
- * For dual: final=iso+1, initial=iso+2, medial=iso+3; right-joining has iso+final only. */
-static const struct { unsigned int base, iso; int dual; } ARJOIN[] = {
-    {0x0621,0xFE80,0},{0x0622,0xFE81,0},{0x0623,0xFE83,0},{0x0624,0xFE85,0},
-    {0x0625,0xFE87,0},{0x0626,0xFE89,1},{0x0627,0xFE8D,0},{0x0628,0xFE8F,1},
-    {0x0629,0xFE93,0},{0x062A,0xFE95,1},{0x062B,0xFE99,1},{0x062C,0xFE9D,1},
-    {0x062D,0xFEA1,1},{0x062E,0xFEA5,1},{0x062F,0xFEA9,0},{0x0630,0xFEAB,0},
-    {0x0631,0xFEAD,0},{0x0632,0xFEAF,0},{0x0633,0xFEB1,1},{0x0634,0xFEB5,1},
-    {0x0635,0xFEB9,1},{0x0636,0xFEBD,1},{0x0637,0xFEC1,1},{0x0638,0xFEC5,1},
-    {0x0639,0xFEC9,1},{0x063A,0xFECD,1},{0x0641,0xFED1,1},{0x0642,0xFED5,1},
-    {0x0643,0xFED9,1},{0x0644,0xFEDD,1},{0x0645,0xFEE1,1},{0x0646,0xFEE5,1},
-    {0x0647,0xFEE9,1},{0x0648,0xFEED,0},{0x0649,0xFEEF,0},{0x064A,0xFEF1,1},
-};
-static int arjoin_type(unsigned int cp){   /* 0=not-joining 1=right-joining 2=dual */
-    size_t k;
-    for(k = 0; k < sizeof ARJOIN / sizeof ARJOIN[0]; k++)
-        if(ARJOIN[k].base == cp) return ARJOIN[k].dual ? 2 : 1;
-    return 0;
-}
-static int enc_utf8(unsigned int cp, char *out){
-    if(cp < 0x80){ out[0] = (char)cp; return 1; }
-    if(cp < 0x800){ out[0] = (char)(0xC0|(cp>>6)); out[1] = (char)(0x80|(cp&0x3F)); return 2; }
-    if(cp < 0x10000){ out[0] = (char)(0xE0|(cp>>12)); out[1] = (char)(0x80|((cp>>6)&0x3F));
-                      out[2] = (char)(0x80|(cp&0x3F)); return 3; }
-    out[0] = (char)(0xF0|(cp>>18)); out[1] = (char)(0x80|((cp>>12)&0x3F));   /* astral (emoji) — was */
-    out[2] = (char)(0x80|((cp>>6)&0x3F)); out[3] = (char)(0x80|(cp&0x3F)); return 4;  /* corrupting these */
-}
-static int is_ltr_strong(unsigned int cp){        /* strong LTR: Latin letter or digit */
-    return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= '0' && cp <= '9');
-}
-/* Lay a message body out in visual order for positional cell rendering. A cheap
- * 2-level bidi (NOT full UAX #9 — see docs; FriBidi is the correct engine): Arabic
- * is shaped in logical order first, then
- *   base_rtl: the whole body is level-1 (reverse it, so a trailing emoji / "!" lands
- *             at the visual LEFT per UBA N1/N2), and embedded Latin/number runs are
- *             level-2 (reversed back to reading order);
- *   base_ltr: only RTL runs are reversed in place.
- * Good enough for chat lines; embedded numbers-in-RTL / nesting want a real UBA. */
-static void bidi_visual(const char *in, char *out, size_t cap, int base_rtl){
-    unsigned int cp[512], orig[512];
-    int n = 0, k, o = 0, a, b;
-    size_t i = 0, len = strlen(in);
-    while(in[i] && n < 512){ uint32_t c; int adv = timui_utf8_decode(in + i, len - i, &c); if(adv <= 0) adv = 1; cp[n++] = c; i += (size_t)adv; }
-    memcpy(orig, cp, (size_t)n * sizeof cp[0]);
-    for(k = 0; k < n; k++){                          /* Arabic contextual shaping (logical order) */
-        size_t j; int found = 0; unsigned int iso = 0; int dual = 0, prevj, nextj;
-        for(j = 0; j < sizeof ARJOIN / sizeof ARJOIN[0]; j++)
-            if(ARJOIN[j].base == orig[k]){ found = 1; iso = ARJOIN[j].iso; dual = ARJOIN[j].dual; break; }
-        if(!found) continue;
-        prevj = k > 0 && arjoin_type(orig[k-1]) == 2;
-        nextj = dual && k + 1 < n && arjoin_type(orig[k+1]) != 0;
-        cp[k] = prevj && nextj ? iso + 3 : prevj ? iso + 1 : nextj ? iso + 2 : iso;
-    }
-    if(base_rtl){                                    /* reverse all (level 1) … */
-        for(a = 0, b = n - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
-        for(k = 0; k < n;){                          /* … un-reverse Latin/number runs (level 2) */
-            if(is_ltr_strong(cp[k])){
-                int e = k;
-                while(e < n && (is_ltr_strong(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_ltr_strong(cp[e+1])))) e++;
-                for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
-                k = e;
-            } else k++;
-        }
-    } else {                                         /* base LTR: reverse maximal RTL runs in place */
-        for(k = 0; k < n;){
-            if(is_rtl_cp(cp[k])){
-                int e = k;
-                while(e < n && (is_rtl_cp(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_rtl_cp(cp[e+1])))) e++;
-                for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
-                k = e;
-            } else k++;
-        }
-    }
-    for(k = 0; k < n && o < (int)cap - 4; k++) o += enc_utf8(cp[k], out + o);
-    out[o] = '\0';
-}
-/* Base direction of a body: the first strong character (UAX #9 P2/P3). */
-static int first_strong_rtl(const char *s){
-    size_t i = 0, len = strlen(s);
-    while(s[i]){
-        uint32_t cp; int a = timui_utf8_decode(s + i, len - i, &cp); if(a <= 0) a = 1;
-        if(is_rtl_cp(cp)) return 1;
-        if((cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z')) return 0;
-        i += (size_t)a;
-    }
-    return 0;
-}
 
 /* Draw rich text left-to-right from x, stopping at maxx; returns the ending x.
  * With measure=1 nothing is drawn — used to pre-measure width for RTL right-align. */
@@ -566,15 +447,54 @@ static int msg_image_path(const char *s, char *out, size_t cap){
     }
     return 0;
 }
-/* Row count for a message: IMG_ROWS only when the terminal can actually draw an
- * inline image (Kitty graphics) AND the local PNG loads. Otherwise 1 row — the
- * message keeps its clickable badge (no ugly grey placeholder box). Kitty
- * graphics is stripped under tmux/screen, so there the badge is used. */
-static int msg_rows(Timui *ui, const char *s){
+/* Row count for a message: base-RTL prose wraps its BODY (sender = line-0 chrome);
+ * everything else (LTR prose, \n breaks, code blocks) goes through msg_visual_rows.
+ * An inline image (Kitty graphics + a loadable PNG) adds IMG_ROWS-1 rows below. */
+static int msg_rows(Timui *ui, const char *s, int textw){
     char path[256];
+    const char *colon = strstr(s, ": ");
+    int rtl = colon && first_strong_rtl(colon + 2), lines;
+    if(rtl && !strstr(s, "```")){
+        int starts[MSG_MAXLINES];
+        lines = wrap_rich(colon + 2, textw, starts, MSG_MAXLINES);
+    } else {
+        MsgRow rows[MSG_MAXLINES];
+        lines = msg_visual_rows(s, textw, rows, MSG_MAXLINES);
+    }
     if(timui_caps_has(timui_caps(ui), TIMUI_CAP_KITTY_GRAPHICS) &&
-       msg_image_path(s, path, sizeof path) && load_image(ui, path)) return IMG_ROWS;
-    return 1;
+       msg_image_path(s, path, sizeof path) && load_image(ui, path))
+        return lines + (IMG_ROWS - 1);
+    return lines;
+}
+/* Map a highlighter token class to a colour (over the code-block background). */
+static uint32_t hl_color(HlClass c){
+    switch(c){
+        case HL_KEYWORD: return 0xC792EAu;   /* purple */
+        case HL_TYPE:    return 0x82AAFFu;   /* blue   */
+        case HL_STRING:  case HL_CHAR: return 0xC3E88Du;  /* green */
+        case HL_COMMENT: return 0x7A88A0u;   /* muted  */
+        case HL_NUMBER:  return 0xF78C6Cu;   /* orange */
+        case HL_PREPROC: return 0xFFCB6Bu;   /* yellow */
+        case HL_PUNCT:   return 0x89DDFFu;   /* cyan   */
+        default:         return CODE_FG;
+    }
+}
+/* Draw one code line: a CODE_BG strip across [x, maxx), then the source with
+ * syntax colours from chat_highlight. Not wrapped — clips at maxx. */
+static void draw_code_row(TimuiFrame *f, int x, int y, int maxx,
+                          const char *code, int len, const char *lang){
+    HlTok toks[128]; int nt = chat_highlight(code, len, lang, toks, 128), ti = 0, col = x, i = 0;
+    timui_draw_fill(timui_frame_buffer(f), TIMUI_RECT(x, y, maxx - x, 1),
+                    timui_style_make(CODE_FG, CODE_BG, 0));
+    while(i < len && col < maxx){
+        HlClass cls = HL_TEXT; TimuiStr ch; uint32_t cp; int adv, w;
+        while(ti < nt && i >= toks[ti].off + toks[ti].len) ti++;
+        if(ti < nt && i >= toks[ti].off) cls = toks[ti].cls;
+        adv = timui_utf8_decode(code + i, len - i, &cp); if(adv <= 0) adv = 1;
+        ch.ptr = code + i; ch.len = (size_t)adv;
+        timui_label(f, col, y, ch, timui_style_make(hl_color(cls), CODE_BG, 0));
+        w = timui_utf8_width(cp); col += w > 0 ? w : 0; i += adv;
+    }
 }
 /* Draw one message at row `y` spanning `h` rows: a dim timestamp + rich text on
  * the first row, and (for an image message) the picture below it. */
@@ -583,39 +503,65 @@ static void draw_message(TimuiFrame *f, const char *ts, const char *s, TimuiRect
                          uint32_t code_fg, uint32_t link_fg, Timui *ui){
     char path[256];
     int by0 = body.y, by1 = body.y + body.h - 1;
-    /* Caption row (timestamp + rich text) — only when it lands in the pane, so a
-     * partly-scrolled message doesn't draw into the header/composer. */
-    if(y >= by0 && y <= by1){
-        char vis[MSG_MAX];
-        int lx = body.x + 1 + TS_COLS, maxx = body.x + body.w;
-        const char *colon = strstr(s, ": ");          /* split "sender: body" */
-        const char *btext = colon ? colon + 2 : s;
-        int senderw = colon ? (int)(colon + 2 - s) : 0;   /* ASCII sender width */
-        timui_label(f, body.x + 1, y, timui_str_from_cstr(ts),
-                    timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM));
-        if(colon && first_strong_rtl(btext)){
-            /* Sender label stays LTR chrome on the left; only the body flips — a
-             * base-RTL paragraph laid out flush-right (see docs/research). */
-            char sender[80];
-            int sl = senderw < (int)sizeof sender ? senderw : (int)sizeof sender - 1;
-            memcpy(sender, s, (size_t)sl); sender[sl] = '\0';
-            draw_rich(f, lx, y, maxx, sender, fg, panel.bg, code_fg, link_fg);
-            bidi_visual(btext, vis, sizeof vis, 1);
-            { int w  = draw_rich_ex(f, 0, y, 1 << 20, vis, fg, panel.bg, code_fg, link_fg, 1);
-              int bx = maxx - w, minx = lx + senderw;
+    int lx = body.x + 1 + TS_COLS, maxx = body.x + body.w, textw = maxx - lx;
+    const char *colon = strstr(s, ": ");              /* split "sender: body" */
+    const char *btext = colon ? colon + 2 : s;
+    int rtl = colon && first_strong_rtl(btext);       /* base-RTL message? */
+    int nlines, j, has_code = strstr(s, "```") != NULL;
+    int senderw = colon ? (int)(colon + 2 - s) : 0;
+    char sender[80];
+    TimuiStyle tss = timui_style_make(sys_fg, panel.bg, TIMUI_ATTR_DIM);
+    if(rtl && !has_code){
+        /* base-RTL prose: wrap the body, sender is LTR chrome on line 0, each wrapped
+         * body line is a base-RTL paragraph laid out flush-right (per-line bidi). */
+        int starts[MSG_MAXLINES], sl = senderw < (int)sizeof sender ? senderw : (int)sizeof sender - 1;
+        nlines = wrap_rich(btext, textw, starts, MSG_MAXLINES);
+        memcpy(sender, s, (size_t)sl); sender[sl] = '\0';
+        for(j = 0; j < nlines; j++){
+            int ry = y + j, off, end, llen; char line[MSG_MAX], vis[MSG_MAX];
+            if(ry < by0 || ry > by1) continue;
+            off = starts[j]; end = (j + 1 < nlines) ? starts[j + 1] : (int)strlen(btext);
+            llen = end - off; if(llen >= (int)sizeof line) llen = (int)sizeof line - 1;
+            memcpy(line, btext + off, (size_t)llen); line[llen] = '\0';
+            if(j == 0){ timui_label(f, body.x + 1, ry, timui_str_from_cstr(ts), tss);
+                        draw_rich(f, lx, ry, maxx, sender, fg, panel.bg, code_fg, link_fg); }
+            bidi_visual(line, vis, sizeof vis, 1);
+            { int w = draw_rich_ex(f, 0, ry, 1 << 20, vis, fg, panel.bg, code_fg, link_fg, 1);
+              int bx = maxx - w, minx = (j == 0 ? lx + senderw : lx);
               if(bx < minx) bx = minx;
-              draw_rich(f, bx, y, maxx, vis, fg, panel.bg, code_fg, link_fg); }
-        } else {
-            bidi_visual(s, vis, sizeof vis, 0);        /* LTR line; RTL words flipped in place */
-            draw_rich(f, lx, y, maxx, vis, fg, panel.bg, code_fg, link_fg);
+              draw_rich(f, bx, ry, maxx, vis, fg, panel.bg, code_fg, link_fg); }
+        }
+    } else {
+        /* LTR prose + \n line breaks + fenced code blocks. */
+        MsgRow rows[MSG_MAXLINES];
+        nlines = msg_visual_rows(s, textw, rows, MSG_MAXLINES);
+        for(j = 0; j < nlines; j++){
+            int ry = y + j, llen; char line[MSG_MAX], vis[MSG_MAX];
+            if(ry < by0 || ry > by1) continue;
+            if(j == 0) timui_label(f, body.x + 1, ry, timui_str_from_cstr(ts), tss);
+            llen = rows[j].len; if(llen < 0) llen = 0;
+            if(llen >= (int)sizeof line) llen = (int)sizeof line - 1;
+            memcpy(line, s + rows[j].off, (size_t)llen); line[llen] = '\0';
+            if(rows[j].kind == RK_CODE)
+                draw_code_row(f, lx, ry, maxx, line, llen, rows[j].lang);
+            else if(rows[j].kind == RK_FENCE)      /* padding strip framing the block */
+                timui_draw_fill(timui_frame_buffer(f), TIMUI_RECT(lx, ry, maxx - lx, 1),
+                                timui_style_make(sys_fg, CODE_BG, 0));
+            else { bidi_visual(line, vis, sizeof vis, 0);
+                   draw_rich(f, lx, ry, maxx, vis, fg, panel.bg, code_fg, link_fg); }
         }
     }
-    /* Inline image (rows y+1 .. y+h-1), CLIPPED to the pane so it slides off
+    /* Inline image below the caption lines, CLIPPED to the pane so it slides off
      * smoothly instead of hiding oddly. */
-    if(h > 1 && msg_image_path(s, path, sizeof path)){
+    if(h > nlines && msg_image_path(s, path, sizeof path)){
         TimuiImage *img = load_image(ui, path);
         if(img){
-            TimuiRect full = TIMUI_RECT(body.x + 2, y + 1, IMG_COLS, h - 1);
+            /* Indent the picture to the message text column (after "HH:MM sender:")
+             * for LTR, mirrored to the right edge for a base-RTL message. */
+            int ix = rtl ? maxx - IMG_COLS : lx;
+            if(ix + IMG_COLS > maxx) ix = maxx - IMG_COLS;
+            if(ix < body.x + 1) ix = body.x + 1;
+            TimuiRect full = TIMUI_RECT(ix, y + nlines, IMG_COLS, h - nlines);
             int vtop = full.y > by0 ? full.y : by0;
             int vbot = (full.y + full.h - 1) < by1 ? (full.y + full.h - 1) : by1;
             if(vtop <= vbot){
@@ -653,11 +599,12 @@ static void draw_transcript(TimuiFrame *f, const Transcript *t, TimuiRect body,
                             uint32_t code_fg, uint32_t link_fg){
     TimuiCellBuffer *buf = timui_frame_buffer(f);
     Timui *ui = f->ui;
-    int idx, y_bottom;
+    int idx, y_bottom, textw;
 
     g_click_n = 0;                              /* rebuild clickable image regions */
     timui_draw_fill(buf, body, panel);
     if(body.h <= 0 || body.w <= 0 || t->count <= 0) return;
+    textw = body.w - 1 - TS_COLS;               /* text column width for wrapping */
 
     /* Line-based scroll: stack messages newest→oldest upward from the pane
      * bottom. `scroll` is in LINES, pushing the newest line below the bottom;
@@ -667,7 +614,7 @@ static void draw_transcript(TimuiFrame *f, const Transcript *t, TimuiRect body,
     for(idx = t->count - 1; idx >= 0 && (t->count - 1 - idx) < LOG_CAP; idx--){
         int i2 = idx & (LOG_CAP - 1);
         const char *s = t->log[i2].line;
-        int h = msg_rows(ui, s);
+        int h = msg_rows(ui, s, textw);
         int y_top = y_bottom - h + 1;
         if(y_bottom < body.y) break;              /* this + older are all above the pane */
         if(y_top < body.y + body.h){              /* some rows visible */
@@ -731,6 +678,16 @@ static long now_ms(void){
     return (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
+/* Copy src -> dst turning a literal "\n" into a real newline, so a demo script can
+ * post a multi-line message (or a fenced code block) on one line. */
+static void unescape_nl(char *dst, const char *src, size_t cap){
+    size_t i = 0, j = 0;
+    while(src[i] && j + 1 < cap){
+        if(src[i] == '\\' && src[i+1] == 'n'){ dst[j++] = '\n'; i += 2; }
+        else dst[j++] = src[i++];
+    }
+    dst[j] = '\0';
+}
 static int demo_load(const char *path, DemoStep *out, int max){
     FILE *fp = fopen(path, "r");
     char line[MSG_MAX + 64];
@@ -747,8 +704,8 @@ static int demo_load(const char *path, DemoStep *out, int max){
         if(rest){ *rest++ = '\0'; while(*rest == ' ') rest++; } else rest = s + strlen(s);
         out[n].arg = 0; out[n].text[0] = '\0';
         if(strcmp(s, "wait")   == 0){ out[n].kind = D_WAIT;   out[n].arg = atoi(rest); }
-        else if(strcmp(s, "msg")    == 0){ out[n].kind = D_MSG;   snprintf(out[n].text, MSG_MAX, "%s", rest); }
-        else if(strcmp(s, "say")    == 0){ out[n].kind = D_SAY;   snprintf(out[n].text, MSG_MAX, "%s", rest); }
+        else if(strcmp(s, "msg")    == 0){ out[n].kind = D_MSG;   unescape_nl(out[n].text, rest, MSG_MAX); }
+        else if(strcmp(s, "say")    == 0){ out[n].kind = D_SAY;   unescape_nl(out[n].text, rest, MSG_MAX); }
         else if(strcmp(s, "img")    == 0){ out[n].kind = D_IMG;   snprintf(out[n].text, MSG_MAX, "%s", rest); }
         else if(strcmp(s, "scroll") == 0){ out[n].kind = D_SCROLL; out[n].arg = atoi(rest); }
         else if(strcmp(s, "open")   == 0){ out[n].kind = D_OPEN; }
@@ -768,13 +725,18 @@ static void draw_compose_styled(TimuiFrame *f, TimuiRect r, const char *s, int s
                                 uint32_t fg, uint32_t bg, uint32_t code_fg, uint32_t dim_fg){
     size_t i = 0, len = strlen(s);
     uint32_t attrs = 0;
-    int code = 0, col = 0;
+    int code = 0, col = 0, row = 0;
     while(s[i]){
-        int x = r.x + col - scroll_x;
+        int x = r.x + col - (row == 0 ? scroll_x : 0), y = r.y + row;
+        if(s[i] == '\n'){                                       /* Shift+Enter line break */
+            row++; col = 0; attrs = 0; code = 0; i++;
+            if(row >= r.h) break;
+            continue;
+        }
         if(s[i] == '*' || s[i] == '_' || s[i] == '`'){          /* marker: keep it, dim */
             if(x >= r.x && x < r.x + r.w){
                 char m[2]; m[0] = s[i]; m[1] = '\0';
-                timui_label(f, x, r.y, timui_str_from_cstr(m), timui_style_make(dim_fg, bg, 0));
+                timui_label(f, x, y, timui_str_from_cstr(m), timui_style_make(dim_fg, bg, 0));
             }
             if(s[i] == '*') attrs ^= TIMUI_ATTR_BOLD;
             else if(s[i] == '_') attrs ^= TIMUI_ATTR_ITALIC;
@@ -786,7 +748,7 @@ static void draw_compose_styled(TimuiFrame *f, TimuiRect r, const char *s, int s
           if(adv <= 0) adv = 1;
           if(x >= r.x && x < r.x + r.w){
               TimuiStr ch; ch.ptr = s + i; ch.len = (size_t)adv;
-              timui_label(f, x, r.y, ch, timui_style_make(code ? code_fg : fg, bg, attrs));
+              timui_label(f, x, y, ch, timui_style_make(code ? code_fg : fg, bg, attrs));
           }
           col += w; i += (size_t)adv; }
     }
@@ -895,7 +857,7 @@ int main(int argc, char **argv){
         char header_txt[80];
         uint32_t type = 0;
         size_t sz;
-        int count_before, body_rows, page, maxscroll, fs_was;
+        int count_before, body_rows, page, maxscroll, fs_was, tw, compose_rows;
 
         if(!timui_begin(ui, &f)) break;   /* break => still stop+join+close below */
         fs_was = fs_active;               /* modal state at frame start */
@@ -980,13 +942,17 @@ int main(int argc, char **argv){
             }
         }
 
+        /* Text-column wrap width — the same value draw_transcript uses, so the
+         * scroll clamp/anchor line counts match what's drawn. */
+        tw = timui_root(f).w - 1 - TS_COLS;
+
         /* Keep the view anchored while scrolled up: any messages added this frame
          * (worker recv OR demo posts) push the offset so the same history stays
          * put — and the "↓ N below" counter climbs. */
         if(scroll > 0){
             int j, nl = 0;
             for(j = count_before; j < transcript.count; j++)
-                nl += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
+                nl += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line, tw);
             scroll += nl;
         }
 
@@ -1006,11 +972,14 @@ int main(int argc, char **argv){
         }
         if(timui_key_pressed(f, TIMUI_KEY_ESCAPE)) timui_quit(ui);
 
-        /* Layout (top→bottom): header · transcript · ─── rule · ❯ input · hint. */
+        /* Layout (top→bottom): header · transcript · ─── rule · ❯ input · hint.
+         * The composer grows to as many rows as it has Shift+Enter lines (capped). */
+        { int nl = 1; const char *p = compose; while(*p) if(*p++ == '\n') nl++;
+          compose_rows = nl < 1 ? 1 : (nl > 6 ? 6 : nl); }
         root   = timui_root(f);
         header = timui_cut_top(&root, 1);
         hint   = timui_cut_bottom(&root, 1);
-        input  = timui_cut_bottom(&root, 1);
+        input  = timui_cut_bottom(&root, compose_rows);
         rule   = timui_cut_bottom(&root, 1);
         body_rows = root.h;
 
@@ -1028,7 +997,7 @@ int main(int argc, char **argv){
         { int j, total_lines = 0;
           int first = transcript.count > LOG_CAP ? transcript.count - LOG_CAP : 0;
           for(j = first; j < transcript.count; j++)
-              total_lines += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
+              total_lines += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line, tw);
           maxscroll = total_lines - body_rows;
         }
         if(maxscroll < 0)   maxscroll = 0;
@@ -1073,7 +1042,7 @@ int main(int argc, char **argv){
                 int first = transcript.count > LOG_CAP ? transcript.count - LOG_CAP : 0;
                 for(j = transcript.count - 1; j >= first && start < scroll; j--){
                     mb++;                        /* this message has ≥1 row hidden below */
-                    start += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line);
+                    start += msg_rows(ui, transcript.log[j & (LOG_CAP - 1)].line, tw);
                 }
                 snprintf(jb, sizeof jb,
                          "  \xE2\x86\x93 %d new below \xE2\x80\x94 Ctrl+End / Enter for latest \xE2\x86\x93  ", mb);
@@ -1104,37 +1073,51 @@ int main(int argc, char **argv){
                    compose_state.cursor = strlen(compose); }
             compose_state.scroll_x = 0;
         }
-        prompt = timui_cut_left(&input, 2);
-        timui_label(f, prompt.x, prompt.y, TIMUI_STR_LIT("\xE2\x9D\xAF "),   /* ❯ */
-                    timui_style_make(link_fg, panel.bg, TIMUI_ATTR_BOLD));
-        /* Styled so the composer blends into the panel (just the ❯ accent), not
-         * a green input box that read as the same surface as the hint below. */
-        if(timui_input_field_styled(f, TIMUI_ID("compose"), input, &compose_state,
-                                    timui_style_make(text_fg, panel.bg, 0))){
-            { size_t L = strlen(compose);   /* trim trailing ws a drag-drop may add */
-              while(L > 0 && (compose[L-1] == ' ' || compose[L-1] == '\t')) compose[--L] = '\0'; }
-            if(compose[0] != '\0'){
-                char sent[MSG_MAX];
-                if(hist_count < (int)(sizeof history / sizeof history[0]))
-                    snprintf(history[hist_count++], MSG_MAX, "%s", compose);   /* record for ↑/↓ */
-                if(is_png_path(compose)){
-                    const char *base = strrchr(compose, '/');
-                    base = base ? base + 1 : compose;
-                    snprintf(sent, sizeof sent, "you: ![%s](%s)", base, compose);
-                } else {
-                    snprintf(sent, sizeof sent, "you: %s", compose);
-                }
-                log_append(&transcript, sent);
-            }
-            hist_pos = hist_count;         /* back to a fresh line */
-            compose[0] = '\0';
-            compose_state.cursor = 0;
-            compose_state.scroll_x = 0;
-            scroll = 0;
+        /* Shift+Enter inserts a newline for a multi-line message; plain Enter sends.
+         * Only terminals with the Kitty keyboard protocol (e.g. Ghostty) tell the
+         * two apart — elsewhere Shift+Enter reads as Enter and just sends. */
+        { int se = timui_key_pressed_mods(f, TIMUI_KEY_ENTER, TIMUI_MOD_SHIFT);
+          TimuiRect ifr;
+          if(se){ size_t clen = strlen(compose); int cur = compose_state.cursor;
+              if(clen + 1 < sizeof compose && cur >= 0 && cur <= (int)clen){
+                  memmove(compose + cur + 1, compose + cur, clen - cur + 1);
+                  compose[cur] = '\n'; compose_state.cursor = cur + 1; } }
+          prompt = timui_cut_left(&input, 2);
+          timui_label(f, prompt.x, prompt.y, TIMUI_STR_LIT("\xE2\x9D\xAF "),   /* ❯ on line 0 */
+                      timui_style_make(link_fg, panel.bg, TIMUI_ATTR_BOLD));
+          /* Editing runs on the first row; draw_compose_styled paints all rows. */
+          ifr = input; ifr.h = 1;
+          if(timui_input_field_styled(f, TIMUI_ID("compose"), ifr, &compose_state,
+                                      timui_style_make(text_fg, panel.bg, 0)) && !se){
+              { size_t L = strlen(compose);   /* trim trailing space/tab (not \n) */
+                while(L > 0 && (compose[L-1] == ' ' || compose[L-1] == '\t')) compose[--L] = '\0'; }
+              if(compose[0] != '\0'){
+                  char sent[MSG_MAX];
+                  if(hist_count < (int)(sizeof history / sizeof history[0]))
+                      snprintf(history[hist_count++], MSG_MAX, "%s", compose);   /* record for ↑/↓ */
+                  if(is_png_path(compose)){
+                      const char *base = strrchr(compose, '/');
+                      base = base ? base + 1 : compose;
+                      snprintf(sent, sizeof sent, "you: ![%s](%s)", base, compose);
+                  } else {
+                      snprintf(sent, sizeof sent, "you: %s", compose);
+                  }
+                  log_append(&transcript, sent);
+              }
+              hist_pos = hist_count;         /* back to a fresh line */
+              compose[0] = '\0';
+              compose_state.cursor = 0;
+              compose_state.scroll_x = 0;
+              scroll = 0;
+          }
         }
-        /* Live markdown styling over what you're typing (bold/italic/code). */
-        draw_compose_styled(f, input, compose, compose_state.scroll_x,
-                            text_fg, panel.bg, code_fg, sys_fg);
+        /* Live markdown styling over what you're typing (bold/italic/code). For a
+         * multi-line compose the single-line input_field paints only row 0, so clear
+         * the area first and let draw_compose_styled repaint every line (no scroll). */
+        { int multi = strchr(compose, '\n') != NULL;
+          if(multi) timui_draw_fill(timui_frame_buffer(f), input, panel);
+          draw_compose_styled(f, input, compose, multi ? 0 : compose_state.scroll_x,
+                              text_fg, panel.bg, code_fg, sys_fg); }
 
         /* Dim hint line — deliberately NOT the green status bar, so the composer
          * above no longer reads as the same surface as the row below it. */

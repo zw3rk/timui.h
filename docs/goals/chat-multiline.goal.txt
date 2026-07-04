@@ -1,0 +1,28 @@
+Goal: add multi-line messages, fenced code blocks + syntax highlighting, a multi-line composer, and indented inline images to the timui.h chat example (examples/chat.c, rendered by tools/vt_gif.c). Idiomatic C99; work only via nix develop -c make <target>.
+
+Build in phases; RUN THE MARKED BRANCHES AS PARALLEL SUBAGENTS.
+
+PHASE A (parallel, independent):
+ A1 Indent inline images (logo / card / remote) to the message TEXT column (after "HH:MM sender:") for LTR, mirrored to the RIGHT edge for base-RTL. Fix the click regions (g_click_img) + fullscreen coords to match.
+ A2 wrap_rich(text, width): a pure word-wrap engine returning wrapped line spans, using the SAME display width as draw_rich (CJK/emoji=2, hidden markdown markers */_/` =0, :shortcode:=2, URL=len, RTL glyph=1). Break on spaces; hard-break tokens longer than width.
+
+PHASE B (after A2):
+ B Multi-line LTR rendering: msg_rows returns the wrapped-line count (+IMG_ROWS if the message has an image); draw_message draws each wrapped line — timestamp+sender on line 1 only, continuation lines indented to the text column. Re-verify draw_transcript stacking, the line-based scroll clamp, the scroll-anchor, and the "N below" counter.
+
+PHASE C (parallel, all after B):
+ C1 Multi-line RTL: wrap the LOGICAL text, then bidi_visual + right-align EACH wrapped line (lines stack top-to-bottom, each flush-right; sender stays LTR chrome on line 1). Verify a long Hebrew and a long Arabic message.
+ C2 Fenced code blocks ```lang ... ```: parse an optional language tag, render a distinct multi-line monospace block (accent + background + padding, no word-wrap: clip or a scroll hint); msg_rows counts its height; keep separate from inline `code`.
+   C2b (after C2) Syntax highlighting: a table-driven lexer (keywords / types / string+char literals / line+block comments / numbers / preprocessor), C first + a generic fallback + sh & python behind the tag; colour via the theme.
+ C3 Shift+Enter composer: multi-line input — Enter sends, Shift+Enter inserts a newline; the composer grows vertically (capped, then scrolls), cursor navigates across lines, live markdown/RTL overlay per line; sends messages with embedded newlines (reuse B's renderer).
+
+PHASE D (after all): update examples/chat.demo to showcase a long LTR wrap, a long RTL wrap, a highlighted code block, indented images, and a Shift+Enter multi-line compose; update USAGE.md + docs/; regenerate recordings/chat-demo.{gif,mp4,webp}.
+
+NON-NEGOTIABLE:
+- TDD: a failing test (positive + negative/adversarial) precedes every new unit; a regression test precedes every bugfix. Keep files <=~1000 lines (split if needed).
+- MUST NOT regress: the ?2026 frame-boundary flicker fix (0 luma dips); RTL layout (sender = left chrome, body flush-right, trailing emoji at the visual LEFT, first-strong base direction over the body); emoji rendering — vt_gif cp_width MUST stay byte-identical to src/timui_render.c timui_utf8_width (the cursor-advance width), with emoji drawn SQUARE independently; the "N below" counter counts MESSAGES not rows; the golden PNG + all check-vt-gif-* + make test (>=196).
+- RTL: follow docs/research/rtl-chat-layout.md; note FriBidi as the fully-correct engine for the residue (numbers-in-RTL, nesting, per-line bidi).
+- Apache-2.0 header; copyright "Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd.". Commits single-purpose, imperative subject <=72 chars, body = why + reference, NO banned trailers (Co-authored-by / Signed-off-by / Generated...). FF-only to master; never push or --force without an explicit ask.
+
+ACCEPTANCE: make test + check-vt-gif-all green; recordings regenerated and verified by eye (0 flicker dips, correct LTR + RTL wrapping, highlighted code, indented images, working multi-line compose); each concern committed separately and fast-forwarded to master (parity 0/0).
+
+PARALLELIZE: run A1 || A2 concurrently; after B, run C1 || (C2 -> C2b) || C3 as independent agents; D synthesizes and regenerates.

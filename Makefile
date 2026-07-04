@@ -54,7 +54,7 @@ C_GREEN := \033[32m
 C_YELL  := \033[33m
 endif
 
-.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test
+.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -246,6 +246,26 @@ check-vt-gif-style: $(BLDDIR)/vt_gif ## Assert bold/italic use font variants
 # Run every vt_gif renderer check.
 check-vt-gif-all: check-vt-gif check-vt-gif-glyphs check-vt-gif-style check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden ## All vt_gif renderer checks
 	@printf "$(C_GREEN)✓ vt_gif: all renderer checks passed$(C_RESET)\n"
+
+# Standalone test for examples/chat_highlight.h — the chat example's pure-C99
+# syntax highlighter. Compiles the header-only tokenizer against its own test
+# main (NO timui library, NO tests/test.h) under the full project CFLAGS, then
+# runs it. Kept out of `make test` so the highlighter is exercisable on its own.
+check-chat-highlight: $(TSTDIR)/test_chat_highlight.c $(EXADIR)/chat_highlight.h ## Test the chat syntax highlighter (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) chat_highlight test\n"
+	@$(CC) $(CFLAGS) -I$(EXADIR) $(TSTDIR)/test_chat_highlight.c -o $(BLDDIR)/test_chat_highlight
+	@./$(BLDDIR)/test_chat_highlight \
+	  && printf "$(C_GREEN)✓ chat_highlight$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ chat_highlight$(C_RESET) tests failed\n"; exit 1; }
+
+check-chat-text: $(TSTDIR)/test_chat_text.c $(EXADIR)/chat_text.h $(HEADER) $(LIB_SECTIONS) ## Test the chat text/wrap helpers (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) chat_text test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) -I$(EXADIR) $(TSTDIR)/test_chat_text.c -o $(BLDDIR)/test_chat_text
+	@./$(BLDDIR)/test_chat_text \
+	  && printf "$(C_GREEN)✓ chat_text$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ chat_text$(C_RESET) tests failed\n"; exit 1; }
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
 # raw byte stream, viewable with `asciinema play` and analysable by the verifier.

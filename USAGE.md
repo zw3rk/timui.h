@@ -65,8 +65,18 @@ images — as a PNG (final frame) or an animated GIF.
 | target / cmd | what |
 |---|---|
 | `make gif-chat-demo` | autoplay `chat --demo` → `recordings/chat-demo.gif` (headless, no screen recorder) |
+| `make webp-chat-demo` | also `recordings/chat-demo.{mp4,webp}` (H.264 + gif2webp, far smaller than the GIF) |
 | `make check-vt-gif-all` | all renderer checks (smoke · glyphs · CJK · emoji · output) |
+| `make check-chat-text` | chat word-wrap + bidi + fenced-block layout unit tests |
+| `make check-chat-highlight` | chat syntax-highlighter unit tests |
 | `make gen-font-ttf`  | regenerate the subset TTF face (`tools/vendor/vt_font_ttf.h`, fonttools via nix) |
+
+The `chat` example renders **multi-line messages** (word-wrapped to the pane),
+**fenced code blocks** (` ```lang … ``` `) with syntax highlighting, Hebrew/Arabic
+**RTL** (right-aligned, per-line), inline images indented to the text column, and a
+**multi-line composer** (Shift+Enter inserts a newline where the Kitty keyboard
+protocol is active, e.g. Ghostty; plain Enter sends). In `--demo` scripts, `\n` in a
+`msg`/`say` line becomes a real newline, so a script can post a code block on one line.
 
 `vt_gif` renders text with `stb_truetype` (bundled DejaVu subset → any glyph it
 has, antialiased). Flags: `--cell-h N` / `--scale F` (size), `--system-fonts`
