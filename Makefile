@@ -54,7 +54,11 @@ C_GREEN := \033[32m
 C_YELL  := \033[33m
 endif
 
-.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text
+.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man
+
+# ---- man page installation prefix (DESTDIR-aware, override on the CLI) ----- #
+PREFIX  ?= /usr/local
+MANDIR  := $(DESTDIR)$(PREFIX)/share/man/man1
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -338,6 +342,20 @@ release-check: amalgamate ## Verify the amalgamated release header compiles stan
 $(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) $< -o $@
+
+# ---- man page ------------------------------------------------------------- #
+# Render the pandoc-flavoured Markdown man page (docs/timui.1.md) to roff into
+# build/, and install it DESTDIR-aware under $(PREFIX)/share/man/man1.
+man: ## Render docs/timui.1.md -> build/timui.1 (roff, via pandoc)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)pandoc$(C_RESET) docs/timui.1.md -> $(BLDDIR)/timui.1\n"
+	@nix run nixpkgs#pandoc -- -s -t man docs/timui.1.md -o $(BLDDIR)/timui.1
+	@printf "$(C_GREEN)✓ wrote $(BLDDIR)/timui.1$(C_RESET)\n"
+
+install-man: man ## Install build/timui.1 to $(DESTDIR)$(PREFIX)/share/man/man1
+	@install -d $(MANDIR)
+	@install -m 644 $(BLDDIR)/timui.1 $(MANDIR)/timui.1
+	@printf "$(C_GREEN)✓ installed$(C_RESET) $(MANDIR)/timui.1\n"
 
 fmt: ## Format C sources if clang-format is available
 	@if command -v clang-format >/dev/null 2>&1; then clang-format -i $(HEADER) $(SRCDIR)/*.c $(EXADIR)/*.c $(TSTDIR)/*.c $(TOOLDIR)/*.c; printf "$(C_GREEN)✓ formatted$(C_RESET)\n"; else printf "$(C_YELL)clang-format not found; skipping$(C_RESET)\n"; fi
