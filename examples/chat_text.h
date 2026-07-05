@@ -81,20 +81,60 @@ static int enc_utf8(unsigned int cp, char *out){
     out[0] = (char)(0xF0|(cp>>18)); out[1] = (char)(0x80|((cp>>12)&0x3F));
     out[2] = (char)(0x80|((cp>>6)&0x3F)); out[3] = (char)(0x80|(cp&0x3F)); return 4;
 }
+#ifndef CHAT_SHEENBIDI                            /* only the cheap reorder needs this */
 static int is_ltr_strong(unsigned int cp){        /* strong LTR: Latin letter or digit */
     return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= '0' && cp <= '9');
 }
-/* Lay a message body out in visual order for positional cell rendering. A cheap
- * 2-level bidi (NOT full UAX #9 — see docs; FriBidi is the correct engine): Arabic
- * is shaped in logical order first, then
- *   base_rtl: the whole body is level-1 (reverse it, so a trailing emoji / "!" lands
- *             at the visual LEFT per UBA N1/N2), and embedded Latin/number runs are
- *             level-2 (reversed back to reading order);
- *   base_ltr: only RTL runs are reversed in place.
- * Good enough for chat lines; embedded numbers-in-RTL / nesting want a real UBA. */
+#endif
+#ifdef CHAT_SHEENBIDI
+/* Opt-in (WITH_SHEENBIDI=1): the CORRECT UAX #9 logical->visual reordering via the
+ * vendored SheenBidi (tools/vendor/SheenBidi, Apache-2.0). The umbrella header is
+ * on the include path only under this flag; the amalgamation is linked separately
+ * so chat.c stays a single TU. */
+#include <SheenBidi/SheenBidi.h>
+/* Reorder `n` (already Arabic-shaped) codepoints cp[] into visual order in vis[],
+ * returning the visual count. Runs the full Unicode Bidirectional Algorithm over a
+ * UTF-32 view of cp[] (so SBRun offsets/lengths are codepoint indices), then walks
+ * SheenBidi's already-visual-ordered runs, emitting each RTL (odd-level) run in
+ * reverse (UAX #9 rule L2). `base_rtl` sets the paragraph base level (1=RTL,0=LTR);
+ * the caller resolved the base direction via first_strong_rtl (UAX #9 P2/P3). */
+static int bidi_reorder_sheenbidi(const unsigned int *cp, int n, int base_rtl, unsigned int *vis){
+    SBUInt32 buf[512];
+    SBCodepointSequence seq;
+    SBAlgorithmRef algo; SBParagraphRef para; SBLineRef line;
+    const SBRun *runs; SBUInteger rc, r; int i, vn = 0;
+    if(n <= 0) return 0;
+    for(i = 0; i < n; i++) buf[i] = (SBUInt32)cp[i];
+    seq.stringEncoding = SBStringEncodingUTF32;
+    seq.stringBuffer   = buf;
+    seq.stringLength   = (SBUInteger)n;
+    algo = SBAlgorithmCreate(&seq);
+    para = SBAlgorithmCreateParagraph(algo, 0, (SBUInteger)n, base_rtl ? (SBLevel)1 : (SBLevel)0);
+    line = SBParagraphCreateLine(para, 0, SBParagraphGetLength(para));
+    runs = SBLineGetRunsPtr(line);
+    rc   = SBLineGetRunCount(line);
+    for(r = 0; r < rc; r++){
+        SBUInteger off = runs[r].offset, l = runs[r].length, t;
+        if(runs[r].level & 1) for(t = 0; t < l; t++) vis[vn++] = cp[off + l - 1 - t];
+        else                  for(t = 0; t < l; t++) vis[vn++] = cp[off + t];
+    }
+    SBLineRelease(line); SBParagraphRelease(para); SBAlgorithmRelease(algo);
+    return vn;
+}
+#endif /* CHAT_SHEENBIDI */
+
+/* Lay a message body out in visual order for positional cell rendering. Arabic is
+ * shaped to contextual presentation forms in LOGICAL order first (a pre-bidi step),
+ * then the codepoints are reordered logical->visual:
+ *   - DEFAULT (zero-dependency): a cheap 2-level approximation — base_rtl reverses
+ *     the whole body (level 1) and un-reverses embedded Latin/number runs (level 2);
+ *     base_ltr reverses maximal RTL runs in place. Good enough for chat lines, but
+ *     embedded numbers-in-RTL / nesting are NOT true UAX #9.
+ *   - WITH_SHEENBIDI=1 (CHAT_SHEENBIDI): the FULL Unicode Bidirectional Algorithm
+ *     (UAX #9) via SheenBidi, over the same shaped codepoints. */
 static void bidi_visual(const char *in, char *out, size_t cap, int base_rtl){
     unsigned int cp[512], orig[512];
-    int n = 0, k, o = 0, a, b;
+    int n = 0, k, o = 0;
     size_t i = 0, len = strlen(in);
     while(in[i] && n < 512){ uint32_t c; int adv = timui_utf8_decode(in + i, len - i, &c); if(adv <= 0) adv = 1; cp[n++] = c; i += (size_t)adv; }
     memcpy(orig, cp, (size_t)n * sizeof cp[0]);
@@ -107,27 +147,38 @@ static void bidi_visual(const char *in, char *out, size_t cap, int base_rtl){
         nextj = dual && k + 1 < n && arjoin_type(orig[k+1]) != 0;
         cp[k] = prevj && nextj ? iso + 3 : prevj ? iso + 1 : nextj ? iso + 2 : iso;
     }
-    if(base_rtl){                                    /* reverse all (level 1) … */
-        for(a = 0, b = n - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
-        for(k = 0; k < n;){                          /* … un-reverse Latin/number runs (level 2) */
-            if(is_ltr_strong(cp[k])){
-                int e = k;
-                while(e < n && (is_ltr_strong(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_ltr_strong(cp[e+1])))) e++;
-                for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
-                k = e;
-            } else k++;
-        }
-    } else {                                         /* base LTR: reverse maximal RTL runs in place */
-        for(k = 0; k < n;){
-            if(is_rtl_cp(cp[k])){
-                int e = k;
-                while(e < n && (is_rtl_cp(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_rtl_cp(cp[e+1])))) e++;
-                for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
-                k = e;
-            } else k++;
-        }
+#ifdef CHAT_SHEENBIDI
+    {                                                /* full UAX #9 reorder over the shaped codepoints */
+        unsigned int vis[512];
+        int vn = bidi_reorder_sheenbidi(cp, n, base_rtl, vis);
+        for(k = 0; k < vn && o < (int)cap - 4; k++) o += enc_utf8(vis[k], out + o);
     }
-    for(k = 0; k < n && o < (int)cap - 4; k++) o += enc_utf8(cp[k], out + o);
+#else
+    {
+        int a, b;
+        if(base_rtl){                                /* reverse all (level 1) … */
+            for(a = 0, b = n - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
+            for(k = 0; k < n;){                      /* … un-reverse Latin/number runs (level 2) */
+                if(is_ltr_strong(cp[k])){
+                    int e = k;
+                    while(e < n && (is_ltr_strong(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_ltr_strong(cp[e+1])))) e++;
+                    for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
+                    k = e;
+                } else k++;
+            }
+        } else {                                     /* base LTR: reverse maximal RTL runs in place */
+            for(k = 0; k < n;){
+                if(is_rtl_cp(cp[k])){
+                    int e = k;
+                    while(e < n && (is_rtl_cp(cp[e]) || (cp[e] == ' ' && e + 1 < n && is_rtl_cp(cp[e+1])))) e++;
+                    for(a = k, b = e - 1; a < b; a++, b--){ unsigned int t = cp[a]; cp[a] = cp[b]; cp[b] = t; }
+                    k = e;
+                } else k++;
+            }
+        }
+        for(k = 0; k < n && o < (int)cap - 4; k++) o += enc_utf8(cp[k], out + o);
+    }
+#endif
     out[o] = '\0';
 }
 /* Base direction of a body: the first strong character (UAX #9 P2/P3). */

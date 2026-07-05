@@ -54,11 +54,38 @@ C_GREEN := \033[32m
 C_YELL  := \033[33m
 endif
 
-.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man
 
 # ---- man page installation prefix (DESTDIR-aware, override on the CLI) ----- #
 PREFIX  ?= /usr/local
 MANDIR  := $(DESTDIR)$(PREFIX)/share/man/man1
+
+# ---- optional: correct UAX #9 bidi via vendored SheenBidi (opt-in) --------- #
+# The chat lays RTL out with an always-on cheap 2-level approximation
+# (examples/chat_text.h). WITH_SHEENBIDI=1 additionally defines CHAT_SHEENBIDI so
+# bidi_visual runs the FULL Unicode Bidirectional Algorithm (UAX #9) via the
+# vendored SheenBidi (tools/vendor/SheenBidi, Apache-2.0), keeping the ARJOIN
+# Arabic shaping as a pre-bidi step. SheenBidi is compiled as a SEPARATE object
+# (its amalgamation Source/SheenBidi.c under -DSB_CONFIG_UNITY) and linked in only
+# under the flag — chat.c stays a single TU. Default builds have ZERO dependency.
+SHEENBIDI_DIR := $(TOOLDIR)/vendor/SheenBidi
+SB_OBJ_FILE   := $(BLDDIR)/sheenbidi.o
+SB_CFLAGS :=
+SB_OBJ    :=
+ifeq ($(WITH_SHEENBIDI),1)
+  SB_CFLAGS := -DCHAT_SHEENBIDI -I$(SHEENBIDI_DIR)/Headers
+  SB_OBJ    := $(SB_OBJ_FILE)
+endif
+
+# SheenBidi amalgamation -> one object. Third-party C: relaxed warnings (as with
+# the vt_gif vendored single-headers). -ISource resolves its <API/…>/<Core/…>
+# unity includes; -IHeaders resolves the public <SheenBidi/…> umbrella.
+$(SB_OBJ_FILE): $(SHEENBIDI_DIR)/Source/SheenBidi.c
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) SheenBidi (amalgamation, UAX #9)\n"
+	@$(CC) -std=c99 -O2 -DSB_CONFIG_UNITY -I$(SHEENBIDI_DIR)/Headers -I$(SHEENBIDI_DIR)/Source -c $< -o $@
+
+.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi
+
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -72,10 +99,13 @@ help: ## Show this help
 build: $(EXAMPLES) ## Build all examples (single-header mode)
 	@printf "$(C_GREEN)✓ build complete$(C_RESET)\n"
 
-$(BLDDIR)/%: $(EXADIR)/%.c $(HEADER) $(LIB_SECTIONS)
+# SB_CFLAGS / SB_OBJ are EMPTY unless WITH_SHEENBIDI=1, so the default build is
+# byte-for-byte unchanged (no SheenBidi dependency); under the flag the chat picks
+# up -DCHAT_SHEENBIDI + the separately-compiled SheenBidi object.
+$(BLDDIR)/%: $(EXADIR)/%.c $(HEADER) $(LIB_SECTIONS) $(SB_OBJ)
 	@mkdir -p $(@D)
 	@printf "$(C_CYAN)build$(C_RESET) $<\n"
-	@$(CC) $(CFLAGS) -I$(INCDIR) $< -o $@
+	@$(CC) $(CFLAGS) $(SB_CFLAGS) -I$(INCDIR) $< $(SB_OBJ) -o $@
 
 test: $(TEST_BIN) ## Compile and run the unit tests
 	@printf "$(C_YELL)▶ running tests$(C_RESET)\n"
@@ -270,6 +300,18 @@ check-chat-text: $(TSTDIR)/test_chat_text.c $(EXADIR)/chat_text.h $(HEADER) $(LI
 	@./$(BLDDIR)/test_chat_text \
 	  && printf "$(C_GREEN)✓ chat_text$(C_RESET) standalone tests passed\n" \
 	  || { printf "$(C_YELL)✗ chat_text$(C_RESET) tests failed\n"; exit 1; }
+
+# Same standalone test, but built WITH the full UAX #9 path (SheenBidi): defines
+# CHAT_SHEENBIDI, adds the SheenBidi include path, and links the amalgamation
+# object. Asserts the CORRECT visual order on hand-computed Hebrew/Arabic/mixed
+# vectors. The default check-chat-text above stays untouched (approximation).
+check-chat-text-sheenbidi: $(TSTDIR)/test_chat_text.c $(EXADIR)/chat_text.h $(HEADER) $(LIB_SECTIONS) $(SB_OBJ_FILE) ## Test chat_text WITH SheenBidi (full UAX #9 bidi)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) chat_text test (SheenBidi, UAX #9)\n"
+	@$(CC) $(CFLAGS) -DCHAT_SHEENBIDI -I$(INCDIR) -I$(EXADIR) -I$(SHEENBIDI_DIR)/Headers $(TSTDIR)/test_chat_text.c $(SB_OBJ_FILE) -o $(BLDDIR)/test_chat_text_sb
+	@./$(BLDDIR)/test_chat_text_sb \
+	  && printf "$(C_GREEN)✓ chat_text+SheenBidi$(C_RESET) full UAX #9 tests passed\n" \
+	  || { printf "$(C_YELL)✗ chat_text+SheenBidi$(C_RESET) tests failed\n"; exit 1; }
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
 # raw byte stream, viewable with `asciinema play` and analysable by the verifier.

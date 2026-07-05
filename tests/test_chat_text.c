@@ -59,6 +59,33 @@ int main(void){
     CHECK(first_strong_rtl("\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D") == 1);/* שלום -> RTL */
     { char out[64]; bidi_visual("hi", out, sizeof out, 0); CHECK(strcmp(out, "hi") == 0); }
 
+    /* ---- bidi visual order: full UAX #9 (SheenBidi) vs the cheap approximation --
+     * All three vectors are HAND-COMPUTED (see tools/vendor/SheenBidi + UAX #9):
+     *   Hebrew "שלום" (all-R) reverses to "םולש";
+     *   Arabic "بب" shapes (pre-bidi ARJOIN: initial ﺑ=U+FE91, final ﺐ=U+FE90)
+     *     then reverses to <FE90 FE91> — proving shaping is a pre-bidi step;
+     *   MIXED base-RTL "ד 12 ab" is where correct UAX #9 nesting DIVERGES from the
+     *     approximation: the space between the European-number run "12" and the
+     *     Latin run "ab" resolves to the RTL base direction (N-rules), so "ab" and
+     *     "12" are SEPARATE level-2 runs and swap under the outer reversal ->
+     *     "ab 12 ד"; the cheap approximation glues "12 ab" as one LTR run -> "12 ab ד". */
+    { const char *heb_log = "\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D";      /* שלום */
+      const char *ara_log = "\xD8\xA8\xD8\xA8";                     /* بب   */
+      const char *mix_log = "\xD7\x93 12 ab";                       /* ד 12 ab */
+#ifdef CHAT_SHEENBIDI
+      char o[64];
+      bidi_visual(heb_log, o, sizeof o, 1); CHECK(strcmp(o, "\xD7\x9D\xD7\x95\xD7\x9C\xD7\xA9") == 0);      /* םולש */
+      bidi_visual(ara_log, o, sizeof o, 1); CHECK(strcmp(o, "\xEF\xBA\x90\xEF\xBA\x91") == 0);              /* FE90 FE91 */
+      bidi_visual(mix_log, o, sizeof o, 1); CHECK(strcmp(o, "ab 12 \xD7\x93") == 0);                        /* UAX #9 nesting */
+#else
+      /* DEFAULT approximation build stays byte-for-byte what it always was. */
+      char o[64];
+      bidi_visual(heb_log, o, sizeof o, 1); CHECK(strcmp(o, "\xD7\x9D\xD7\x95\xD7\x9C\xD7\xA9") == 0);      /* pure reverse */
+      bidi_visual(mix_log, o, sizeof o, 1); CHECK(strcmp(o, "12 ab \xD7\x93") == 0);                        /* space-glued */
+      (void)ara_log;
+#endif
+    }
+
     /* ---- fenced code block layout (msg_visual_rows) ---- */
     { MsgRow r[16]; int n = msg_visual_rows("hi\n```c\nint x;\n```\nbye", 40, r, 16);
       CHECK(n == 5);

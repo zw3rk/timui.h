@@ -23,3 +23,10 @@ Vendored third-party single-header libraries — used ONLY by the dev tooling
   unifont/), dual-licensed OFL-1.1 / GPLv2+-with-font-exception; used here under
   the OFL. Packed + deflate-compressed; vt_gif inflates once at startup.
   Regenerate with `make gen-cjk` (tools/gen_cjk.py).
+
+- SheenBidi/ (Source/ + Headers/, v3.0.0) — Muhammad Tayyab Akram's Unicode
+  Bidirectional Algorithm (UAX #9) implementation, Apache-2.0 (upstream LICENSE
+  kept verbatim at SheenBidi/LICENSE). https://github.com/Tehreer/SheenBidi
+  OPT-IN ONLY: the chat example's cheap bidi approximation stays the default;
+  `make ... WITH_SHEENBIDI=1` defines CHAT_SHEENBIDI and links the amalgamation
+  (Source/SheenBidi.c, -DSB_CONFIG_UNITY) for correct logical->visual reordering.
