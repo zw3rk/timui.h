@@ -45,3 +45,10 @@ the timui.h library or its distributed header.
 - kiss_fft.{h,c}, kiss_fftr.{h,c}, _kiss_fft_guts.h, kiss_fft_log.h —
   Mark Borgerding. BSD-3-Clause. Real-input FFT for the spectrum analyzer.
   https://github.com/mborgerding/kissfft (commit 6398d8a, 2025).
+
+- sqlite3/ (sqlite3.c + sqlite3.h) — the SQLite amalgamation, version 3.53.3
+  (SQLITE_SOURCE_ID 2026-06-26 20:14:12 d4c0e51e4aeb96955b99185ab9cde75c339e2c29
+  c3f3f12428d364a10d782c62). Public domain (SQLite has no license; the authors
+  dedicate it to the public domain). From https://sqlite.org/2026/sqlite-
+  amalgamation-3530300.zip. Used ONLY by the example examples/sqlite_tui.c
+  (NOT part of the timui.h library or its distributed header).

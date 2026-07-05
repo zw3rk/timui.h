@@ -186,6 +186,66 @@ static void test_python_def_triple(void)
     CHECK_TOK(t[4], 13, 9, HL_STRING);   /* """doc""" */
 }
 
+/* sql: case-insensitive keywords, a type, a number, a '-quoted string and a
+ * trailing -- comment. */
+static void test_sql_select(void)
+{
+    HlTok t[32];
+    int n;
+
+    /* "SELECT id FROM t" -> SELECT(kw), (id text), FROM(kw), (t text) */
+    n = chat_highlight("SELECT id FROM t", 16, "sql", t, 32);
+    CHECK(n == 2);
+    CHECK_TOK(t[0], 0, 6, HL_KEYWORD);   /* SELECT (upper) */
+    CHECK_TOK(t[1], 10, 4, HL_KEYWORD);  /* FROM          */
+
+    /* lowercase keywords match too (case-insensitive); the 1 is a number */
+    n = chat_highlight("select 1 from t", 15, "sql", t, 32);
+    CHECK(n == 3);
+    CHECK_TOK(t[0], 0, 6, HL_KEYWORD);   /* select */
+    CHECK_TOK(t[1], 7, 1, HL_NUMBER);    /* 1      */
+    CHECK_TOK(t[2], 9, 4, HL_KEYWORD);   /* from   */
+
+    /* a type name (INTEGER) is HL_TYPE, case-insensitive */
+    n = chat_highlight("x integer", 9, "sql", t, 32);
+    CHECK(n == 1);
+    CHECK_TOK(t[0], 2, 7, HL_TYPE);      /* integer */
+}
+
+/* sql: a '-quoted string, then a -- line comment to EOL. */
+static void test_sql_string_and_comment(void)
+{
+    HlTok t[16];
+    /* 'hi' -- note   (13 bytes) */
+    int n = chat_highlight("'hi' -- note", 12, "sql", t, 16);
+    CHECK(n == 2);
+    CHECK_TOK(t[0], 0, 4, HL_STRING);    /* 'hi'    */
+    CHECK_TOK(t[1], 5, 7, HL_COMMENT);   /* -- note */
+    CHECK(hl_valid(12, t, n, 16));
+}
+
+/* sql adversarial: a single '-' is punctuation, not a comment; a block comment
+ * still works; an unterminated string runs to EOF without overrun. */
+static void test_sql_adversarial(void)
+{
+    HlTok t[16];
+    int n;
+
+    n = chat_highlight("a - b", 5, "sql", t, 16);       /* lone '-' */
+    CHECK(n == 1);
+    CHECK_TOK(t[0], 2, 1, HL_PUNCT);
+    CHECK(!hl_has_class(t, n, HL_COMMENT));
+
+    n = chat_highlight("/* c */ x", 9, "sql", t, 16);   /* block comment */
+    CHECK(n == 1);
+    CHECK_TOK(t[0], 0, 7, HL_COMMENT);
+
+    n = chat_highlight("'abc", 4, "sql", t, 16);         /* unterminated string */
+    CHECK(n == 1);
+    CHECK_TOK(t[0], 0, 4, HL_STRING);
+    CHECK(hl_valid(4, t, n, 16));
+}
+
 /* ----------------------------------------------------------------------- */
 /* Negative / adversarial tests — no crash, sane class, bounded.             */
 /* ----------------------------------------------------------------------- */
@@ -310,6 +370,9 @@ int main(void)
     run("sh_if_fi_comment",       test_sh_if_fi_comment);
     run("sh_variable",            test_sh_variable);
     run("python_def_triple",      test_python_def_triple);
+    run("sql_select",             test_sql_select);
+    run("sql_string_and_comment", test_sql_string_and_comment);
+    run("sql_adversarial",        test_sql_adversarial);
     run("adv_unterminated_string", test_adv_unterminated_string);
     run("adv_unterminated_block", test_adv_unterminated_block);
     run("adv_lone_backtick",      test_adv_lone_backtick);

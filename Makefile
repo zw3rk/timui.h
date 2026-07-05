@@ -101,7 +101,7 @@ else
   RADIO_LDFLAGS := -lm -ldl -lpthread
 endif
 
-.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio
+.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -362,6 +362,64 @@ smoke-radio: $(BLDDIR)/radio $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless
 	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/radio-smoke.raw" | grep -q 'Master mix spectrum' \
 	  && printf "$(C_GREEN)✓ radio$(C_RESET) headless smoke rendered a frame (no audio device)\n" \
 	  || { printf "$(C_YELL)✗ radio$(C_RESET) smoke: dashboard not rendered\n"; exit 1; }
+
+# ---- SQLite TUI example (T4) ------------------------------------------- #
+# The SQLite amalgamation is large; compile it ONCE into its own object and link
+# it into the example (and the fixture helper). SQLITE_THREADSAFE=1 because timui
+# is multi-threaded; the OMIT/DEFAULT feature flags keep the object lean.
+# -Wall/-Wextra/-Wpedantic are dropped for the vendored C (not our code) and -w
+# silences it. -lpthread everywhere; -ldl on Linux (elsewhere it lives in libc).
+SQLITE_DIR  := $(TOOLDIR)/vendor/sqlite3
+SQLITE_OBJ  := $(BLDDIR)/sqlite3.o
+SQLITE_DEFS := -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
+               -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_DQS=0
+SQLITE_LIBS := -lpthread
+ifeq ($(UNAME_S),Linux)
+  SQLITE_LIBS += -ldl -lm
+endif
+
+$(SQLITE_OBJ): $(SQLITE_DIR)/sqlite3.c $(SQLITE_DIR)/sqlite3.h
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) sqlite3 amalgamation (once, large)\n"
+	@$(CC) -std=c99 -O2 -w $(SQLITE_DEFS) -c $< -o $@
+
+# Explicit rule — overrides the generic $(BLDDIR)/% example rule so the example
+# links sqlite3.o and sees the vendored sqlite3.h.
+$(BLDDIR)/sqlite_tui: $(EXADIR)/sqlite_tui.c $(EXADIR)/sqlite_table.h $(EXADIR)/chat_highlight.h $(HEADER) $(LIB_SECTIONS) $(SQLITE_OBJ)
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) $<\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) -I$(EXADIR) -I$(SQLITE_DIR) $< $(SQLITE_OBJ) $(SQLITE_LIBS) -o $@
+
+# Fixture builder for the headless smoke (vendored sqlite C API, no network/CLI).
+$(BLDDIR)/sqlite_mkfixture: $(TOOLDIR)/sqlite_mkfixture.c $(SQLITE_DIR)/sqlite3.h $(SQLITE_OBJ)
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -I$(SQLITE_DIR) $< $(SQLITE_OBJ) $(SQLITE_LIBS) -o $@
+
+run-sqlite-tui: $(BLDDIR)/sqlite_tui ## Run the SQLite TUI (DB=path, default :memory:)
+	@./$(BLDDIR)/sqlite_tui $(if $(DB),$(DB),:memory:)
+
+check-sqlite-tui: $(TSTDIR)/test_sqlite_table.c $(EXADIR)/sqlite_table.h $(HEADER) $(LIB_SECTIONS) ## Test the pure table-layout helpers (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) sqlite_table test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) -I$(EXADIR) $(TSTDIR)/test_sqlite_table.c -o $(BLDDIR)/test_sqlite_table
+	@./$(BLDDIR)/test_sqlite_table \
+	  && printf "$(C_GREEN)✓ sqlite_table$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ sqlite_table$(C_RESET) tests failed\n"; exit 1; }
+
+smoke-sqlite-tui: $(BLDDIR)/sqlite_tui $(BLDDIR)/sqlite_mkfixture ## Headless smoke: temp db -> SELECT -> render 1 frame
+	@rm -f $(BLDDIR)/_smoke.db $(BLDDIR)/_smoke.out $(BLDDIR)/_smoke.txt
+	@./$(BLDDIR)/sqlite_mkfixture $(BLDDIR)/_smoke.db
+	@./$(BLDDIR)/sqlite_tui $(BLDDIR)/_smoke.db \
+	   --query "SELECT id,name,age FROM users ORDER BY id" --exit-after \
+	   --cols 100 --rows 24 2>$(BLDDIR)/_smoke.out || { cat $(BLDDIR)/_smoke.out; exit 1; }
+	@# reconstruct the rendered character stream from the cell grid (each snapshot
+	@# cell is "CHAR|fg|bg|..", so per-cell text like "alice" is contiguous here).
+	@awk -F'  *' '{s="";for(i=2;i<=NF;i++){n=split($$i,a,"|");c=(a[1]==""?" ":a[1]);s=s c} print s}' \
+	   $(BLDDIR)/_smoke.out > $(BLDDIR)/_smoke.txt
+	@grep -q 'rows=3 cols=3' $(BLDDIR)/_smoke.out \
+	  && grep -q 'alice' $(BLDDIR)/_smoke.txt && grep -q 'carol' $(BLDDIR)/_smoke.txt \
+	  && printf "$(C_GREEN)✓ sqlite_tui$(C_RESET) headless smoke: SELECT rendered 3 rows (alice/bob/carol)\n" \
+	  || { printf "$(C_YELL)✗ sqlite_tui$(C_RESET) smoke failed\n"; cat $(BLDDIR)/_smoke.out; exit 1; }
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
 # raw byte stream, viewable with `asciinema play` and analysable by the verifier.

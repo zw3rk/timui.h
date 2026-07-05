@@ -20,6 +20,34 @@ All targets run inside the nix dev shell via the self-documenting Makefile:
 | `fmt`         | clang-format sources (if available)               |
 | `clean`       | remove `build/` and `release/`                    |
 
+## SQLite TUI (`sqlite_tui`)
+
+A three-pane terminal SQLite browser (`examples/sqlite_tui.c`): a schema tree
+(tables/views → columns), a scrollable results grid (fitted column widths with
+ellipsis, horizontal + vertical scroll, row selection), and a multi-line SQL
+editor with syntax highlighting. **Tab** cycles focus (tree → results → editor);
+arrows navigate; **Enter** runs the query (**Shift+Enter** inserts a newline);
+**F10** quits.
+
+    nix develop -c make run-sqlite-tui DB=path/to.db   # interactive (default :memory:)
+    nix develop -c make check-sqlite-tui               # unit-test the PURE layout helpers
+    nix develop -c make smoke-sqlite-tui               # headless: fixture → SELECT → 1 frame
+
+Direct invocation and the non-interactive (headless) path used by the smoke:
+
+    ./build/sqlite_tui <db> [--query "<sql>"] [--frames N | --exit-after]
+                            [--headless] [--cols C] [--rows R]
+
+- `--query "<sql>"` runs one statement at startup and seeds the editor.
+- `--exit-after` / `--frames N` / `--headless` render N frames (default 1)
+  through a fake transport — **no tty needed** — and dump the final frame's cell
+  grid to **stderr** (plus a `rows=N cols=M` summary), so it is CI-able.
+
+The SQLite amalgamation (public domain, vendored under `tools/vendor/sqlite3/`)
+is compiled once to `build/sqlite3.o` (`SQLITE_THREADSAFE=1`, lean OMIT flags)
+and linked into the example. The pure column-fit + paging/scroll units live in
+`examples/sqlite_table.h` and are unit-tested standalone (`tests/test_sqlite_table.c`).
+
 ## Visual testing
 
 Two tiers validate the renderer (see `docs/visual-tests.md`): **Tier B**

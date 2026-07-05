@@ -8,9 +8,10 @@
  * default colour. This keeps the token stream small and lets a renderer walk
  * "gap, token, gap, token, …" trivially.
  *
- * Languages: "c", "sh"/"bash", "python"/"py", and a NULL/"" generic mode
- * (strings, # and // line comments, block comments, numbers — no keywords).
- * An unknown language name falls back to generic.
+ * Languages: "c", "sh"/"bash", "python"/"py", "sql" (case-insensitive
+ * keywords/types, double-dash line comments, C-style block comments, single-quote
+ * strings), and a NULL/"" generic mode (strings, # and // line comments, block
+ * comments, numbers — no keywords). An unknown language name falls back to generic.
  *
  * Design notes:
  *   - Table-driven: each language is a small HlLang descriptor (a set of feature
@@ -228,6 +229,32 @@ static const char *const hl_py_kw[] = {
     "global", "nonlocal", "yield", "raise", "assert", "del", "async", "await",
     NULL
 };
+/* SQL (matched case-insensitively via HlLang.nocase — stored lowercase). Covers
+ * the common DML/DDL + clause + operator keywords; SQLite-flavoured. */
+static const char *const hl_sql_kw[] = {
+    "select", "from", "where", "insert", "into", "values", "update", "set",
+    "delete", "create", "table", "index", "view", "trigger", "drop", "alter",
+    "add", "rename", "column", "join", "inner", "left", "right", "outer",
+    "full", "cross", "natural", "on", "using", "group", "by", "order",
+    "having", "limit", "offset", "as", "distinct", "all", "union", "intersect",
+    "except", "and", "or", "not", "null", "is", "in", "like", "glob", "regexp",
+    "match", "between", "exists", "case", "when", "then", "else", "end",
+    "pragma", "begin", "commit", "rollback", "savepoint", "release",
+    "transaction", "if", "primary", "key", "foreign", "references", "unique",
+    "check", "default", "autoincrement", "constraint", "collate", "asc",
+    "desc", "with", "recursive", "replace", "conflict", "abort", "fail",
+    "ignore", "vacuum", "analyze", "reindex", "attach", "detach", "explain",
+    "cast", "returning", "without", "rowid", "temp", "temporary", "escape",
+    "nulls", "first", "last", "over", "partition", "window", "filter",
+    NULL
+};
+/* SQL type / affinity names (SQLite is affinity-based, so these are advisory). */
+static const char *const hl_sql_ty[] = {
+    "integer", "int", "smallint", "bigint", "tinyint", "text", "varchar",
+    "char", "nchar", "nvarchar", "clob", "blob", "real", "double", "float",
+    "numeric", "decimal", "boolean", "bool", "date", "datetime", "timestamp",
+    "time", NULL
+};
 
 /* Feature bits + tables for one language. */
 typedef struct {
@@ -235,6 +262,7 @@ typedef struct {
     const char *const *ty;    /* type table (NULL-terminated) or NULL */
     unsigned line_hash  : 1;  /* '#' starts a line comment (after ws/BOL) */
     unsigned line_slash : 1;  /* '//' starts a line comment */
+    unsigned line_dash  : 1;  /* '--' starts a line comment (SQL) */
     unsigned block      : 1;  /* C-style block comments */
     unsigned preproc    : 1;  /* '#' at BOL = whole-line preprocessor */
     unsigned triple     : 1;  /* triple-quoted strings */
@@ -242,6 +270,7 @@ typedef struct {
     unsigned sq_char    : 1;  /* single quote is a C char literal */
     unsigned sq_escape  : 1;  /* backslash escapes inside single-quoted strings */
     unsigned t_heur     : 1;  /* identifiers ending in _t are types */
+    unsigned nocase     : 1;  /* keyword/type matching is case-insensitive (SQL) */
 } HlLang;
 
 static HlLang hl_lang_for(const char *lang)
@@ -265,22 +294,41 @@ static HlLang hl_lang_for(const char *lang)
         L.line_hash = 1; L.triple = 1; L.sq_escape = 1;
         return L;
     }
+    if (lang != NULL && strcmp(lang, "sql") == 0) {
+        L.kw = hl_sql_kw; L.ty = hl_sql_ty;
+        L.line_dash = 1; L.block = 1; L.nocase = 1;
+        /* SQL strings are single-quoted with '' doubling (no backslash escape);
+         * double quotes are identifiers. Both scan as string spans here. */
+        L.sq_escape = 0;
+        return L;
+    }
     /* generic (NULL / "" / unknown): both comment styles, both string quotes,
      * numbers, no keywords. */
     L.line_hash = 1; L.line_slash = 1; L.block = 1; L.sq_escape = 1;
     return L;
 }
 
+/* ASCII lowercase — for case-insensitive keyword matching (SQL). */
+static int hl_lower(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
+
 /* Whole-word membership test for the span code[off..off+n) against a
- * NULL-terminated table. */
-static int hl_in_list(const char *code, int off, int n, const char *const *list)
+ * NULL-terminated table. `nocase` compares ASCII case-insensitively. */
+static int hl_in_list(const char *code, int off, int n,
+                      const char *const *list, int nocase)
 {
     int k;
     if (list == NULL) return 0;
     for (k = 0; list[k] != NULL; k++) {
-        if ((int)strlen(list[k]) == n &&
-            memcmp(code + off, list[k], (size_t)n) == 0)
-            return 1;
+        if ((int)strlen(list[k]) != n) continue;
+        if (!nocase) {
+            if (memcmp(code + off, list[k], (size_t)n) == 0) return 1;
+        } else {
+            int j, eq = 1;
+            for (j = 0; j < n; j++)
+                if (hl_lower((unsigned char)code[off + j]) !=
+                    hl_lower((unsigned char)list[k][j])) { eq = 0; break; }
+            if (eq) return 1;
+        }
     }
     return 0;
 }
@@ -322,6 +370,8 @@ static int chat_highlight(const char *code, int len, const char *lang,
             end = hl_scan_block(code, len, i); cls = HL_COMMENT;
         } else if (L.line_slash && c == '/' && i + 1 < len && code[i + 1] == '/') {
             end = hl_scan_line(code, len, i); cls = HL_COMMENT;
+        } else if (L.line_dash && c == '-' && i + 1 < len && code[i + 1] == '-') {
+            end = hl_scan_line(code, len, i); cls = HL_COMMENT;
         } else if (L.preproc && c == '#' && bol) {
             end = hl_scan_preproc(code, len, i); cls = HL_PREPROC;
         } else if (L.line_hash && c == '#' &&
@@ -362,8 +412,8 @@ static int chat_highlight(const char *code, int len, const char *lang,
             int tl;
             end = hl_scan_ident(code, len, i);
             tl = end - start;
-            if (hl_in_list(code, start, tl, L.kw)) cls = HL_KEYWORD;
-            else if (hl_in_list(code, start, tl, L.ty)) cls = HL_TYPE;
+            if (hl_in_list(code, start, tl, L.kw, L.nocase)) cls = HL_KEYWORD;
+            else if (hl_in_list(code, start, tl, L.ty, L.nocase)) cls = HL_TYPE;
             else if (L.t_heur && tl > 2 &&
                      code[end - 2] == '_' && code[end - 1] == 't') cls = HL_TYPE;
             else { i = end; continue; }  /* plain identifier => HL_TEXT gap */
