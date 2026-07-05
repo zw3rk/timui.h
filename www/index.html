@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>timui.h(3) - POSIX man page</title>
+  <meta name="description" content="A single C99 header for modern terminal UIs. No ncurses. No runtime circus.">
+  <meta name="theme-color" content="#050708">
+
+  <!-- Embedded SVG Favicon for immediate rendering -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23050708'/%3E%3Cpath d='M45,20 v20 h20 v15 h-20 v25 a5,5 0 0,0 5,5 h10 v15 h-15 a20,20 0 0,1 -20,-20 v-25 h-10 v-15 h10 v-20 h15 z' fill='%23f7f7f2'/%3E%3Crect x='70' y='75' width='20' height='10' rx='2' fill='%2359ee3f'/%3E%3C/svg%3E" type="image/svg+xml">
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #050708;
+      --text: #f7f7f2;
+      --muted: #98a1a6;
+      --bold-color: #59ee3f; /* The signature timmy green */
+      --link-color: #56b6c2;
+
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: clamp(1rem, 4vw, 3rem);
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    .man-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    /* Man page header & footer */
+    .man-header, .man-footer {
+      display: flex;
+      justify-content: space-between;
+      text-transform: uppercase;
+      font-weight: bold;
+      color: var(--muted);
+      margin-bottom: 2rem;
+    }
+
+    .man-footer {
+      margin-top: 4rem;
+      margin-bottom: 0;
+    }
+
+    @media (max-width: 640px) {
+      .man-header, .man-footer {
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      p, ul, pre, .video-container, .indented-block {
+        margin-left: 0;
+      }
+    }
+
+    /* Typography */
+    h2 {
+      font-size: 1rem;
+      margin: 2.5rem 0 1rem 0;
+      color: var(--text);
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    p, ul, pre, .video-container, .indented-block {
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      margin-left: 4ch; /* Standard man page indent */
+    }
+
+    ul {
+      padding-left: 2ch;
+      list-style-type: none;
+    }
+
+    li {
+      margin-bottom: 0.5rem;
+      position: relative;
+    }
+
+    li::before {
+      content: "-";
+      position: absolute;
+      left: -2ch;
+      color: var(--bold-color);
+    }
+
+    strong, b {
+      color: var(--bold-color);
+      font-weight: normal; /* In traditional man pages, bold is often a color instead of weight */
+    }
+
+    u {
+      text-decoration: underline;
+      color: var(--text);
+    }
+
+    a {
+      color: var(--link-color);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+      background: var(--link-color);
+      color: var(--bg);
+    }
+
+    /* Code & Pre */
+    pre {
+      padding: 0;
+      background: transparent;
+      overflow-x: auto;
+      color: var(--text);
+    }
+
+    .c-preproc { color: var(--link-color); }
+    .c-keyword { color: var(--bold-color); }
+    .c-type { color: #f6d365; }
+    .c-call { color: #56b6c2; }
+    .c-define { color: #e06c75; }
+    .c-string { color: #e5c07b; }
+    .c-number { color: #d19a66; }
+    .c-comment { color: var(--muted); }
+
+    /* Video integration */
+    .video-container {
+      max-width: 800px;
+      border: 1px solid var(--muted);
+      padding: 0.25rem;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: var(--bg);
+    }
+
+    .caption {
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-top: 0.5rem;
+      margin-bottom: 0;
+      margin-left: 0;
+    }
+
+    ::selection { background: var(--bold-color); color: var(--bg); }
+  </style>
+</head>
+<body>
+  <div class="man-container">
+
+    <div class="man-header">
+      <span>TIMUI.H(3)</span>
+      <span>Library Functions Manual</span>
+      <span>TIMUI.H(3)</span>
+    </div>
+
+    <h2>NAME</h2>
+    <p>
+      <strong>timui.h</strong> (pronounced "timmy") - tiny immediate-mode UI for terminals
+    </p>
+
+    <h2>SYNOPSIS</h2>
+    <p>
+      <strong>#define TIMUI_IMPLEMENTATION</strong><br>
+      <strong>#include "timui.h"</strong><br><br>
+      <strong>TimuiConfig</strong> <u>cfg</u> = {0};<br>
+      <strong>Timui</strong> *<u>ui</u> = 0;<br>
+      <strong>timui_open</strong>(&<u>cfg</u>, &<u>ui</u>);
+    </p>
+
+    <h2>DESCRIPTION</h2>
+    <p>
+      <strong>timui.h</strong> is a single-header C99 immediate-mode TUI library for modern terminals. It brings DOS-era ergonomics to Kitty-class terminal protocol reality. No ncurses. No runtime circus.
+    </p>
+    <p>
+      The library is designed for a very specific contradiction:
+    </p>
+    <ul>
+      <li>It is old-school C, header-only, plain values, file descriptors, and <strong>make</strong>.</li>
+      <li>It targets modern terminals: truecolor, synchronized output, Kitty keyboard, SGR mouse, bracketed paste, OSC 8 hyperlinks, and Kitty graphics.</li>
+      <li>It is serious engineering wrapped in a knowing joke: using a header-only C library for TUIs while Go, Rust, TypeScript, and Python eat CLI tooling is absurd in exactly the right way.</li>
+    </ul>
+
+    <h2>CAPABILITIES</h2>
+    <p>
+      The API is built for single-binary systems tools, file managers, debuggers, dashboards, and local agent tools.
+    </p>
+    <ul>
+      <li><strong>Widgets</strong>: Labels, panels, function bars, buttons, checkboxes, radios, input lines, text areas, listboxes, tables, trees, command palettes, and menus.</li>
+      <li><strong>Rendering</strong>: A cell buffer and truecolor diff renderer ensures unchanged frames emit nothing. </li>
+      <li><strong>Input Parser</strong>: Incremental parser handles legacy CSI, Kitty keyboard, SGR mouse (with wheel &amp; click position), focus events, text, and UTF-8.</li>
+      <li><strong>Async Work</strong>: <strong>timui_post</strong> allows worker threads to post messages safely while the UI thread owns the terminal.</li>
+    </ul>
+
+    <h2>EXAMPLES</h2>
+    <p>
+      The following recording demonstrates <strong>examples/chat.c</strong>, featuring background message parsing, OSC 8 hyperlinks, Kitty graphics (inline local PNGs), and CJK/emoji rendering.
+    </p>
+    <div class="video-container">
+      <video autoplay loop muted playsinline poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='400'%3E%3Crect width='100%25' height='100%25' fill='%23050708'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' fill='%23687176'%3ELoading chat-demo.mp4...%3C/text%3E%3C/svg%3E">
+        <source src="chat-demo.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+    <div class="caption">
+      Figure 1: Executing `make run-chat`
+    </div>
+    <p>
+      Or start smaller. The smallest useful program opens the terminal, draws
+      one frame at a time, and lets Escape leave without making a mess of your
+      shell.
+    </p>
+    <pre><code><span class="c-preproc">#include</span> <span class="c-string">&lt;unistd.h&gt;</span>
+
+<span class="c-preproc">#define</span> <span class="c-define">TIMUI_IMPLEMENTATION</span>
+<span class="c-preproc">#include</span> <span class="c-string">"timui.h"</span>
+
+<span class="c-keyword">int</span> <span class="c-call">main</span>(<span class="c-keyword">void</span>) {
+    <span class="c-type">TimuiConfig</span> cfg = {<span class="c-number">0</span>};
+    <span class="c-type">Timui</span> *ui = <span class="c-number">0</span>;
+
+    cfg.title = <span class="c-string">"hello timui"</span>;
+    <span class="c-comment">/* POSIX file descriptors, not stdio FILE* streams. */</span>
+    cfg.input_fd = <span class="c-define">STDIN_FILENO</span>;
+    cfg.output_fd = <span class="c-define">STDOUT_FILENO</span>;
+    cfg.profile = <span class="c-define">TIMUI_PROFILE_AUTO</span>;
+    cfg.flags = <span class="c-define">TIMUI_FLAG_ALT_SCREEN</span> | <span class="c-define">TIMUI_FLAG_RESTORE_ON_EXIT</span>;
+    cfg.theme = <span class="c-define">TIMUI_THEME_DOS_BLUE</span>;
+
+    <span class="c-keyword">if</span> (<span class="c-call">timui_open</span>(&amp;cfg, &amp;ui) != <span class="c-define">TIMUI_OK</span>) <span class="c-keyword">return</span> <span class="c-number">1</span>;
+
+    <span class="c-keyword">while</span> (!<span class="c-call">timui_should_quit</span>(ui)) {
+        <span class="c-comment">/* Stack locals, not heap allocations: f is this frame,
+           and root is recomputed after begin handles input/resize. */</span>
+        <span class="c-type">TimuiFrame</span> *f = <span class="c-number">0</span>;
+        <span class="c-type">TimuiRect</span> root;
+
+        <span class="c-comment">/* Begin polls input and prepares this frame; leave if no frame is available. */</span>
+        <span class="c-keyword">if</span> (!<span class="c-call">timui_begin</span>(ui, &amp;f)) <span class="c-keyword">break</span>;
+        root = <span class="c-call">timui_root</span>(f);
+        <span class="c-call">timui_label</span>(f, root.x + <span class="c-number">2</span>, root.y + <span class="c-number">2</span>,
+                    <span class="c-define">TIMUI_STR_LIT</span>(<span class="c-string">"hello from one header"</span>),
+                    <span class="c-comment">/* 0x59ee3f is timui green: RGB 89, 238, 63. */</span>
+                    <span class="c-call">timui_style_make</span>(<span class="c-number">0x59ee3f</span>, <span class="c-define">TIMUI_COLOR_DEFAULT</span>, <span class="c-number">0</span>));
+        <span class="c-keyword">if</span> (<span class="c-call">timui_key_pressed</span>(f, <span class="c-define">TIMUI_KEY_ESCAPE</span>)) <span class="c-call">timui_quit</span>(ui);
+        <span class="c-call">timui_end</span>(f);
+    }
+
+    <span class="c-call">timui_close</span>(ui);
+    <span class="c-keyword">return</span> <span class="c-number">0</span>;
+}</code></pre>
+
+    <h2>TESTING</h2>
+    <p>
+      The library is not a toy. It maintains 196 verified tests via <strong>make test</strong>. Continuous integration runs address, undefined, and thread sanitizers. Golden staleness checks and Tier A libvterm round-trip verification are enforced.
+    </p>
+
+    <h2>BUGS AND LIMITATIONS</h2>
+    <p>
+      The current implementation has known constraints:
+    </p>
+    <ul>
+      <li><strong>Windows Support</strong>: Win32 ConPTY is explicitly a stub returning unsupported. The POSIX raw-mode terminal backend is currently required.</li>
+      <li><strong>Text Shaping</strong>: Contains CJK/emoji wide glyph rendering and useful Hebrew/Arabic approximation, but full UAX #9 bidi, complex grapheme clusters, and ZWJ emoji remain unimplemented.</li>
+      <li><strong>API Stability</strong>: Currently version 0.2.0. The API is highly functional but not 1.0 stable.</li>
+    </ul>
+
+    <h2>SEE ALSO</h2>
+    <p>
+      <strong>Header</strong>: <a href="timui.h">timui.h</a><br>
+      <strong>Source repo</strong>: to be released shortly. Stay tuned.
+    </p>
+
+    <h2>AUTHORS</h2>
+    <p>
+      The terminal is weird. <strong>timui.h</strong> is weird back.<br>
+      Curse curses, not your users.
+    </p>
+
+    <div class="man-footer">
+      <span>POSIX</span>
+      <span>2026-07-07</span>
+      <span>TIMUI.H(3)</span>
+    </div>
+
+  </div>
+</body>
+</html>

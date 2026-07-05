@@ -3,10 +3,15 @@
 Ideas parked for later. Not scheduled; no commitment implied. Add a date + a
 line of rationale when you pick one up.
 
+**Shipped 2026-07-07** (four-additions goal): the **radio player** (`examples/radio.c`),
+the **SQLite TUI** (`examples/sqlite_tui.c`), the **man page** (`docs/timui.1.md` +
+`make man`), and **full UAX #9 bidi** via vendored SheenBidi (opt-in `WITH_SHEENBIDI=1`).
+Checked off below.
+
 ## Applications to build on timui.h
 These are *demos/examples* that would stress the library and prove it out.
 
-- [ ] **Terminal internet-radio player** (the @kmdrfx UI —
+- [x] **Terminal internet-radio player** (the @kmdrfx UI —
       <https://nitter.net/kmdrfx/status/2074279530882093523>): a URL bar + 5
       station-preset tabs (FIP / WFMU / NPO / NPR / Dance Wave), a live **spectrum
       analyzer** (8 gradient bars 63 Hz–16 kHz with peak-hold caps), **PEAK/RMS
@@ -30,7 +35,7 @@ These are *demos/examples* that would stress the library and prove it out.
       language — a TUI over an agent loop where the agent rewrites its own Scheme.
       Needs an embedded Chez (or a subprocess bridge), a transcript/tool-call view,
       a diff/apply pane. Big; scope a spike first (embed Chez + eval a snippet).
-- [ ] **SQLite TUI** — the most tractable. `sqlite3` (amalgamation, single .c) for
+- [x] **SQLite TUI** — the most tractable. `sqlite3` (amalgamation, single .c) for
       the engine; a schema tree + a results **table widget** (see gaps) + a query
       editor (reuse the multi-line composer + the code highlighter). Good forcing
       function for the table + tree widgets we lack.
@@ -60,7 +65,7 @@ example) word-wrap, a small bidi, and syntax-highlighted code. Missing:
 - [ ] **Focus traversal / tab order**, **keybinding maps / vim modes**, richer **mouse** (drag, hover).
 
 **Text / i18n / images**
-- [ ] **Full Unicode bidi** — ship it as an OPTIONAL opt-in, keeping our 2-level
+- [x] **Full Unicode bidi** — ship it as an OPTIONAL opt-in, keeping our 2-level
       approximation as the always-on default. Library choice is a licensing call:
     - **SheenBidi** (Apache-2.0) — best fit: a small, self-contained UAX #9 C lib we
       can *vendor* like stb/msf_gif. No system dependency, license matches ours.
@@ -78,6 +83,6 @@ example) word-wrap, a small bidi, and syntax-highlighted code. Missing:
 - [ ] Snapshot testing exists (`drive/` + goldens); broaden it.
 
 ## Tooling
-- [ ] **Man page** — `docs/timui.1.md` (Markdown) → roff via **pandoc**
+- [x] **Man page** — `docs/timui.1.md` (Markdown) → roff via **pandoc**
       (`pandoc -s -t man docs/timui.1.md -o build/timui.1`), wired as `make man`
       + a `make install-man`. Small; good first pickup.

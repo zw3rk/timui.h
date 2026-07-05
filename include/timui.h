@@ -6,20 +6,18 @@
  *       #define TIMUI_IMPLEMENTATION
  *       #include "timui.h"
  *
- *   Split build: src/timui_core.c defines TIMUI_IMPLEMENTATION and includes
- *   this header; everything else compiles against the declarations only.
+ *   Define TIMUI_IMPLEMENTATION in exactly one translation unit. Other
+ *   translation units include this header normally for declarations only.
  *
- * Status (v0.1): a working immediate-mode TUI, not a scaffold. The POSIX
+ * Status: a working immediate-mode TUI, not a scaffold. The POSIX
  * raw-mode terminal backend, the incremental input parser (legacy + Kitty
  * keyboard, SGR mouse, bracketed paste, focus), the truecolour diff renderer,
  * and the themed widget set are all implemented and unit-tested. The only
  * lifecycle stub is the Win32 ConPTY backend, which returns
- * TIMUI_ERR_UNSUPPORTED (see docs/gaps.md, G10).
+ * TIMUI_ERR_UNSUPPORTED.
  *
  * SPDX-License-Identifier: Apache-2.0
  * Copyright 2026 Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd.
- *
- * See docs/PRD.md (product spec) and docs/DECISIONS.md (locked decisions).
  */
 #ifndef TIMUI_H
 #define TIMUI_H
@@ -830,7 +828,7 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette_mut(TimuiFrame *f, TimuiId
 TIMUI_API void timui_snapshot_render(const TimuiCellBuffer *buf, int row, char *out, size_t cap);
 TIMUI_API int  timui_snapshot_row_eq(const TimuiCellBuffer *buf, int row, const char *expected);
 /* Full-grid serialization for golden-file visual testing (Tier B). Returns the
- * would-be length (snprintf-style); see src/timui_snapshot.c for the format. */
+ * would-be length (snprintf-style). */
 TIMUI_API size_t timui_snapshot_grid(const TimuiCellBuffer *buf, char *out, size_t cap);
 /* Cell-by-cell grid equality (reused by the libvterm round-trip harness).
  * Writes a one-cell diff message to diff_out on the first mismatch. */
@@ -868,9 +866,8 @@ TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
 #endif /* TIMUI_H */
 
 /* =========================================================================
- * Implementation -- split across src/timui_*.c for readability. These files
- * are textually #included here (one TU when TIMUI_IMPLEMENTATION is defined),
- * and tools/amalgamate.c inlines them into a self-contained release/timui.h.
+ * Implementation -- enabled by defining TIMUI_IMPLEMENTATION in exactly one
+ * translation unit before including this header.
  * ========================================================================= */
 #ifdef TIMUI_IMPLEMENTATION
 #include "../src/timui_int.h"

@@ -15,8 +15,10 @@ TSTDIR   := tests
 TOOLDIR  := tools
 RELDIR   := release
 RECDIR   := recordings
+WWWDIR   := www
 
 HEADER    := $(INCDIR)/timui.h
+WWW_HEADER := $(WWWDIR)/timui.h
 # The library is a unity build: src/timui.c #includes every src/timui_*.c
 # section. Any section edit must rebuild the test binary, examples, and tools,
 # so they all depend on the whole section set (not just src/timui.c).
@@ -101,7 +103,7 @@ else
   RADIO_LDFLAGS := -lm -ldl -lpthread
 endif
 
-.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui
+.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -482,6 +484,11 @@ amalgamate: $(BLDDIR)/amalgamate $(HEADER) $(LIB_SECTIONS) ## Regenerate the fla
 	@mkdir -p $(RELDIR)
 	@./$(BLDDIR)/amalgamate $(HEADER) $(RELDIR)/timui.h
 	@printf "$(C_GREEN)✓ wrote $(RELDIR)/timui.h$(C_RESET)\n"
+
+www: amalgamate ## Refresh static website assets under www/
+	@mkdir -p $(WWWDIR)
+	@install -m 0644 $(RELDIR)/timui.h $(WWW_HEADER)
+	@printf "$(C_GREEN)✓ refreshed $(WWW_HEADER)$(C_RESET)\n"
 
 release-check: amalgamate ## Verify the amalgamated release header compiles standalone
 	@printf "$(C_CYAN)build$(C_RESET) release self-test\n"
