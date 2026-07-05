@@ -30,3 +30,18 @@ Vendored third-party single-header libraries — used ONLY by the dev tooling
   OPT-IN ONLY: the chat example's cheap bidi approximation stays the default;
   `make ... WITH_SHEENBIDI=1` defines CHAT_SHEENBIDI and links the amalgamation
   (Source/SheenBidi.c, -DSB_CONFIG_UNITY) for correct logical->visual reordering.
+
+Additional single-file libraries used by the internet-radio example
+(examples/radio.c) — audio decode/output + spectrum FFT; likewise not part of
+the timui.h library or its distributed header.
+
+- minimp3.h — lieff. Public domain (CC0-1.0). MP3 frame decode to PCM.
+  https://github.com/lieff/minimp3 (commit 7b590fd, 2025).
+
+- miniaudio.h — David Reid (mackron). Dual-licensed: public domain (Unlicense)
+  OR MIT-0. Cross-platform audio playback (CoreAudio on macOS).
+  https://github.com/mackron/miniaudio (commit 9634bed, 2025).
+
+- kiss_fft.{h,c}, kiss_fftr.{h,c}, _kiss_fft_guts.h, kiss_fft_log.h —
+  Mark Borgerding. BSD-3-Clause. Real-input FFT for the spectrum analyzer.
+  https://github.com/mborgerding/kissfft (commit 6398d8a, 2025).

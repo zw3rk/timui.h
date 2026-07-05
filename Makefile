@@ -21,7 +21,10 @@ HEADER    := $(INCDIR)/timui.h
 # section. Any section edit must rebuild the test binary, examples, and tools,
 # so they all depend on the whole section set (not just src/timui.c).
 LIB_SECTIONS := $(wildcard $(SRCDIR)/timui_*.c) $(SRCDIR)/timui_int.h
-EXAMPLES  := $(patsubst $(EXADIR)/%.c,$(BLDDIR)/%,$(wildcard $(EXADIR)/*.c))
+# examples/radio.c has extra vendored deps (minimp3/miniaudio/kissfft) + audio
+# link flags, so it is built by a dedicated rule below — keep it out of the
+# generic single-file example pattern.
+EXAMPLES  := $(filter-out $(BLDDIR)/radio,$(patsubst $(EXADIR)/%.c,$(BLDDIR)/%,$(wildcard $(EXADIR)/*.c)))
 TEST_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TSTDIR)/test_result.c $(TSTDIR)/test_arena.c $(TSTDIR)/test_strings.c $(TSTDIR)/test_id_stack.c $(TSTDIR)/test_msgq.c $(TSTDIR)/test_mpsc.c $(TSTDIR)/test_transport.c $(TSTDIR)/test_screen.c $(TSTDIR)/test_input.c $(TSTDIR)/test_mouse.c $(TSTDIR)/test_termios.c $(TSTDIR)/test_size.c $(TSTDIR)/test_caps.c $(TSTDIR)/test_kitty.c $(TSTDIR)/test_sync.c $(TSTDIR)/test_cells.c $(TSTDIR)/test_utf8.c $(TSTDIR)/test_draw.c $(TSTDIR)/test_render.c $(TSTDIR)/test_cursor.c $(TSTDIR)/test_frame.c $(TSTDIR)/test_interact.c $(TSTDIR)/test_theme.c $(TSTDIR)/test_button.c $(TSTDIR)/test_widgets.c $(TSTDIR)/test_input_widget.c $(TSTDIR)/test_listbox.c $(TSTDIR)/test_dialog.c $(TSTDIR)/test_fuzz.c $(TSTDIR)/test_clip.c $(TSTDIR)/test_menus.c $(TSTDIR)/test_modal.c $(TSTDIR)/test_hyperlink.c $(TSTDIR)/test_esc_timeout.c $(TSTDIR)/test_scroll.c $(TSTDIR)/test_v02_batch.c $(TSTDIR)/test_v02_widgets.c $(TSTDIR)/test_v02_more.c $(TSTDIR)/test_kitty_pty.c $(TSTDIR)/test_review_critical.c $(TSTDIR)/test_snapshot.c $(TSTDIR)/test_coverage_z7.c $(TSTDIR)/test_render_stream.c
 TEST_BIN  := $(BLDDIR)/test_unit
 GOLDEN_BIN := $(BLDDIR)/gen_golden
@@ -54,7 +57,6 @@ C_GREEN := \033[32m
 C_YELL  := \033[33m
 endif
 
-
 # ---- man page installation prefix (DESTDIR-aware, override on the CLI) ----- #
 PREFIX  ?= /usr/local
 MANDIR  := $(DESTDIR)$(PREFIX)/share/man/man1
@@ -84,8 +86,22 @@ $(SB_OBJ_FILE): $(SHEENBIDI_DIR)/Source/SheenBidi.c
 	@printf "$(C_CYAN)build$(C_RESET) SheenBidi (amalgamation, UAX #9)\n"
 	@$(CC) -std=c99 -O2 -DSB_CONFIG_UNITY -I$(SHEENBIDI_DIR)/Headers -I$(SHEENBIDI_DIR)/Source -c $< -o $@
 
-.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi
+# ---- Internet-radio example (examples/radio.c) --------------------------- #
+# Vendored single-file deps: minimp3 (MP3 decode), miniaudio (playback),
+# kissfft (real FFT). kissfft ships .c files, compiled alongside radio.c.
+# Audio backends need OS link flags: CoreAudio/AudioToolbox/CoreFoundation on
+# macOS; -ldl -lpthread on Linux. Third-party headers build under relaxed
+# warnings (as vt_gif does); our timui + radio logic still builds under -Wall.
+RADIO_KISS  := $(TOOLDIR)/vendor/kiss_fft.c $(TOOLDIR)/vendor/kiss_fftr.c
+RADIO_CFLAGS := -std=c99 -O2 -pthread -Wall -Wno-unused-function -Wno-unused-parameter -Wno-sign-compare
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  RADIO_LDFLAGS := -framework CoreAudio -framework AudioToolbox -framework CoreFoundation -lm
+else
+  RADIO_LDFLAGS := -lm -ldl -lpthread
+endif
 
+.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -96,7 +112,7 @@ help: ## Show this help
 	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "rec-<name>" "record an interactive session -> recordings/<name>.cast"
 	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "drive-<name>" "drive headless w/ recordings/<name>.in -> .raw + .txt"
 
-build: $(EXAMPLES) ## Build all examples (single-header mode)
+build: $(EXAMPLES) $(BLDDIR)/radio ## Build all examples (single-header mode)
 	@printf "$(C_GREEN)✓ build complete$(C_RESET)\n"
 
 # SB_CFLAGS / SB_OBJ are EMPTY unless WITH_SHEENBIDI=1, so the default build is
@@ -312,6 +328,40 @@ check-chat-text-sheenbidi: $(TSTDIR)/test_chat_text.c $(EXADIR)/chat_text.h $(HE
 	@./$(BLDDIR)/test_chat_text_sb \
 	  && printf "$(C_GREEN)✓ chat_text+SheenBidi$(C_RESET) full UAX #9 tests passed\n" \
 	  || { printf "$(C_YELL)✗ chat_text+SheenBidi$(C_RESET) tests failed\n"; exit 1; }
+
+# ---- Internet-radio: build, unit test, headless smoke -------------------- #
+$(BLDDIR)/radio: $(EXADIR)/radio.c $(EXADIR)/radio_dsp.h $(RADIO_KISS) $(HEADER) $(LIB_SECTIONS) \
+                 $(TOOLDIR)/vendor/minimp3.h $(TOOLDIR)/vendor/miniaudio.h $(TOOLDIR)/vendor/kiss_fftr.h
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) $(EXADIR)/radio.c (+minimp3/miniaudio/kissfft)\n"
+	@$(CC) $(RADIO_CFLAGS) -I$(INCDIR) -I$(EXADIR) -I$(TOOLDIR)/vendor \
+	  $(EXADIR)/radio.c $(RADIO_KISS) $(RADIO_LDFLAGS) -o $@
+
+run-radio: $(BLDDIR)/radio ## Build + run the internet-radio player (auto-connects FIP)
+	@./$(BLDDIR)/radio --play
+
+# Standalone unit test for the PURE DSP (examples/radio_dsp.h): a synthetic sine
+# through the vendored real FFT must land in the right log band, and the peak-hold
+# envelope must rise instantly + decay over N frames. Links kissfft; no audio.
+check-radio: $(TSTDIR)/test_radio_dsp.c $(EXADIR)/radio_dsp.h $(RADIO_KISS) ## Test the radio DSP (FFT bands + peak-hold)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) radio_dsp test\n"
+	@$(CC) -std=c99 -Wall -Wextra -O2 -I$(EXADIR) -I$(TOOLDIR)/vendor \
+	  $(TSTDIR)/test_radio_dsp.c $(RADIO_KISS) -lm -o $(BLDDIR)/test_radio_dsp
+	@./$(BLDDIR)/test_radio_dsp \
+	  && printf "$(C_GREEN)✓ radio_dsp$(C_RESET) FFT-band + peak-hold tests passed\n" \
+	  || { printf "$(C_YELL)✗ radio_dsp$(C_RESET) tests failed\n"; exit 1; }
+
+# Headless smoke: drive the radio through a pty (no sound card, no network — the
+# app runs with --no-audio --frames) and assert it renders its dashboard. Proves
+# the binary launches + renders one frame with a dead audio device.
+smoke-radio: $(BLDDIR)/radio $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless radio smoke (renders a frame, no device)
+	@mkdir -p $(RECDIR)
+	@./$(BLDDIR)/pty_drive --cols 100 --rows 30 --run-ms 1200 --settle-ms 200 \
+	   --out "$(RECDIR)/radio-smoke.raw" --delay-ms 4 -- ./$(BLDDIR)/radio --no-audio --frames 8 < /dev/null
+	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/radio-smoke.raw" | grep -q 'Master mix spectrum' \
+	  && printf "$(C_GREEN)✓ radio$(C_RESET) headless smoke rendered a frame (no audio device)\n" \
+	  || { printf "$(C_YELL)✗ radio$(C_RESET) smoke: dashboard not rendered\n"; exit 1; }
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
 # raw byte stream, viewable with `asciinema play` and analysable by the verifier.
