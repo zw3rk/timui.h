@@ -8,9 +8,10 @@ Canonical website URLs:
 - Landing page: https://timui.dev/
 - Downloadable header: https://timui.dev/timui.h
 - Agent notes: https://timui.dev/llms.txt
+- Source repository: https://github.com/zw3rk/timui.h
 
-The source repository is not public yet. Use the downloadable header from this
-site for now.
+The source repository exists but is not released yet. Use the downloadable
+header from this site for now.
 
 ## How to build with timui.h
 

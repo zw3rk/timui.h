@@ -28,9 +28,17 @@ These are *demos/examples* that would stress the library and prove it out.
       FFT (kissfft / pocketfft) for the spectrum, over timui panels/tabs/bar-chart/
       meters/table. A superb forcing function for the **bar-chart + gauge** widgets
       in the gaps below.
-- [ ] **IRC client** — the natural next step after `chat.c`: a real protocol
+- [x] **IRC client** — the natural next step after `chat.c`: a real protocol
       (RFC 1459/2812) over a socket, channels/tabs, nick list, `/commands`,
       scrollback per buffer. Mostly reuses the chat transcript + composer.
+      Shipped 2026-07-07: `examples/irc.c` (824 lines) over the pure parser
+      `examples/irc_proto.h` (unit-tested via `make check-irc`). A worker thread
+      owns a plaintext TCP socket (getaddrinfo/connect/poll/read, PING→PONG,
+      bounded reconnect backoff) and posts raw lines to the UI via `timui_post`;
+      the separable `irc_feed` handler drives the model for BOTH the socket and
+      the offline `--demo`/`--replay` paths. 3-pane `timui_split` UI (tabs /
+      scrollback + nick `timui_table` / composer) + `/join /part /msg /nick /me
+      /quit`. Headless `make smoke-irc` (canned transcript, no network).
 - [ ] **Matrix client** — much bigger: HTTP long-poll/sync (`/sync`), E2E crypto
       (Olm/Megolm — **must** come from a vetted lib, never hand-rolled per the
       crypto policy), rooms, threads, reactions, media. A good test of async +

@@ -48,6 +48,44 @@ is compiled once to `build/sqlite3.o` (`SQLITE_THREADSAFE=1`, lean OMIT flags)
 and linked into the example. The pure column-fit + paging/scroll units live in
 `examples/sqlite_table.h` and are unit-tested standalone (`tests/test_sqlite_table.c`).
 
+## IRC client (`irc`)
+
+A minimal RFC 1459 / 2812 IRC client (`examples/irc.c`): server + channel +
+query buffers shown as **tabs**, a per-buffer **scrollback** ring with
+timestamps + rich text (`*bold*` `_italic_` `` `code` `` + http links), the
+active channel's **nick list** (`timui_table`), and a slash-command **composer**
+— all in a 3-pane `timui_split` (tabs · scrollback + nicks · composer) inside
+rounded borders, with a status line (nick · server · active buffer · state).
+
+    nix develop -c make run-irc                          # offline --demo (no network)
+    nix develop -c make run-irc HOST=irc.libera.chat     # connect live (best-effort)
+    nix develop -c make run-irc HOST=irc.libera.chat NICK=me CHAN='#timui'
+    nix develop -c make check-irc                        # unit-test the PURE parser
+    nix develop -c make smoke-irc                        # headless: canned transcript → 1 frame
+
+Direct invocation and the non-interactive (headless) paths:
+
+    ./build/irc                                          # offline demo (default when no --connect)
+    ./build/irc --connect HOST [--port 6667] [--nick N] [--channel '#c']
+    ./build/irc --demo   [--frames N]                    # built-in canned transcript, no network
+    ./build/irc --replay FILE [--frames N]               # feed raw IRC lines from a file
+
+- **Composer commands:** `/join #chan`, `/part [#chan]`, `/msg nick text`,
+  `/nick newnick`, `/me action`, `/quit`; plain text becomes a PRIVMSG to the
+  active buffer (locally echoed, as servers don't echo your own messages).
+- **Scrollback:** mouse wheel / PgUp / PgDn scroll the active buffer; **F10** quits.
+- **Networking is plaintext TCP only** (no TLS, no vendored deps, no crypto). A
+  background worker thread owns the socket (`getaddrinfo`/`connect`/`poll`/`read`),
+  auto-replies PING→PONG, reconnects with bounded backoff, and hands each parsed
+  line to the UI via `timui_post`; the worker is joined **before** `timui_close`
+  (W14). The pure parser (`examples/irc_proto.h`) is allocation-free and
+  unit-tested (`tests/test_irc.c`); the message handler (`irc_feed`) is separable
+  from the socket, so `--demo`/`--replay` drive the exact same model code as a
+  live connection.
+
+The composer is the submit-capable single-line `timui_input_field` (Enter sends);
+`timui_text_area` has no submit event, so it isn't used for the send-on-Enter line.
+
 ## Widget & layout library (`gallery`)
 
 The library ships a constraint **layout** engine (`timui_split`/`timui_grid` over

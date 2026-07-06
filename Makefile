@@ -99,8 +99,6 @@ else
   RADIO_LDFLAGS := -lm -ldl -lpthread
 endif
 
-.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery
-
 # ---- SQLite TUI example (T4) ------------------------------------------- #
 # The SQLite amalgamation is large; compile it ONCE into its own object and link
 # it into the example (and the fixture helper). SQLITE_THREADSAFE=1 because timui
@@ -120,7 +118,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery
+.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-irc run-irc smoke-irc
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -231,6 +229,12 @@ run-sqlite-tui: $(BLDDIR)/sqlite_tui ## Run the SQLite TUI (DB=path, default :me
 # ---- Widget gallery (examples/gallery.c) --------------------------------- #
 run-gallery: $(BLDDIR)/gallery ## Run the widget + layout gallery showcase
 	@./$(BLDDIR)/gallery
+
+# ---- IRC client (examples/irc.c) ----------------------------------------- #
+# No args -> the offline --demo (canned transcript, no network). Pass HOST=… to
+# connect live over plaintext TCP (best-effort): make run-irc HOST=irc.libera.chat
+run-irc: $(BLDDIR)/irc ## Run the IRC client (HOST=… to connect; default offline demo)
+	@./$(BLDDIR)/irc $(if $(HOST),--connect $(HOST)) $(if $(NICK),--nick $(NICK)) $(if $(CHAN),--channel $(CHAN))
 
 # ============================================================================
 # 4. REC / DRIVE — record or headlessly drive a session
@@ -506,6 +510,18 @@ check-sqlite-tui: $(TSTDIR)/test_sqlite_table.c $(EXADIR)/sqlite_table.h $(HEADE
 	  && printf "$(C_GREEN)✓ sqlite_table$(C_RESET) standalone tests passed\n" \
 	  || { printf "$(C_YELL)✗ sqlite_table$(C_RESET) tests failed\n"; exit 1; }
 
+# Standalone unit test for examples/irc_proto.h — the PURE, allocation-free
+# RFC 1459/2812 message parser + command classifier. No timui library, no
+# network: header-only parser driven on hand-computed positive + adversarial
+# vectors. Kept out of `make test` so the protocol is exercisable on its own.
+check-irc: $(TSTDIR)/test_irc.c $(EXADIR)/irc_proto.h ## Test the IRC message parser (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) irc_proto test\n"
+	@$(CC) $(CFLAGS) -I$(EXADIR) $(TSTDIR)/test_irc.c -o $(BLDDIR)/test_irc
+	@./$(BLDDIR)/test_irc \
+	  && printf "$(C_GREEN)✓ irc_proto$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ irc_proto$(C_RESET) tests failed\n"; exit 1; }
+
 # ============================================================================
 # 6. SMOKE — headless one-frame render smokes
 # ============================================================================
@@ -543,6 +559,19 @@ smoke-gallery: $(BLDDIR)/gallery $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Head
 	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/gallery-smoke.raw" | grep -q 'gallery' \
 	  && printf "$(C_GREEN)✓ gallery$(C_RESET) headless smoke rendered a frame\n" \
 	  || { printf "$(C_YELL)✗ gallery$(C_RESET) smoke: dashboard not rendered\n"; exit 1; }
+
+# Headless IRC smoke: run the client's OFFLINE --demo path (canned transcript,
+# NO network) through a pty and assert the model+render pipeline works: the
+# #timui channel tab, a rendered PRIVMSG line ("morning"), and a nick (alice)
+# must all appear. Deterministic — the same irc_feed handler the socket uses.
+smoke-irc: $(BLDDIR)/irc $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless IRC smoke (canned transcript, no network)
+	@mkdir -p $(RECDIR)
+	@./$(BLDDIR)/pty_drive --cols 100 --rows 30 --run-ms 900 --settle-ms 200 \
+	   --out "$(RECDIR)/irc-smoke.raw" -- ./$(BLDDIR)/irc --demo --frames 6 < /dev/null
+	@out=$$(./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/irc-smoke.raw"); \
+	 echo "$$out" | grep -q '#timui' && echo "$$out" | grep -q 'morning' && echo "$$out" | grep -q 'alice' \
+	  && printf "$(C_GREEN)✓ irc$(C_RESET) headless smoke: #timui tab + PRIVMSG + nick rendered\n" \
+	  || { printf "$(C_YELL)✗ irc$(C_RESET) smoke: expected #timui/morning/alice\n"; echo "$$out"; exit 1; }
 
 # ============================================================================
 # 7. GIF / RECORDING — render the chat demo to GIF / WebP / MP4
