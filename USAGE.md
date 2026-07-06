@@ -48,6 +48,21 @@ is compiled once to `build/sqlite3.o` (`SQLITE_THREADSAFE=1`, lean OMIT flags)
 and linked into the example. The pure column-fit + paging/scroll units live in
 `examples/sqlite_table.h` and are unit-tested standalone (`tests/test_sqlite_table.c`).
 
+## Widget & layout library (`gallery`)
+
+The library ships a constraint **layout** engine (`timui_split`/`timui_grid` over
+`TIMUI_LEN/PCT/FLEX/MIN/MAX`), **borders** (`timui_border`, 4 line styles →
+inner rect) + `timui_lerp_rgb`, and widgets: **tabs** (`timui_tabs`), a **virtual
+multi-column table** (`timui_table_ex`), a **scrollable tree** (`timui_tree_scroll`),
+**charts/indicators** (`timui_barchart`/`timui_sparkline`/`timui_gauge`/`timui_meter`/
+`timui_progress`/`timui_spinner`), and a syntax-highlighted **code viewer**
+(`timui_code` + `timui_highlight`). `examples/gallery.c` shows them all on one screen.
+
+    nix develop -c make run-gallery      # interactive showcase
+    nix develop -c make smoke-gallery    # headless: render a frame + assert
+    # per-widget pure-unit tests:
+    nix develop -c make check-layout check-tabs check-chart check-syntax check-grid
+
 ## Visual testing
 
 Two tiers validate the renderer (see `docs/visual-tests.md`): **Tier B**

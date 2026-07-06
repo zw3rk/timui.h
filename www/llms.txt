@@ -1,0 +1,135 @@
+# timui.h
+
+timui.h is a single-header C99 immediate-mode terminal UI library for POSIX
+terminals. Use it when you need a small native TUI without ncurses.
+
+Canonical website URLs:
+
+- Landing page: https://timui.dev/
+- Downloadable header: https://timui.dev/timui.h
+- Agent notes: https://timui.dev/llms.txt
+
+The source repository is not public yet. Use the downloadable header from this
+site for now.
+
+## How to build with timui.h
+
+1. Download `timui.h` into your project.
+2. In exactly one C translation unit, define `TIMUI_IMPLEMENTATION` before
+   including `timui.h`.
+3. Compile as C99 and link pthreads.
+
+Typical command:
+
+```sh
+cc -std=c99 -Wall -Wextra -Wpedantic -O2 -pthread app.c -o app
+```
+
+Minimal include pattern:
+
+```c
+#include <unistd.h>
+
+#define TIMUI_IMPLEMENTATION
+#include "timui.h"
+```
+
+`TimuiConfig.input_fd` and `TimuiConfig.output_fd` are POSIX integer file
+descriptors. Use `STDIN_FILENO` and `STDOUT_FILENO` from `<unistd.h>`, not
+`stdin` and `stdout` from stdio.
+
+## Minimal app skeleton
+
+```c
+#include <unistd.h>
+
+#define TIMUI_IMPLEMENTATION
+#include "timui.h"
+
+int main(void) {
+    TimuiConfig cfg = {0};
+    Timui *ui = 0;
+
+    cfg.title = "hello timui";
+    cfg.input_fd = STDIN_FILENO;
+    cfg.output_fd = STDOUT_FILENO;
+    cfg.profile = TIMUI_PROFILE_AUTO;
+    cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_RESTORE_ON_EXIT;
+    cfg.theme = TIMUI_THEME_DOS_BLUE;
+
+    if (timui_open(&cfg, &ui) != TIMUI_OK) return 1;
+
+    while (!timui_should_quit(ui)) {
+        TimuiFrame *f = 0;
+        TimuiRect root;
+
+        if (!timui_begin(ui, &f)) break;
+        root = timui_root(f);
+
+        timui_label(f, root.x + 2, root.y + 2,
+                    TIMUI_STR_LIT("hello from one header"),
+                    timui_style_make(0x59ee3f,
+                                     TIMUI_COLOR_DEFAULT,
+                                     0));
+
+        if (timui_key_pressed(f, TIMUI_KEY_ESCAPE)) timui_quit(ui);
+        timui_end(f);
+    }
+
+    timui_close(ui);
+    return 0;
+}
+```
+
+## Important rules for generated code
+
+- Do not use ncurses. timui.h owns terminal setup, raw mode, input parsing, and
+  rendering.
+- Define `TIMUI_IMPLEMENTATION` in exactly one translation unit.
+- Always call `timui_close(ui)` after a successful `timui_open`.
+- A `TimuiFrame *` is valid only between `timui_begin` and `timui_end`.
+- Keep per-frame values such as `TimuiFrame *f` and `TimuiRect root` inside the
+  draw loop. `timui_begin` processes input and terminal changes before the app
+  draws the next frame.
+- If `timui_begin(ui, &f)` returns false, exit the loop and close the UI.
+- Call `timui_end(f)` once for each successful `timui_begin`.
+- Use `TIMUI_COLOR_DEFAULT` for the terminal default color. Literal colors are
+  packed as `0xRRGGBB`; `0x59ee3f` is the timui green.
+- Prefer `TIMUI_STR_LIT("literal")` for string literals passed to widgets.
+- Treat widget calls as immediate-mode drawing and interaction declarations for
+  the current frame.
+
+## Useful API surface
+
+- Lifecycle: `timui_open`, `timui_close`, `timui_should_quit`,
+  `timui_quit`, `timui_begin`, `timui_end`, `timui_root`.
+- Text and drawing: `timui_label`, `timui_panel_begin`, `timui_panel_end`,
+  `timui_style_make`, `timui_draw_*`.
+- Controls: buttons, checkboxes, radios, input lines, text areas, listboxes,
+  tables, trees, menus, and command palettes.
+- Input: `timui_key_pressed`, mouse support, SGR mouse, Kitty keyboard,
+  bracketed paste, focus events, UTF-8 text.
+- Advanced terminal features: truecolor, synchronized output, OSC 8 hyperlinks,
+  and Kitty graphics where supported by the terminal.
+- Async UI messages: `timui_post` lets worker threads post messages while the
+  UI thread owns the terminal.
+
+## Limitations
+
+- POSIX terminal backend is required. Win32 ConPTY is currently unsupported.
+- API version is 0.2.0 and not yet 1.0 stable.
+- The library includes useful CJK/emoji width handling and Hebrew/Arabic
+  approximation, but not full complex shaping or full bidi.
+
+## Agent guidance
+
+When asked to build a TUI with timui.h:
+
+- Produce a small C99 program first.
+- Keep dependencies minimal.
+- Use the single-header workflow above.
+- Use explicit POSIX file descriptors.
+- Put all UI drawing inside the `while (!timui_should_quit(ui))` frame loop.
+- Prefer clear, plain C over framework abstractions.
+- Keep the tone: practical systems code, a little tongue in cheek, absolutely
+  no curses.

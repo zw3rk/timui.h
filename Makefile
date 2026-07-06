@@ -1,6 +1,10 @@
 ## timui.h — single-header C99 immediate-mode TUI.
 ## Sole entry point: nix develop -c make <target>
 
+# ============================================================================
+# 1. CONFIG — toolchain · directories · source sets · colours · subsystem build vars
+# ============================================================================
+
 .DEFAULT_GOAL := help
 
 CC         ?= cc
@@ -80,14 +84,6 @@ ifeq ($(WITH_SHEENBIDI),1)
   SB_OBJ    := $(SB_OBJ_FILE)
 endif
 
-# SheenBidi amalgamation -> one object. Third-party C: relaxed warnings (as with
-# the vt_gif vendored single-headers). -ISource resolves its <API/…>/<Core/…>
-# unity includes; -IHeaders resolves the public <SheenBidi/…> umbrella.
-$(SB_OBJ_FILE): $(SHEENBIDI_DIR)/Source/SheenBidi.c
-	@mkdir -p $(@D)
-	@printf "$(C_CYAN)build$(C_RESET) SheenBidi (amalgamation, UAX #9)\n"
-	@$(CC) -std=c99 -O2 -DSB_CONFIG_UNITY -I$(SHEENBIDI_DIR)/Headers -I$(SHEENBIDI_DIR)/Source -c $< -o $@
-
 # ---- Internet-radio example (examples/radio.c) --------------------------- #
 # Vendored single-file deps: minimp3 (MP3 decode), miniaudio (playback),
 # kissfft (real FFT). kissfft ships .c files, compiled alongside radio.c.
@@ -104,6 +100,27 @@ else
 endif
 
 .PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery
+
+# ---- SQLite TUI example (T4) ------------------------------------------- #
+# The SQLite amalgamation is large; compile it ONCE into its own object and link
+# it into the example (and the fixture helper). SQLITE_THREADSAFE=1 because timui
+# is multi-threaded; the OMIT/DEFAULT feature flags keep the object lean.
+# -Wall/-Wextra/-Wpedantic are dropped for the vendored C (not our code) and -w
+# silences it. -lpthread everywhere; -ldl on Linux (elsewhere it lives in libc).
+SQLITE_DIR  := $(TOOLDIR)/vendor/sqlite3
+SQLITE_OBJ  := $(BLDDIR)/sqlite3.o
+SQLITE_DEFS := -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
+               -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_DQS=0
+SQLITE_LIBS := -lpthread
+ifeq ($(UNAME_S),Linux)
+  SQLITE_LIBS += -ldl -lm
+endif
+
+# ============================================================================
+# 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
+# ============================================================================
+
+.PHONY: help build test test-san run amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -125,34 +142,20 @@ $(BLDDIR)/%: $(EXADIR)/%.c $(HEADER) $(LIB_SECTIONS) $(SB_OBJ)
 	@printf "$(C_CYAN)build$(C_RESET) $<\n"
 	@$(CC) $(CFLAGS) $(SB_CFLAGS) -I$(INCDIR) $< $(SB_OBJ) -o $@
 
-test: $(TEST_BIN) ## Compile and run the unit tests
-	@printf "$(C_YELL)▶ running tests$(C_RESET)\n"
-	@./$(TEST_BIN)
-
 $(TEST_BIN): $(TEST_SRCS) $(HEADER) $(LIB_SECTIONS)
 	@mkdir -p $(@D)
 	@printf "$(C_CYAN)build$(C_RESET) tests\n"
 	@$(CC) $(TESTCFLAGS) -I$(INCDIR) $(TEST_SRCS) -o $@
 
-run: build ## Build and run the hello example
-	@./$(BLDDIR)/hello
+$(GOLDEN_BIN): $(TOOLDIR)/gen_golden.c $(HEADER) $(TSTDIR)/scenes.h $(LIB_SECTIONS)
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) gen_golden\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) $< -o $@
 
-# Run one example by name (builds just that target first), e.g. `make run-editor`.
-# Demos: editor procmon todo chat file_manager (plus hello counter form mini_commander).
-run-%: $(BLDDIR)/%
-	@./$(BLDDIR)/$*
-
-# Autoplay the chat demo (self-driving via examples/chat.demo). Explicit targets
-# override the run-% pattern. Kitty-graphics images are terminal PIXELS, so
-# asciinema/agg/VHS can't capture them — screen-record this window instead.
-run-chat-demo: $(BLDDIR)/chat ## Autoplay the chat demo script (self-driving)
-	@./$(BLDDIR)/chat --demo examples/chat.demo
-
-rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
-	@printf "$(C_CYAN)Start a screen recorder$(C_RESET) (Kap / QuickTime) on this Ghostty window,\n"
-	@printf "then press Enter to autoplay the demo (~26s). Turn the capture into a GIF with:\n"
-	@printf "  $(C_YELL)ffmpeg -i cap.mov -vf 'fps=15,scale=900:-1:flags=lanczos' chat.gif$(C_RESET)\n"
-	@read _ && ./$(BLDDIR)/chat --demo examples/chat.demo
+$(VT_BIN): $(TEST_SRCS) $(VT_SRCS) $(HEADER) $(LIB_SECTIONS)
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) vt-tests\n"
+	@$(CC) $(TESTCFLAGS) $(VT_CFLAGS) -I$(INCDIR) $(TEST_SRCS) $(VT_SRCS) $(VT_LIBS) -o $@
 
 # ---- recording / headless driving --------------------------------------- #
 $(BLDDIR)/pty_drive: $(TOOLDIR)/pty_drive.c
@@ -168,44 +171,134 @@ $(BLDDIR)/vt_gif: $(TOOLDIR)/vt_gif.c $(TOOLDIR)/vendor/vt_font_ttf.h $(TOOLDIR)
 	@mkdir -p $(@D)
 	@$(CC) -std=c99 -O2 -Wall -Wno-unused-function $(TOOLDIR)/vt_gif.c -o $@ -lm
 
-# Regenerate the subset TTF face header from DejaVu Sans Mono (via nix: fonttools).
-gen-font-ttf: ## Regenerate tools/vendor/vt_font_ttf.h (subset DejaVu Sans Mono)
-	@nix-shell -p 'python3.withPackages(ps: [ps.fonttools])' dejavu_fonts --run 'python3 tools/gen_font_ttf.py'
+# SheenBidi amalgamation -> one object. Third-party C: relaxed warnings (as with
+# the vt_gif vendored single-headers). -ISource resolves its <API/…>/<Core/…>
+# unity includes; -IHeaders resolves the public <SheenBidi/…> umbrella.
+$(SB_OBJ_FILE): $(SHEENBIDI_DIR)/Source/SheenBidi.c
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) SheenBidi (amalgamation, UAX #9)\n"
+	@$(CC) -std=c99 -O2 -DSB_CONFIG_UNITY -I$(SHEENBIDI_DIR)/Headers -I$(SHEENBIDI_DIR)/Source -c $< -o $@
 
-# Regenerate the bundled colour-emoji atlas from Twemoji (needs network, via nix).
-gen-emoji: ## Regenerate tools/vendor/emoji_atlas.h (curated Twemoji PNGs)
-	@nix-shell -p python3 --run 'python3 tools/gen_emoji.py'
+# ---- Internet-radio: build, unit test, headless smoke -------------------- #
+$(BLDDIR)/radio: $(EXADIR)/radio.c $(EXADIR)/radio_dsp.h $(RADIO_KISS) $(HEADER) $(LIB_SECTIONS) \
+                 $(TOOLDIR)/vendor/minimp3.h $(TOOLDIR)/vendor/miniaudio.h $(TOOLDIR)/vendor/kiss_fftr.h
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) $(EXADIR)/radio.c (+minimp3/miniaudio/kissfft)\n"
+	@$(CC) $(RADIO_CFLAGS) -I$(INCDIR) -I$(EXADIR) -I$(TOOLDIR)/vendor \
+	  $(EXADIR)/radio.c $(RADIO_KISS) $(RADIO_LDFLAGS) -o $@
 
-# Regenerate the bundled CJK bitmap face from GNU Unifont's .bdf (via nix: unifont).
-gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated)
-	@nix-shell -p python3 unifont --run 'python3 tools/gen_cjk.py'
+$(SQLITE_OBJ): $(SQLITE_DIR)/sqlite3.c $(SQLITE_DIR)/sqlite3.h
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) sqlite3 amalgamation (once, large)\n"
+	@$(CC) -std=c99 -O2 -w $(SQLITE_DEFS) -c $< -o $@
 
-# Render the chat autoplay demo to an animated GIF *including* the Kitty images —
-# fully headless (no screen recorder needed): drive with a timing sidecar, then
-# rasterize each frame to pixels and encode the GIF.
-gif-chat-demo: $(BLDDIR)/chat $(BLDDIR)/pty_drive $(BLDDIR)/vt_gif ## Headless: chat demo -> recordings/chat-demo.gif
+# Explicit rule — overrides the generic $(BLDDIR)/% example rule so the example
+# links sqlite3.o and sees the vendored sqlite3.h.
+$(BLDDIR)/sqlite_tui: $(EXADIR)/sqlite_tui.c $(EXADIR)/sqlite_table.h $(EXADIR)/chat_highlight.h $(HEADER) $(LIB_SECTIONS) $(SQLITE_OBJ)
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) $<\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) -I$(EXADIR) -I$(SQLITE_DIR) $< $(SQLITE_OBJ) $(SQLITE_LIBS) -o $@
+
+# Fixture builder for the headless smoke (vendored sqlite C API, no network/CLI).
+$(BLDDIR)/sqlite_mkfixture: $(TOOLDIR)/sqlite_mkfixture.c $(SQLITE_DIR)/sqlite3.h $(SQLITE_OBJ)
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -I$(SQLITE_DIR) $< $(SQLITE_OBJ) $(SQLITE_LIBS) -o $@
+
+# ============================================================================
+# 3. RUN — build and launch an example or app
+# ============================================================================
+
+run: build ## Build and run the hello example
+	@./$(BLDDIR)/hello
+
+# Run one example by name (builds just that target first), e.g. `make run-editor`.
+# Demos: editor procmon todo chat file_manager (plus hello counter form mini_commander).
+run-%: $(BLDDIR)/%
+	@./$(BLDDIR)/$*
+
+# Autoplay the chat demo (self-driving via examples/chat.demo). Explicit targets
+# override the run-% pattern. Kitty-graphics images are terminal PIXELS, so
+# asciinema/agg/VHS can't capture them — screen-record this window instead.
+run-chat-demo: $(BLDDIR)/chat ## Autoplay the chat demo script (self-driving)
+	@./$(BLDDIR)/chat --demo examples/chat.demo
+
+run-radio: $(BLDDIR)/radio ## Build + run the internet-radio player (auto-connects FIP)
+	@./$(BLDDIR)/radio --play
+
+run-sqlite-tui: $(BLDDIR)/sqlite_tui ## Run the SQLite TUI (DB=path, default :memory:)
+	@./$(BLDDIR)/sqlite_tui $(if $(DB),$(DB),:memory:)
+
+# ---- Widget gallery (examples/gallery.c) --------------------------------- #
+run-gallery: $(BLDDIR)/gallery ## Run the widget + layout gallery showcase
+	@./$(BLDDIR)/gallery
+
+# ============================================================================
+# 4. REC / DRIVE — record or headlessly drive a session
+# ============================================================================
+
+# Record a REAL interactive session (you type) to recordings/<name>.cast — the
+# raw byte stream, viewable with `asciinema play` and analysable by the verifier.
+rec-%: $(BLDDIR)/%
 	@mkdir -p $(RECDIR)
-	@TERM=xterm-kitty ./$(BLDDIR)/pty_drive --cols 90 --rows 22 --settle-ms 1500 --run-ms 86000 \
-	  --out $(RECDIR)/chat-demo.raw --timing $(RECDIR)/chat-demo.timing \
-	  -- ./$(BLDDIR)/chat --demo examples/chat.demo < /dev/null
-	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
-	  --outro 'https://timui.dev 👀' \
-	  --timing $(RECDIR)/chat-demo.timing --gif $(RECDIR)/chat-demo.gif $(RECDIR)/chat-demo.raw
-	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.gif\n"
+	@command -v asciinema >/dev/null 2>&1 || { printf "$(C_YELL)asciinema not found — run inside 'nix develop'$(C_RESET)\n"; exit 1; }
+	@printf "$(C_CYAN)recording$(C_RESET) $(RECDIR)/$*.cast — quit the app (F10/ESC) to stop\n"
+	@asciinema rec --overwrite -c "./$(BLDDIR)/$*" "$(RECDIR)/$*.cast"
 
-# Same demo as smaller MP4 + animated WebP (both far smaller than the GIF).
-# MP4 via ffmpeg over vt_gif's --frames-dir PNG sequence (truecolour, tiny with
-# H.264); WebP via gif2webp, which does inter-frame delta (ffmpeg's libwebp muxer
-# does NOT, and balloons to ~15 MB). Runs gif-chat-demo first to get the capture.
-webp-chat-demo: gif-chat-demo ## chat demo -> recordings/chat-demo.{webp,mp4} (smaller than GIF)
-	@rm -rf $(RECDIR)/frames && mkdir -p $(RECDIR)/frames
-	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
-	  --outro 'https://timui.dev 👀' --timing $(RECDIR)/chat-demo.timing \
-	  --frames-dir $(RECDIR)/frames $(RECDIR)/chat-demo.raw
-	@nix run nixpkgs#ffmpeg -- -y -framerate 12 -i $(RECDIR)/frames/frame_%05d.png \
-	  -c:v libx264 -pix_fmt yuv420p -movflags +faststart $(RECDIR)/chat-demo.mp4 2>/dev/null
-	@nix shell nixpkgs#libwebp -c gif2webp -q 65 -m 4 $(RECDIR)/chat-demo.gif -o $(RECDIR)/chat-demo.webp 2>/dev/null
-	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.{mp4,webp}\n"
+# Drive <name> HEADLESS: feed scripted keystrokes from recordings/<name>.in (a
+# raw byte file; missing => none) through a pty, capture the output stream to
+# recordings/<name>.raw, and render the final screen to recordings/<name>.txt.
+drive-%: $(BLDDIR)/% $(BLDDIR)/pty_drive $(BLDDIR)/vt_render
+	@mkdir -p $(RECDIR)
+	@in="$(RECDIR)/$*.in"; [ -f "$$in" ] || in=/dev/null; \
+	 printf "$(C_CYAN)driving$(C_RESET) $* headless (input: $$in)\n"; \
+	 ./$(BLDDIR)/pty_drive --cols 100 --rows 30 --out "$(RECDIR)/$*.raw" --delay-ms 4 -- ./$(BLDDIR)/$* < "$$in"; \
+	 ./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/$*.raw" > "$(RECDIR)/$*.txt"; \
+	 printf "$(C_GREEN)✓ $(RECDIR)/$*.raw + $(RECDIR)/$*.txt$(C_RESET)\n"
+
+rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
+	@printf "$(C_CYAN)Start a screen recorder$(C_RESET) (Kap / QuickTime) on this Ghostty window,\n"
+	@printf "then press Enter to autoplay the demo (~26s). Turn the capture into a GIF with:\n"
+	@printf "  $(C_YELL)ffmpeg -i cap.mov -vf 'fps=15,scale=900:-1:flags=lanczos' chat.gif$(C_RESET)\n"
+	@read _ && ./$(BLDDIR)/chat --demo examples/chat.demo
+
+# ============================================================================
+# 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
+# ============================================================================
+
+check: build test ## Build + test gate
+	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
+
+test: $(TEST_BIN) ## Compile and run the unit tests
+	@printf "$(C_YELL)▶ running tests$(C_RESET)\n"
+	@./$(TEST_BIN)
+
+test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=address
+	@mkdir -p $(BLDDIR)
+	@$(CC) -std=c99 -Wall -Wextra -Wpedantic -O1 -g -fsanitize=$(SAN) -I$(INCDIR) $(TEST_SRCS) -o $(BLDDIR)/test_san
+	@./$(BLDDIR)/test_san
+
+vt-test: build ## Compile + run unit tests WITH libvterm round-trip tests (needs libvterm)
+	@$(MAKE) $(VT_BIN) WITH_VTERM=1
+	@printf "$(C_YELL)▶ running vt-tests$(C_RESET)\n"
+	@./$(VT_BIN)
+
+goldens: $(GOLDEN_BIN) ## Regenerate tests/golden/*.txt snapshots
+	@mkdir -p tests/golden
+	@./$(GOLDEN_BIN)
+	@printf "$(C_GREEN)✓ goldens regenerated$(C_RESET)\n"
+
+# Headless acceptance smoke: drive an app with a CHECKED-IN input script
+# (tests/drive/<name>.in) and assert the rendered screen. End-to-end proof that a
+# real app binary handles input + renders correctly. Timing-dependent, so it is
+# deliberately OUTSIDE `make check` (which stays deterministic).
+accept: $(BLDDIR)/editor $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless acceptance smoke (scripted input -> assert render)
+	@mkdir -p $(RECDIR)
+	@printf "$(C_BOLD)Headless acceptance$(C_RESET) (scripted input through a pty)\n"
+	@./$(BLDDIR)/pty_drive --cols 100 --rows 30 --run-ms 2500 --settle-ms 300 \
+	   --out "$(RECDIR)/accept-editor.raw" --delay-ms 4 -- ./$(BLDDIR)/editor < tests/drive/editor.in
+	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/accept-editor.raw" | grep -q 'timui acceptance ok' \
+	  && printf "  $(C_GREEN)✓ editor: typed text rendered$(C_RESET)\n" \
+	  || { printf "  $(C_RED)✗ editor: typed text missing from render$(C_RESET)\n"; exit 1; }
 
 # Smoke-test the pixel renderer: a synthetic capture (text + an SGR colour +
 # a malformed APC that must not crash the decoder) renders to a PNG of the
@@ -393,17 +486,6 @@ check-chart: $(TSTDIR)/test_chart.c $(HEADER) $(LIB_SECTIONS) ## Test the chart/
 	  && printf "$(C_GREEN)✓ chart$(C_RESET) standalone tests passed\n" \
 	  || { printf "$(C_YELL)✗ chart$(C_RESET) tests failed\n"; exit 1; }
 
-# ---- Internet-radio: build, unit test, headless smoke -------------------- #
-$(BLDDIR)/radio: $(EXADIR)/radio.c $(EXADIR)/radio_dsp.h $(RADIO_KISS) $(HEADER) $(LIB_SECTIONS) \
-                 $(TOOLDIR)/vendor/minimp3.h $(TOOLDIR)/vendor/miniaudio.h $(TOOLDIR)/vendor/kiss_fftr.h
-	@mkdir -p $(@D)
-	@printf "$(C_CYAN)build$(C_RESET) $(EXADIR)/radio.c (+minimp3/miniaudio/kissfft)\n"
-	@$(CC) $(RADIO_CFLAGS) -I$(INCDIR) -I$(EXADIR) -I$(TOOLDIR)/vendor \
-	  $(EXADIR)/radio.c $(RADIO_KISS) $(RADIO_LDFLAGS) -o $@
-
-run-radio: $(BLDDIR)/radio ## Build + run the internet-radio player (auto-connects FIP)
-	@./$(BLDDIR)/radio --play
-
 # Standalone unit test for the PURE DSP (examples/radio_dsp.h): a synthetic sine
 # through the vendored real FFT must land in the right log band, and the peak-hold
 # envelope must rise instantly + decay over N frames. Links kissfft; no audio.
@@ -416,6 +498,18 @@ check-radio: $(TSTDIR)/test_radio_dsp.c $(EXADIR)/radio_dsp.h $(RADIO_KISS) ## T
 	  && printf "$(C_GREEN)✓ radio_dsp$(C_RESET) FFT-band + peak-hold tests passed\n" \
 	  || { printf "$(C_YELL)✗ radio_dsp$(C_RESET) tests failed\n"; exit 1; }
 
+check-sqlite-tui: $(TSTDIR)/test_sqlite_table.c $(EXADIR)/sqlite_table.h $(HEADER) $(LIB_SECTIONS) ## Test the pure table-layout helpers (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) sqlite_table test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) -I$(EXADIR) $(TSTDIR)/test_sqlite_table.c -o $(BLDDIR)/test_sqlite_table
+	@./$(BLDDIR)/test_sqlite_table \
+	  && printf "$(C_GREEN)✓ sqlite_table$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ sqlite_table$(C_RESET) tests failed\n"; exit 1; }
+
+# ============================================================================
+# 6. SMOKE — headless one-frame render smokes
+# ============================================================================
+
 # Headless smoke: drive the radio through a pty (no sound card, no network — the
 # app runs with --no-audio --frames) and assert it renders its dashboard. Proves
 # the binary launches + renders one frame with a dead audio device.
@@ -426,49 +520,6 @@ smoke-radio: $(BLDDIR)/radio $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless
 	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/radio-smoke.raw" | grep -q 'Master mix spectrum' \
 	  && printf "$(C_GREEN)✓ radio$(C_RESET) headless smoke rendered a frame (no audio device)\n" \
 	  || { printf "$(C_YELL)✗ radio$(C_RESET) smoke: dashboard not rendered\n"; exit 1; }
-
-# ---- SQLite TUI example (T4) ------------------------------------------- #
-# The SQLite amalgamation is large; compile it ONCE into its own object and link
-# it into the example (and the fixture helper). SQLITE_THREADSAFE=1 because timui
-# is multi-threaded; the OMIT/DEFAULT feature flags keep the object lean.
-# -Wall/-Wextra/-Wpedantic are dropped for the vendored C (not our code) and -w
-# silences it. -lpthread everywhere; -ldl on Linux (elsewhere it lives in libc).
-SQLITE_DIR  := $(TOOLDIR)/vendor/sqlite3
-SQLITE_OBJ  := $(BLDDIR)/sqlite3.o
-SQLITE_DEFS := -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
-               -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_DQS=0
-SQLITE_LIBS := -lpthread
-ifeq ($(UNAME_S),Linux)
-  SQLITE_LIBS += -ldl -lm
-endif
-
-$(SQLITE_OBJ): $(SQLITE_DIR)/sqlite3.c $(SQLITE_DIR)/sqlite3.h
-	@mkdir -p $(@D)
-	@printf "$(C_CYAN)build$(C_RESET) sqlite3 amalgamation (once, large)\n"
-	@$(CC) -std=c99 -O2 -w $(SQLITE_DEFS) -c $< -o $@
-
-# Explicit rule — overrides the generic $(BLDDIR)/% example rule so the example
-# links sqlite3.o and sees the vendored sqlite3.h.
-$(BLDDIR)/sqlite_tui: $(EXADIR)/sqlite_tui.c $(EXADIR)/sqlite_table.h $(EXADIR)/chat_highlight.h $(HEADER) $(LIB_SECTIONS) $(SQLITE_OBJ)
-	@mkdir -p $(@D)
-	@printf "$(C_CYAN)build$(C_RESET) $<\n"
-	@$(CC) $(CFLAGS) -I$(INCDIR) -I$(EXADIR) -I$(SQLITE_DIR) $< $(SQLITE_OBJ) $(SQLITE_LIBS) -o $@
-
-# Fixture builder for the headless smoke (vendored sqlite C API, no network/CLI).
-$(BLDDIR)/sqlite_mkfixture: $(TOOLDIR)/sqlite_mkfixture.c $(SQLITE_DIR)/sqlite3.h $(SQLITE_OBJ)
-	@mkdir -p $(@D)
-	@$(CC) $(CFLAGS) -I$(SQLITE_DIR) $< $(SQLITE_OBJ) $(SQLITE_LIBS) -o $@
-
-run-sqlite-tui: $(BLDDIR)/sqlite_tui ## Run the SQLite TUI (DB=path, default :memory:)
-	@./$(BLDDIR)/sqlite_tui $(if $(DB),$(DB),:memory:)
-
-check-sqlite-tui: $(TSTDIR)/test_sqlite_table.c $(EXADIR)/sqlite_table.h $(HEADER) $(LIB_SECTIONS) ## Test the pure table-layout helpers (standalone)
-	@mkdir -p $(BLDDIR)
-	@printf "$(C_CYAN)build$(C_RESET) sqlite_table test\n"
-	@$(CC) $(CFLAGS) -I$(INCDIR) -I$(EXADIR) $(TSTDIR)/test_sqlite_table.c -o $(BLDDIR)/test_sqlite_table
-	@./$(BLDDIR)/test_sqlite_table \
-	  && printf "$(C_GREEN)✓ sqlite_table$(C_RESET) standalone tests passed\n" \
-	  || { printf "$(C_YELL)✗ sqlite_table$(C_RESET) tests failed\n"; exit 1; }
 
 smoke-sqlite-tui: $(BLDDIR)/sqlite_tui $(BLDDIR)/sqlite_mkfixture ## Headless smoke: temp db -> SELECT -> render 1 frame
 	@rm -f $(BLDDIR)/_smoke.db $(BLDDIR)/_smoke.out $(BLDDIR)/_smoke.txt
@@ -485,10 +536,6 @@ smoke-sqlite-tui: $(BLDDIR)/sqlite_tui $(BLDDIR)/sqlite_mkfixture ## Headless sm
 	  && printf "$(C_GREEN)✓ sqlite_tui$(C_RESET) headless smoke: SELECT rendered 3 rows (alice/bob/carol)\n" \
 	  || { printf "$(C_YELL)✗ sqlite_tui$(C_RESET) smoke failed\n"; cat $(BLDDIR)/_smoke.out; exit 1; }
 
-# ---- Widget gallery (examples/gallery.c) --------------------------------- #
-run-gallery: $(BLDDIR)/gallery ## Run the widget + layout gallery showcase
-	@./$(BLDDIR)/gallery
-
 smoke-gallery: $(BLDDIR)/gallery $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless gallery smoke (renders a frame)
 	@mkdir -p $(RECDIR)
 	@./$(BLDDIR)/pty_drive --cols 100 --rows 30 --run-ms 900 --settle-ms 200 \
@@ -497,62 +544,56 @@ smoke-gallery: $(BLDDIR)/gallery $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Head
 	  && printf "$(C_GREEN)✓ gallery$(C_RESET) headless smoke rendered a frame\n" \
 	  || { printf "$(C_YELL)✗ gallery$(C_RESET) smoke: dashboard not rendered\n"; exit 1; }
 
-# Record a REAL interactive session (you type) to recordings/<name>.cast — the
-# raw byte stream, viewable with `asciinema play` and analysable by the verifier.
-rec-%: $(BLDDIR)/%
+# ============================================================================
+# 7. GIF / RECORDING — render the chat demo to GIF / WebP / MP4
+# ============================================================================
+
+# Render the chat autoplay demo to an animated GIF *including* the Kitty images —
+# fully headless (no screen recorder needed): drive with a timing sidecar, then
+# rasterize each frame to pixels and encode the GIF.
+gif-chat-demo: $(BLDDIR)/chat $(BLDDIR)/pty_drive $(BLDDIR)/vt_gif ## Headless: chat demo -> recordings/chat-demo.gif
 	@mkdir -p $(RECDIR)
-	@command -v asciinema >/dev/null 2>&1 || { printf "$(C_YELL)asciinema not found — run inside 'nix develop'$(C_RESET)\n"; exit 1; }
-	@printf "$(C_CYAN)recording$(C_RESET) $(RECDIR)/$*.cast — quit the app (F10/ESC) to stop\n"
-	@asciinema rec --overwrite -c "./$(BLDDIR)/$*" "$(RECDIR)/$*.cast"
+	@TERM=xterm-kitty ./$(BLDDIR)/pty_drive --cols 90 --rows 22 --settle-ms 1500 --run-ms 86000 \
+	  --out $(RECDIR)/chat-demo.raw --timing $(RECDIR)/chat-demo.timing \
+	  -- ./$(BLDDIR)/chat --demo examples/chat.demo < /dev/null
+	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
+	  --outro 'https://timui.dev 👀' \
+	  --timing $(RECDIR)/chat-demo.timing --gif $(RECDIR)/chat-demo.gif $(RECDIR)/chat-demo.raw
+	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.gif\n"
 
-# Drive <name> HEADLESS: feed scripted keystrokes from recordings/<name>.in (a
-# raw byte file; missing => none) through a pty, capture the output stream to
-# recordings/<name>.raw, and render the final screen to recordings/<name>.txt.
-drive-%: $(BLDDIR)/% $(BLDDIR)/pty_drive $(BLDDIR)/vt_render
-	@mkdir -p $(RECDIR)
-	@in="$(RECDIR)/$*.in"; [ -f "$$in" ] || in=/dev/null; \
-	 printf "$(C_CYAN)driving$(C_RESET) $* headless (input: $$in)\n"; \
-	 ./$(BLDDIR)/pty_drive --cols 100 --rows 30 --out "$(RECDIR)/$*.raw" --delay-ms 4 -- ./$(BLDDIR)/$* < "$$in"; \
-	 ./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/$*.raw" > "$(RECDIR)/$*.txt"; \
-	 printf "$(C_GREEN)✓ $(RECDIR)/$*.raw + $(RECDIR)/$*.txt$(C_RESET)\n"
+# Same demo as smaller MP4 + animated WebP (both far smaller than the GIF).
+# MP4 via ffmpeg over vt_gif's --frames-dir PNG sequence (truecolour, tiny with
+# H.264); WebP via gif2webp, which does inter-frame delta (ffmpeg's libwebp muxer
+# does NOT, and balloons to ~15 MB). Runs gif-chat-demo first to get the capture.
+webp-chat-demo: gif-chat-demo ## chat demo -> recordings/chat-demo.{webp,mp4} (smaller than GIF)
+	@rm -rf $(RECDIR)/frames && mkdir -p $(RECDIR)/frames
+	@./$(BLDDIR)/vt_gif --cols 90 --rows 22 --fps 12 --system-fonts --system-emoji \
+	  --outro 'https://timui.dev 👀' --timing $(RECDIR)/chat-demo.timing \
+	  --frames-dir $(RECDIR)/frames $(RECDIR)/chat-demo.raw
+	@nix run nixpkgs#ffmpeg -- -y -framerate 12 -i $(RECDIR)/frames/frame_%05d.png \
+	  -c:v libx264 -pix_fmt yuv420p -movflags +faststart $(RECDIR)/chat-demo.mp4 2>/dev/null
+	@nix shell nixpkgs#libwebp -c gif2webp -q 65 -m 4 $(RECDIR)/chat-demo.gif -o $(RECDIR)/chat-demo.webp 2>/dev/null
+	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.{mp4,webp}\n"
 
-# Headless acceptance smoke: drive an app with a CHECKED-IN input script
-# (tests/drive/<name>.in) and assert the rendered screen. End-to-end proof that a
-# real app binary handles input + renders correctly. Timing-dependent, so it is
-# deliberately OUTSIDE `make check` (which stays deterministic).
-accept: $(BLDDIR)/editor $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless acceptance smoke (scripted input -> assert render)
-	@mkdir -p $(RECDIR)
-	@printf "$(C_BOLD)Headless acceptance$(C_RESET) (scripted input through a pty)\n"
-	@./$(BLDDIR)/pty_drive --cols 100 --rows 30 --run-ms 2500 --settle-ms 300 \
-	   --out "$(RECDIR)/accept-editor.raw" --delay-ms 4 -- ./$(BLDDIR)/editor < tests/drive/editor.in
-	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/accept-editor.raw" | grep -q 'timui acceptance ok' \
-	  && printf "  $(C_GREEN)✓ editor: typed text rendered$(C_RESET)\n" \
-	  || { printf "  $(C_RED)✗ editor: typed text missing from render$(C_RESET)\n"; exit 1; }
+# ============================================================================
+# 8. ASSETS — regenerate vendored font / emoji / CJK headers
+# ============================================================================
 
-test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=address
-	@mkdir -p $(BLDDIR)
-	@$(CC) -std=c99 -Wall -Wextra -Wpedantic -O1 -g -fsanitize=$(SAN) -I$(INCDIR) $(TEST_SRCS) -o $(BLDDIR)/test_san
-	@./$(BLDDIR)/test_san
+# Regenerate the subset TTF face header from DejaVu Sans Mono (via nix: fonttools).
+gen-font-ttf: ## Regenerate tools/vendor/vt_font_ttf.h (subset DejaVu Sans Mono)
+	@nix-shell -p 'python3.withPackages(ps: [ps.fonttools])' dejavu_fonts --run 'python3 tools/gen_font_ttf.py'
 
-goldens: $(GOLDEN_BIN) ## Regenerate tests/golden/*.txt snapshots
-	@mkdir -p tests/golden
-	@./$(GOLDEN_BIN)
-	@printf "$(C_GREEN)✓ goldens regenerated$(C_RESET)\n"
+# Regenerate the bundled colour-emoji atlas from Twemoji (needs network, via nix).
+gen-emoji: ## Regenerate tools/vendor/emoji_atlas.h (curated Twemoji PNGs)
+	@nix-shell -p python3 --run 'python3 tools/gen_emoji.py'
 
-$(GOLDEN_BIN): $(TOOLDIR)/gen_golden.c $(HEADER) $(TSTDIR)/scenes.h $(LIB_SECTIONS)
-	@mkdir -p $(@D)
-	@printf "$(C_CYAN)build$(C_RESET) gen_golden\n"
-	@$(CC) $(CFLAGS) -I$(INCDIR) $< -o $@
+# Regenerate the bundled CJK bitmap face from GNU Unifont's .bdf (via nix: unifont).
+gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated)
+	@nix-shell -p python3 unifont --run 'python3 tools/gen_cjk.py'
 
-vt-test: build ## Compile + run unit tests WITH libvterm round-trip tests (needs libvterm)
-	@$(MAKE) $(VT_BIN) WITH_VTERM=1
-	@printf "$(C_YELL)▶ running vt-tests$(C_RESET)\n"
-	@./$(VT_BIN)
-
-$(VT_BIN): $(TEST_SRCS) $(VT_SRCS) $(HEADER) $(LIB_SECTIONS)
-	@mkdir -p $(@D)
-	@printf "$(C_CYAN)build$(C_RESET) vt-tests\n"
-	@$(CC) $(TESTCFLAGS) $(VT_CFLAGS) -I$(INCDIR) $(TEST_SRCS) $(VT_SRCS) $(VT_LIBS) -o $@
+# ============================================================================
+# 9. PACKAGING / MISC — amalgamate · release-check · man page · fmt · clean
+# ============================================================================
 
 amalgamate: $(BLDDIR)/amalgamate $(HEADER) $(LIB_SECTIONS) ## Regenerate the flat release single-header into release/
 	@mkdir -p $(RELDIR)
@@ -564,15 +605,15 @@ www: amalgamate ## Refresh static website assets under www/
 	@install -m 0644 $(RELDIR)/timui.h $(WWW_HEADER)
 	@printf "$(C_GREEN)✓ refreshed $(WWW_HEADER)$(C_RESET)\n"
 
+$(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) $< -o $@
+
 release-check: amalgamate ## Verify the amalgamated release header compiles standalone
 	@printf "$(C_CYAN)build$(C_RESET) release self-test\n"
 	@printf '#define TIMUI_IMPLEMENTATION\n#include "../$(RELDIR)/timui.h"\nint main(void){return 0;}\n' > $(BLDDIR)/release_selftest.c
 	@$(CC) $(CFLAGS) $(BLDDIR)/release_selftest.c -o $(BLDDIR)/release_selftest
 	@printf "$(C_GREEN)✓ release header compiles standalone$(C_RESET)\n"
-
-$(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
-	@mkdir -p $(@D)
-	@$(CC) $(CFLAGS) $< -o $@
 
 # ---- man page ------------------------------------------------------------- #
 # Render the pandoc-flavoured Markdown man page (docs/timui.1.md) to roff into
@@ -590,9 +631,6 @@ install-man: man ## Install build/timui.1 to $(DESTDIR)$(PREFIX)/share/man/man1
 
 fmt: ## Format C sources if clang-format is available
 	@if command -v clang-format >/dev/null 2>&1; then clang-format -i $(HEADER) $(SRCDIR)/*.c $(EXADIR)/*.c $(TSTDIR)/*.c $(TOOLDIR)/*.c; printf "$(C_GREEN)✓ formatted$(C_RESET)\n"; else printf "$(C_YELL)clang-format not found; skipping$(C_RESET)\n"; fi
-
-check: build test ## Build + test gate
-	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 clean: ## Remove build artifacts
 	@rm -rf $(BLDDIR) $(RELDIR)

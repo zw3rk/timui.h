@@ -8,6 +8,13 @@ the **SQLite TUI** (`examples/sqlite_tui.c`), the **man page** (`docs/timui.1.md
 `make man`), and **full UAX #9 bidi** via vendored SheenBidi (opt-in `WITH_SHEENBIDI=1`).
 Checked off below.
 
+**Shipped 2026-07-07** (layout + widget sweep goal): a **constraint layout engine**
+(`timui_split`/`timui_grid`, LEN/PCT/FLEX/MIN/MAX) + **borders/gradient**
+(`timui_border`, `timui_lerp_rgb`), a **virtual multi-column table** + **scrollable
+tree**, **tabs**, **barchart/sparkline/gauge/meter/progress/spinner**, and a
+**code viewer** (`timui_code`) — all first-class library widgets, showcased by
+`examples/gallery.c`. Checked off below.
+
 ## Applications to build on timui.h
 These are *demos/examples* that would stress the library and prove it out.
 
@@ -48,17 +55,17 @@ listbox/dialog/menu/modal/cmdpal), synchronized-update, and now (in the chat
 example) word-wrap, a small bidi, and syntax-highlighted code. Missing:
 
 **Widgets**
-- [ ] **Table / data grid** (columns, sort, scroll, selection) — the highest-value gap.
-- [ ] **Tree view** (expand/collapse) — file trees, JSON, schemas.
-- [ ] **Tabs / tab bar**; **split / resizable panes**.
-- [ ] **Progress bar · spinner · throbber**.
-- [ ] **Sparkline / bar chart / plot** (ratatui has a charts module).
-- [ ] **Markdown viewer** + a reusable **code viewer** (promote the chat's `chat_highlight`).
+- [x] **Table / data grid** (columns, sort, scroll, selection) — the highest-value gap.
+- [x] **Tree view** (expand/collapse) — file trees, JSON, schemas.
+- [x] **Tabs / tab bar** (`timui_tabs`) — split / resizable panes still pending.
+- [x] **Progress bar · spinner · throbber**.
+- [x] **Sparkline / bar chart / plot** (ratatui has a charts module).
+- [x] a reusable **code viewer** (`timui_code` + `timui_highlight`) — a **Markdown viewer** is still pending.
 - [ ] **Autocomplete / combobox**, **text area** (promote the chat's multi-line composer), **toast/notification**.
 
 **Layout & styling**
-- [ ] **Flexbox / grid / constraint layout** (ratatui `Layout`, Textual CSS grid, lipgloss).
-- [ ] **CSS-like styling / stylesheet** (Textual TCSS) + rounded/double **borders**, gradients.
+- [x] **Flexbox / grid / constraint layout** (ratatui `Layout`, Textual CSS grid, lipgloss).
+- [x] rounded/double/thick **borders** (`timui_border`) + **gradients** (`timui_lerp_rgb`) — a **CSS-like stylesheet** (Textual TCSS) is still pending.
 
 **Architecture & interaction**
 - [ ] **Elm-style component model** (Model/Update/View + Cmd/Sub) as an optional layer over immediate mode.
