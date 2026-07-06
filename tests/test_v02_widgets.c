@@ -22,7 +22,7 @@ TIMUI_TEST(test_table_renders){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake; TimuiTransport t;
     Timui *ui = NULL; TimuiFrame *f = NULL;
-    TimuiTableState ts = {0, 0};
+    TimuiTableState ts = {0, 0, 0};
     TimuiStr hdrs[2] = { TIMUI_STR_LIT("Name"), TIMUI_STR_LIT("Val") };
     TimuiCellBuffer *buf;
     timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);

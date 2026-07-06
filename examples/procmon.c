@@ -181,7 +181,7 @@ int main(void){
     TimuiConfig     cfg    = {0};
     Timui          *ui     = NULL;
     ProcTable       table  = {0};
-    TimuiTableState tstate = {0, 0};
+    TimuiTableState tstate = {0, 0, 0};
     uint64_t        last_refresh = 0;
     int             primed = 0;          /* first `ps` refresh not yet done */
 

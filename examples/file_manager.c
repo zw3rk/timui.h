@@ -242,6 +242,7 @@ static void draw_pane(TimuiFrame *f, Pane *p, TimuiRect r, int active,
         TimuiTableState st;
         st.selected = p->selected;
         st.scroll = p->scroll;
+        st.hscroll = 0;                                 /* plain timui_table ignores it */
         (void)timui_table(f, table_id, body, headers, 3, p->count, cell_fn, p, st);
     }
     timui_panel_end(f);

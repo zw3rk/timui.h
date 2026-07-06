@@ -415,6 +415,78 @@ TIMUI_API TimuiRect timui_pad(TimuiRect r, int l, int t, int rr, int b);
 TIMUI_API void      timui_split_cols(TimuiRect r, float ratio, TimuiRect *a, TimuiRect *b);
 TIMUI_API void      timui_split_rows(TimuiRect r, float ratio, TimuiRect *a, TimuiRect *b);
 
+/* ---- Constraint layout solver (ratatui-style) ------------------------- *
+ * A TimuiConstraint is a tagged sizing rule for one child of a split:
+ *   LEN(n)  fixed n cells
+ *   PCT(p)  p% of the axis length (rounded to the nearest cell)
+ *   FLEX(w) weighted share of the leftover space
+ *   MIN(n)  flexible, but never smaller than n cells (grows to fill)
+ *   MAX(n)  flexible, but never larger than n cells (grows to fill, capped)
+ * timui_split divides `area` along `axis` into n contiguous child rects that
+ * tile the area: LEN/PCT are allocated first, the remainder is shared across the
+ * flexible children by weight — the LAST flexible child absorbs the rounding
+ * remainder so children tile EXACTLY — and MIN/MAX bounds are honoured. Sizes
+ * are clamped non-negative and never overflow the area (over-constrained fixed
+ * sizes clamp to the boundary). Returns the number of child rects written (n),
+ * or 0 on bad arguments (NULL cons/out, n<=0, or n greater than the internal
+ * per-split cap). */
+typedef enum {
+    TIMUI_CON_LEN = 0,   /* fixed n cells                        */
+    TIMUI_CON_PCT,       /* p% of the axis length               */
+    TIMUI_CON_FLEX,      /* weighted share of the leftover space */
+    TIMUI_CON_MIN,       /* flexible, at least n cells           */
+    TIMUI_CON_MAX        /* flexible, at most n cells            */
+} TimuiConstraintKind;
+
+typedef struct {
+    TimuiConstraintKind kind;
+    int                 value;   /* LEN/MIN/MAX: cells · PCT: percent · FLEX: weight */
+} TimuiConstraint;
+
+/* Split axis: H arranges children side-by-side (columns; x/w vary), V stacks
+ * them top-to-bottom (rows; y/h vary). */
+typedef enum { TIMUI_AXIS_H = 0, TIMUI_AXIS_V = 1 } TimuiAxis;
+
+/* Gap between adjacent children + a uniform outer margin inside `area`. */
+typedef struct { int gap; int margin; } TimuiLayoutOpts;
+
+/* Constructor macros (C99 compound literals). */
+#define TIMUI_LEN(n)  ((TimuiConstraint){ TIMUI_CON_LEN,  (n) })
+#define TIMUI_PCT(p)  ((TimuiConstraint){ TIMUI_CON_PCT,  (p) })
+#define TIMUI_FLEX(w) ((TimuiConstraint){ TIMUI_CON_FLEX, (w) })
+#define TIMUI_MIN(n)  ((TimuiConstraint){ TIMUI_CON_MIN,  (n) })
+#define TIMUI_MAX(n)  ((TimuiConstraint){ TIMUI_CON_MAX,  (n) })
+
+TIMUI_API int timui_split(TimuiRect area, TimuiAxis axis, const TimuiConstraint *cons, int n, TimuiRect *out);
+TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstraint *cons, int n,
+                             TimuiLayoutOpts opts, TimuiRect *out);
+TIMUI_API int timui_split_h(TimuiRect area, const TimuiConstraint *cons, int n, TimuiRect *out);
+TIMUI_API int timui_split_v(TimuiRect area, const TimuiConstraint *cons, int n, TimuiRect *out);
+/* 2D grid: split `area` into nr row-bands by `rows` (heights), then each band
+ * into nc cells by `cols` (widths). `out` is row-major (out[r*nc + c]); returns
+ * nr*nc, or 0 on bad arguments. */
+TIMUI_API int timui_grid(TimuiRect area, const TimuiConstraint *rows, int nr,
+                         const TimuiConstraint *cols, int nc, TimuiRect *out);
+TIMUI_API int timui_grid_ex(TimuiRect area, const TimuiConstraint *rows, int nr,
+                            const TimuiConstraint *cols, int nc, TimuiLayoutOpts opts, TimuiRect *out);
+
+/* ---- Box frame (line-drawing border) + colour lerp -------------------- *
+ * timui_border strokes a 1-cell frame around `r` in the chosen line style with
+ * an optional `title` embedded in the top edge, and returns the inner content
+ * rect (r inset by one cell on every side, clamped non-negative). The inner rect
+ * is returned even when the frame is too small to draw (r.w<2 or r.h<2) or f is
+ * NULL, so callers can always lay out inside it. timui_lerp_rgb linearly
+ * interpolates two packed 0xRRGGBB colours (t clamped to [0,1]). */
+typedef enum {
+    TIMUI_BOX_SINGLE = 0,   /* ─ │ ┌ ┐ └ ┘ */
+    TIMUI_BOX_ROUNDED,      /* ─ │ ╭ ╮ ╰ ╯ */
+    TIMUI_BOX_DOUBLE,       /* ═ ║ ╔ ╗ ╚ ╝ */
+    TIMUI_BOX_THICK         /* ━ ┃ ┏ ┓ ┗ ┛ */
+} TimuiBorderStyle;
+
+TIMUI_API TimuiRect timui_border(TimuiFrame *f, TimuiRect r, TimuiBorderStyle style, TimuiStr title, TimuiStyle st);
+TIMUI_API uint32_t  timui_lerp_rgb(uint32_t a, uint32_t b, float t);
+
 /* ---- Cell buffer (rendering surface) ---------------------------------- */
 typedef enum {
     TIMUI_CELL_EMPTY        = 0,
@@ -800,8 +872,39 @@ TIMUI_API int  timui_keymap_hit(TimuiFrame *f, const TimuiKeymap *km, int action
  * a _mut convenience twin that writes changes back through a pointer — the same
  * shape as timui_listbox / timui_listbox_mut. The plain forms never touch caller
  * memory; the _mut forms write back only on an actual change. */
+/* ---- pure data-grid math (display-width aware, no frame/TUI) ----------- *
+ * The deterministic layout kernel shared by the enhanced table + scrollable
+ * tree. Lifted from examples/sqlite_table.h so widgets and callers drive the
+ * same tested code. All are side-effect-free and unit-tested (tests/test_grid.c). */
+typedef struct { int first; int count; } TimuiSlice;   /* a visible [first,first+count) window */
+/* Display width (terminal columns) of a NUL-terminated UTF-8 string: sums
+ * timui_utf8_width over each code point (CJK/emoji=2, control/combining=0).
+ * NULL -> 0. */
+TIMUI_API int  timui_display_width(const char *s);
+/* A column's fitted width from per-cell display widths: the widest cell, floored
+ * at `minw` (room for an ellipsis) and capped at `maxw`. `minw` is a hard floor
+ * (wins even when maxw<minw). Negative widths ignored; n==0/NULL -> minw. */
+TIMUI_API int  timui_col_fit_width(const int *cellw, int n, int maxw, int minw);
+/* Truncate `s` to at most `width` display columns into `out` (cap bytes, NUL-
+ * terminated), never splitting a wide (2-col) glyph; on overflow a 1-column "…"
+ * occupies the final column and *ellipsis is set. Returns the columns used
+ * (<= width). width<=0 -> empty (ellipsis flagged iff content was dropped). */
+TIMUI_API int  timui_fit_cell(const char *s, int width, char *out, size_t cap, int *ellipsis);
+/* Visible [first,first+count) slice of `total` items in a `viewport`-sized
+ * window scrolled to `offset`, clamped to [0, max(0,total-viewport)] so it never
+ * scrolls past either end. Reused for VERTICAL rows AND HORIZONTAL cells.
+ * Degenerate (total<=0 or viewport<=0) -> a zero-length slice. */
+TIMUI_API TimuiSlice timui_page_slice(int total, int viewport, int offset);
+/* Minimal scroll offset that keeps item `sel` inside a `viewport` window at
+ * `offset`: scroll up to it if above, down just enough if below, else unchanged.
+ * Clamped >= 0. `total` bounds the range; viewport<=0 is a no-op. */
+TIMUI_API int  timui_scroll_to(int sel, int offset, int viewport, int total);
+
 typedef const char *(*TimuiCellFn)(void *ud, int row, int col);
-typedef struct { int selected; int scroll; } TimuiTableState;
+/* Additive field: hscroll (horizontal cell offset) — existing {selected,scroll}
+ * callers keep compiling (aggregate inits zero-fill it; the plain timui_table
+ * ignores it). Read/written only by the timui_table_ex family. */
+typedef struct { int selected; int scroll; int hscroll; } TimuiTableState;
 typedef struct { TimuiTableState state; int state_changed; int focused; } TimuiTableResult;
 TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *headers, int ncols, int nrows, TimuiCellFn cell_fn, void *ud,
@@ -810,6 +913,26 @@ TIMUI_API TimuiTableResult timui_table_mut(TimuiFrame *f, TimuiId id, TimuiRect 
     const TimuiStr *headers, int ncols, int nrows, TimuiCellFn cell_fn, void *ud,
     TimuiTableState *state);
 
+/* A virtual multi-column grid model: header labels + a row COUNT + a cell
+ * accessor (rows fetched on demand, so large sets are never materialized).
+ * col_min/col_max/sample <= 0 fall back to sensible defaults. Consumed by
+ * timui_table_ex, which fits each column to its content (headers + a bounded row
+ * sample), draws a STICKY header, and scrolls both axes. */
+typedef struct {
+    const TimuiStr *headers;   /* ncols labels (NULL / NULL-ptr entries allowed) */
+    int             ncols;
+    int             nrows;     /* virtual row count */
+    TimuiCellFn     cell_fn;   /* const char *(*)(void *ud, int row, int col) */
+    void           *ud;
+    int             col_min;   /* per-column width floor (<=0 => default 3)   */
+    int             col_max;   /* per-column width cap   (<=0 => default 24)  */
+    int             sample;    /* rows sampled for width fit (<=0 => default 128) */
+} TimuiTableModel;
+TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiTableModel *model, TimuiTableState state);
+TIMUI_API TimuiTableResult timui_table_ex_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiTableModel *model, TimuiTableState *state);
+
 typedef struct { int depth; const char *label; int has_children; int expanded; } TimuiTreeNode;
 typedef struct { int selected; int state_changed; int focused; } TimuiTreeResult;
 TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
@@ -817,12 +940,59 @@ TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
 TIMUI_API TimuiTreeResult timui_tree_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiTreeNode *nodes, int count, int *selected);
 
+/* Flatten a DFS-ordered node list to the indices of the VISIBLE nodes (every
+ * ancestor expanded): a collapsed node (has_children && !expanded) hides its
+ * whole deeper-depth subtree until the depth returns to <= the collapsed node's
+ * depth. Writes up to `cap` indices to out[] and returns the TOTAL visible count
+ * (which may exceed cap). NULL/empty -> 0. Pure; unit-tested (tests/test_grid.c). */
+TIMUI_API int timui_tree_flatten(const TimuiTreeNode *nodes, int count, int *out, int cap);
+
+/* Scrollable tree for LARGE trees: pass the FULL node list; the widget flattens
+ * to the visible nodes and WINDOWS them to the viewport (r.h rows). `selected`
+ * and `scroll` are positions in the VISIBLE list (0-based). Backward-compatible
+ * addition — the plain timui_tree above is unchanged. Controlled + _mut twin. */
+typedef struct { int selected; int scroll; } TimuiTreeState;
+typedef struct { TimuiTreeState state; int state_changed; int focused; } TimuiTreeScrollResult;
+TIMUI_API TimuiTreeScrollResult timui_tree_scroll(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiTreeNode *nodes, int count, TimuiTreeState state);
+TIMUI_API TimuiTreeScrollResult timui_tree_scroll_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiTreeNode *nodes, int count, TimuiTreeState *state);
+
 typedef struct { char filter[64]; int selected; } TimuiCmdPaletteState;
 typedef struct { TimuiCmdPaletteState state; int activated; int state_changed; } TimuiCmdPaletteResult;
 TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *commands, int count, TimuiCmdPaletteState state);
 TIMUI_API TimuiCmdPaletteResult timui_command_palette_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *commands, int count, TimuiCmdPaletteState *state);
+
+/* ---- Tab bar (W2) ------------------------------------------------------ *
+ * A single-row bar of labeled tabs. timui_tabs highlights *selected as a boxed,
+ * radio.c-style active tab, moves the selection on Left/Right (when focused) and
+ * on mouse clicks, and horizontally overflow-scrolls to keep the selected tab
+ * visible when the tabs are wider than the bar. The (possibly updated) index is
+ * written back through *selected and also returned.
+ *
+ * The geometry is factored into pure, I/O-free helpers (no frame / terminal),
+ * so an app can hit-test or lay tabs out itself and the math is unit-testable in
+ * isolation. Each tab occupies display_width(label)+2 columns — a one-space pad
+ * each side, the ' LABEL ' box — width-aware via timui_utf8_width. */
+typedef struct { int x; int w; } TimuiTabSpan;   /* a tab's [x, x+w) columns in the unscrolled bar */
+
+/* Lay out n tabs left-to-right with `sep` columns between consecutive tabs.
+ * Writes up to `max` spans into `out` (out may be NULL to only measure) and
+ * returns the total content width (0 for n <= 0). */
+TIMUI_API int  timui_tabs_layout(const char *const *labels, int n, int sep,
+                                 TimuiTabSpan *out, int max);
+/* Choose a scroll offset (columns) that keeps tab `selected` visible in a
+ * `width`-column viewport, adjusting minimally from `cur_scroll`. Clamped to
+ * [0, max(0, total-width)]; a tab wider than the viewport pins its left edge. */
+TIMUI_API int  timui_tabs_scroll(const TimuiTabSpan *spans, int n, int selected,
+                                 int width, int cur_scroll);
+/* 1 if `span` overlaps the viewport [scroll, scroll+width), else 0. */
+TIMUI_API int  timui_tab_visible(TimuiTabSpan span, int scroll, int width);
+
+TIMUI_API int  timui_tabs(TimuiFrame *f, TimuiId id, TimuiRect r,
+                          const char *const *labels, int n, int *selected);
 
 /* ---- v0.2: snapshot testing + text-area + ConPTY ---------------------- */
 TIMUI_API void timui_snapshot_render(const TimuiCellBuffer *buf, int row, char *out, size_t cap);
@@ -860,6 +1030,116 @@ TIMUI_API void        timui_image_draw_clipped(TimuiFrame *f, TimuiImage *img,
                                                TimuiRect full, TimuiRect visible);
 TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
 
+/* ---- Chart / indicator widgets (W3) ----------------------------------- *
+ * Pure UI over caller-supplied values (NO DSP here): vertical bar charts with
+ * a two-colour vertical gradient and floating peak-hold caps, compact
+ * block-glyph sparklines, horizontal gauge/meter/progress bars over a 0..1
+ * fraction, and a tick-advanced braille spinner. The peak-hold envelope and
+ * gradient/peak-cap bar look are promoted from the radio example
+ * (examples/radio.c + examples/radio_dsp.h). */
+
+/* (timui_lerp_rgb is declared with the box helpers above — the barchart uses it.) */
+
+/* Filled-cell count for `value` over a track of `size` cells: the fraction
+ * clamp(value/max, 0, 1) rounded to the nearest cell. `max <= 0` treats the
+ * value as already normalized (0..1). Shared by the bar chart (bar height) and
+ * the gauge/meter/progress bars (fill width). Returns 0..size. */
+TIMUI_API int timui_bar_cells(float value, float max, int size);
+
+/* Peak-hold envelope for one cap: rises INSTANTLY to a higher `value`,
+ * otherwise decays LINEARLY by `decay` per call, never below `value`. Fed once
+ * per frame it makes a floating cap chase peaks and ease back over ~cap/decay
+ * frames (promoted from radio_dsp.h radio_peak_hold). */
+TIMUI_API float timui_peak_hold(float cap, float value, float decay);
+
+/* Codepoint of the braille throbber frame for `tick` (10-frame cycle; negative
+ * ticks wrap). Advance `tick` once per frame for an animated spinner. */
+TIMUI_API uint32_t timui_spinner_glyph(int tick);
+
+/* Bar-chart options. `vals` are drawn as vertical bars scaled to the rect
+ * height against `max` (<= 0 => values are already 0..1), each a vertical
+ * gradient from `lo` (base) to `hi` (top). A lighter peak-hold cap (the bar
+ * colour lightened toward white by `cap_light`) rises instantly and decays by
+ * `peak_decay` per call; `peak_decay <= 0` or a NULL state disables it.
+ * `labels` (optional) draws one centred label per bar on the bottom row. */
+typedef struct {
+    float       max;         /* full-scale value; <= 0 => values are 0..1        */
+    uint32_t    lo;          /* gradient colour at the bar base (0xRRGGBB)       */
+    uint32_t    hi;          /* gradient colour at the bar top                   */
+    uint32_t    track;       /* empty-cell colour behind the bars                */
+    float       peak_decay;  /* per-frame cap decay in fraction units (0 = off)  */
+    float       cap_light;   /* lighten the cap toward white by this (0..1)      */
+    int         gap;         /* blank columns between bars (< 1 => 1)            */
+    const char *const *labels; /* optional per-bar labels (NULL => none)         */
+} TimuiBarOpts;
+
+/* Caller-owned peak-hold state: one held cap (0..1 fraction) per bar. */
+#define TIMUI_BAR_MAX 64
+typedef struct { float caps[TIMUI_BAR_MAX]; int n; } TimuiBarState;
+
+TIMUI_API void timui_barchart(TimuiFrame *f, TimuiRect r, const float *vals, int n,
+                              TimuiBarOpts opts, TimuiBarState *st);
+
+/* Compact one-row trend of the last min(n, r.w) samples (right-aligned) drawn
+ * with the eight partial-block glyphs ▁..█; each sample maps to 0..1 (clamped). */
+TIMUI_API void timui_sparkline(TimuiFrame *f, TimuiRect r, const float *history, int n,
+                               TimuiStyle style);
+
+/* Horizontal indicators over a 0..1 fraction, all thin wrappers over one fill
+ * helper (style.fg = bar colour, style.bg = track colour). `progress` is a
+ * determinate task bar with an "NN%" readout; `gauge` shows a live "N.NN"
+ * reading; `meter` is a live level with a bright peak-hold cap tick + "N.NN"
+ * readout (pass cap < 0 to hide the tick). Fractions clamp to [0,1]; the
+ * readout is dropped when the rect is too narrow to fit it. */
+TIMUI_API void timui_progress(TimuiFrame *f, TimuiRect r, float frac, TimuiStyle style);
+TIMUI_API void timui_gauge(TimuiFrame *f, TimuiRect r, float frac, TimuiStyle style);
+TIMUI_API void timui_meter(TimuiFrame *f, TimuiRect r, float level, float cap, TimuiStyle style);
+
+/* Braille/ascii throbber advanced by `tick`, drawn as one glyph at (x,y). */
+TIMUI_API void timui_spinner(TimuiFrame *f, int x, int y, int tick, TimuiStyle style);
+
+/* ---- W4: syntax highlighting + read-only code viewer ------------------ *
+ * A tiny, table-driven, allocation-free lexer (promoted from the chat/sqlite
+ * examples) that emits coloured token spans for C / sh / python / sql, with a
+ * generic fallback, plus a read-only scrolling code viewer built on top. The
+ * scanner emits only NON-default spans in source order; the gaps between them
+ * are implicitly TIMUI_HL_TEXT (never emitted), so a renderer walks
+ * "gap, token, gap, token, …" trivially. Every scan is bounded: it advances by
+ * at least one byte, reads only within [0,len), and treats bytes as unsigned so
+ * non-ASCII input can never be misclassified or overrun. */
+typedef enum {
+    TIMUI_HL_TEXT = 0, TIMUI_HL_KEYWORD, TIMUI_HL_TYPE, TIMUI_HL_STRING,
+    TIMUI_HL_CHAR, TIMUI_HL_COMMENT, TIMUI_HL_NUMBER, TIMUI_HL_PREPROC,
+    TIMUI_HL_PUNCT
+} TimuiHlClass;
+
+/* A highlighted span: byte offset + length into the source, and its class. */
+typedef struct { int off; int len; TimuiHlClass cls; } TimuiHlTok;
+
+/* Tokenize `src` (length `len`) in language `lang` ("c", "sh"/"bash",
+ * "python"/"py", "sql"; NULL/""/unknown = generic). Writes up to `max` NON-default
+ * spans to `out` in source order (gaps are TIMUI_HL_TEXT); returns the token count
+ * (always <= max — the scan stops the moment the buffer is full). Pure. */
+TIMUI_API int      timui_highlight(const char *src, int len, const char *lang,
+                                   TimuiHlTok *out, int max);
+
+/* Default 0xRRGGBB colour for a token class (a Night-Owl-ish palette matching
+ * the chat example); TIMUI_HL_TEXT and any out-of-range class map to the code
+ * foreground. */
+TIMUI_API uint32_t timui_hl_color(TimuiHlClass cls);
+
+/* Clamp a code-view top-line scroll offset to [0, max(0, nlines - visible)] so
+ * neither end scrolls past content. Pure; used by timui_code. */
+TIMUI_API int      timui_code_scroll_clamp(int scroll, int nlines, int visible);
+
+/* Read-only syntax-highlighted code viewer: fills `r` with a subtle code
+ * background, then draws the source (split on '\n') with a line-number gutter and
+ * per-token syntax colours, scrolled vertically by *scroll — clamped in place to
+ * a valid range. Lines are NOT wrapped; each clips at the right edge of `r`. A
+ * NULL `scroll` shows the top; a NULL frame/src is a no-op. */
+TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int len,
+                              const char *lang, int *scroll);
+
 #ifdef __cplusplus
 }
 #endif
@@ -876,6 +1156,7 @@ TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
 #include "../src/timui_term.c"
 #include "../src/timui_input.c"
 #include "../src/timui_widgets.c"
+#include "../src/timui_tabs.c"
 #include "../src/timui_clip.c"
 #include "../src/timui_scroll.c"
 #include "../src/timui_clipboard.c"
@@ -888,5 +1169,9 @@ TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
 #include "../src/timui_conpty.c"
 #include "../src/timui_kitty.c"
 #include "../src/timui_menus.c"
+#include "../src/timui_layout.c"
+#include "../src/timui_box.c"
+#include "../src/timui_chart.c"
 #include "../src/timui_app.c"
+#include "../src/timui_syntax.c"
 #endif /* TIMUI_IMPLEMENTATION */

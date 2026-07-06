@@ -27,7 +27,7 @@ LIB_SECTIONS := $(wildcard $(SRCDIR)/timui_*.c) $(SRCDIR)/timui_int.h
 # link flags, so it is built by a dedicated rule below — keep it out of the
 # generic single-file example pattern.
 EXAMPLES  := $(filter-out $(BLDDIR)/radio,$(patsubst $(EXADIR)/%.c,$(BLDDIR)/%,$(wildcard $(EXADIR)/*.c)))
-TEST_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TSTDIR)/test_result.c $(TSTDIR)/test_arena.c $(TSTDIR)/test_strings.c $(TSTDIR)/test_id_stack.c $(TSTDIR)/test_msgq.c $(TSTDIR)/test_mpsc.c $(TSTDIR)/test_transport.c $(TSTDIR)/test_screen.c $(TSTDIR)/test_input.c $(TSTDIR)/test_mouse.c $(TSTDIR)/test_termios.c $(TSTDIR)/test_size.c $(TSTDIR)/test_caps.c $(TSTDIR)/test_kitty.c $(TSTDIR)/test_sync.c $(TSTDIR)/test_cells.c $(TSTDIR)/test_utf8.c $(TSTDIR)/test_draw.c $(TSTDIR)/test_render.c $(TSTDIR)/test_cursor.c $(TSTDIR)/test_frame.c $(TSTDIR)/test_interact.c $(TSTDIR)/test_theme.c $(TSTDIR)/test_button.c $(TSTDIR)/test_widgets.c $(TSTDIR)/test_input_widget.c $(TSTDIR)/test_listbox.c $(TSTDIR)/test_dialog.c $(TSTDIR)/test_fuzz.c $(TSTDIR)/test_clip.c $(TSTDIR)/test_menus.c $(TSTDIR)/test_modal.c $(TSTDIR)/test_hyperlink.c $(TSTDIR)/test_esc_timeout.c $(TSTDIR)/test_scroll.c $(TSTDIR)/test_v02_batch.c $(TSTDIR)/test_v02_widgets.c $(TSTDIR)/test_v02_more.c $(TSTDIR)/test_kitty_pty.c $(TSTDIR)/test_review_critical.c $(TSTDIR)/test_snapshot.c $(TSTDIR)/test_coverage_z7.c $(TSTDIR)/test_render_stream.c
+TEST_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TSTDIR)/test_result.c $(TSTDIR)/test_arena.c $(TSTDIR)/test_strings.c $(TSTDIR)/test_id_stack.c $(TSTDIR)/test_msgq.c $(TSTDIR)/test_mpsc.c $(TSTDIR)/test_transport.c $(TSTDIR)/test_screen.c $(TSTDIR)/test_input.c $(TSTDIR)/test_mouse.c $(TSTDIR)/test_termios.c $(TSTDIR)/test_size.c $(TSTDIR)/test_caps.c $(TSTDIR)/test_kitty.c $(TSTDIR)/test_sync.c $(TSTDIR)/test_cells.c $(TSTDIR)/test_utf8.c $(TSTDIR)/test_draw.c $(TSTDIR)/test_render.c $(TSTDIR)/test_cursor.c $(TSTDIR)/test_frame.c $(TSTDIR)/test_interact.c $(TSTDIR)/test_theme.c $(TSTDIR)/test_button.c $(TSTDIR)/test_widgets.c $(TSTDIR)/test_input_widget.c $(TSTDIR)/test_listbox.c $(TSTDIR)/test_grid_widget.c $(TSTDIR)/test_dialog.c $(TSTDIR)/test_fuzz.c $(TSTDIR)/test_clip.c $(TSTDIR)/test_menus.c $(TSTDIR)/test_modal.c $(TSTDIR)/test_hyperlink.c $(TSTDIR)/test_esc_timeout.c $(TSTDIR)/test_scroll.c $(TSTDIR)/test_v02_batch.c $(TSTDIR)/test_v02_widgets.c $(TSTDIR)/test_v02_more.c $(TSTDIR)/test_kitty_pty.c $(TSTDIR)/test_review_critical.c $(TSTDIR)/test_snapshot.c $(TSTDIR)/test_coverage_z7.c $(TSTDIR)/test_render_stream.c
 TEST_BIN  := $(BLDDIR)/test_unit
 GOLDEN_BIN := $(BLDDIR)/gen_golden
 
@@ -103,7 +103,7 @@ else
   RADIO_LDFLAGS := -lm -ldl -lpthread
 endif
 
-.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui
+.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
@@ -311,6 +311,18 @@ check-chat-highlight: $(TSTDIR)/test_chat_highlight.c $(EXADIR)/chat_highlight.h
 	  && printf "$(C_GREEN)✓ chat_highlight$(C_RESET) standalone tests passed\n" \
 	  || { printf "$(C_YELL)✗ chat_highlight$(C_RESET) tests failed\n"; exit 1; }
 
+# Standalone test for src/timui_syntax.c — the promoted library syntax
+# highlighter (timui_highlight) + the code viewer (timui_code) and its pure
+# helpers. Builds timui as a single TU (TIMUI_IMPLEMENTATION) so the test reaches
+# both the pure lexer and the render path through the public API.
+check-syntax: $(TSTDIR)/test_syntax.c $(HEADER) $(LIB_SECTIONS) ## Test the library syntax highlighter + code viewer (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) syntax test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) $(TSTDIR)/test_syntax.c -o $(BLDDIR)/test_syntax
+	@./$(BLDDIR)/test_syntax \
+	  && printf "$(C_GREEN)✓ syntax$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ syntax$(C_RESET) tests failed\n"; exit 1; }
+
 check-chat-text: $(TSTDIR)/test_chat_text.c $(EXADIR)/chat_text.h $(HEADER) $(LIB_SECTIONS) ## Test the chat text/wrap helpers (standalone)
 	@mkdir -p $(BLDDIR)
 	@printf "$(C_CYAN)build$(C_RESET) chat_text test\n"
@@ -318,6 +330,44 @@ check-chat-text: $(TSTDIR)/test_chat_text.c $(EXADIR)/chat_text.h $(HEADER) $(LI
 	@./$(BLDDIR)/test_chat_text \
 	  && printf "$(C_GREEN)✓ chat_text$(C_RESET) standalone tests passed\n" \
 	  || { printf "$(C_YELL)✗ chat_text$(C_RESET) tests failed\n"; exit 1; }
+
+# Standalone test for the PURE data-grid math (column-fit + paging/scroll + tree
+# flatten) that backs the enhanced table (timui_table_ex) and scrollable tree
+# (timui_tree_scroll). Drives the TIMUI_API helpers directly — no frame, no TUI,
+# deterministic + hand-computable. Kept out of `make test` so it is exercisable
+# on its own (like check-chat-text / check-sqlite-tui).
+check-grid: $(TSTDIR)/test_grid.c $(HEADER) $(LIB_SECTIONS) ## Test the data-grid math (column-fit + paging + tree flatten)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) grid test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) $(TSTDIR)/test_grid.c -o $(BLDDIR)/test_grid
+	@./$(BLDDIR)/test_grid \
+	  && printf "$(C_GREEN)✓ grid$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ grid$(C_RESET) tests failed\n"; exit 1; }
+
+# Standalone test for the constraint layout solver (src/timui_layout.c) and the
+# box-frame / colour-lerp helpers (src/timui_box.c). Compiles timui as a single
+# TU (TIMUI_IMPLEMENTATION) and drives the pure split/grid solver plus the
+# frame-backed timui_border. Kept out of `make test` so it is exercisable alone.
+check-layout: $(TSTDIR)/test_layout.c $(HEADER) $(LIB_SECTIONS) ## Test the layout solver + box helpers (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) layout test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) $(TSTDIR)/test_layout.c -o $(BLDDIR)/test_layout
+	@./$(BLDDIR)/test_layout \
+	  && printf "$(C_GREEN)✓ layout$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ layout$(C_RESET) tests failed\n"; exit 1; }
+
+# Standalone test for the tab-bar widget (src/timui_tabs.c, W2): the PURE
+# layout/scroll/visibility geometry helpers on hand-computed vectors, plus the
+# interactive widget driven through a fake transport (click + Left/Right). Built
+# as a single TU under the full project CFLAGS. Kept out of `make test` so the
+# widget is exercisable on its own (like the chat_text / sqlite_table checks).
+check-tabs: $(TSTDIR)/test_tabs.c $(HEADER) $(LIB_SECTIONS) ## Test the tab-bar widget (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) tabs test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) $(TSTDIR)/test_tabs.c -o $(BLDDIR)/test_tabs
+	@./$(BLDDIR)/test_tabs \
+	  && printf "$(C_GREEN)✓ tabs$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ tabs$(C_RESET) tests failed\n"; exit 1; }
 
 # Same standalone test, but built WITH the full UAX #9 path (SheenBidi): defines
 # CHAT_SHEENBIDI, adds the SheenBidi include path, and links the amalgamation
@@ -330,6 +380,18 @@ check-chat-text-sheenbidi: $(TSTDIR)/test_chat_text.c $(EXADIR)/chat_text.h $(HE
 	@./$(BLDDIR)/test_chat_text_sb \
 	  && printf "$(C_GREEN)✓ chat_text+SheenBidi$(C_RESET) full UAX #9 tests passed\n" \
 	  || { printf "$(C_YELL)✗ chat_text+SheenBidi$(C_RESET) tests failed\n"; exit 1; }
+
+# Standalone unit test for the chart/indicator widgets (src/timui_chart.c): the
+# pure helpers (colour lerp, filled-cell counting, peak-hold envelope, spinner
+# frames) plus the widgets driven through a fake-transport test frame with
+# hand-computed cell assertions. Built as a single TU (like check-chat-text).
+check-chart: $(TSTDIR)/test_chart.c $(HEADER) $(LIB_SECTIONS) ## Test the chart/indicator widgets (standalone)
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) chart test\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) $(TSTDIR)/test_chart.c -lm -o $(BLDDIR)/test_chart
+	@./$(BLDDIR)/test_chart \
+	  && printf "$(C_GREEN)✓ chart$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ chart$(C_RESET) tests failed\n"; exit 1; }
 
 # ---- Internet-radio: build, unit test, headless smoke -------------------- #
 $(BLDDIR)/radio: $(EXADIR)/radio.c $(EXADIR)/radio_dsp.h $(RADIO_KISS) $(HEADER) $(LIB_SECTIONS) \
@@ -422,6 +484,18 @@ smoke-sqlite-tui: $(BLDDIR)/sqlite_tui $(BLDDIR)/sqlite_mkfixture ## Headless sm
 	  && grep -q 'alice' $(BLDDIR)/_smoke.txt && grep -q 'carol' $(BLDDIR)/_smoke.txt \
 	  && printf "$(C_GREEN)✓ sqlite_tui$(C_RESET) headless smoke: SELECT rendered 3 rows (alice/bob/carol)\n" \
 	  || { printf "$(C_YELL)✗ sqlite_tui$(C_RESET) smoke failed\n"; cat $(BLDDIR)/_smoke.out; exit 1; }
+
+# ---- Widget gallery (examples/gallery.c) --------------------------------- #
+run-gallery: $(BLDDIR)/gallery ## Run the widget + layout gallery showcase
+	@./$(BLDDIR)/gallery
+
+smoke-gallery: $(BLDDIR)/gallery $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless gallery smoke (renders a frame)
+	@mkdir -p $(RECDIR)
+	@./$(BLDDIR)/pty_drive --cols 100 --rows 30 --run-ms 900 --settle-ms 200 \
+	   --out "$(RECDIR)/gallery-smoke.raw" -- ./$(BLDDIR)/gallery --frames 6 < /dev/null
+	@./$(BLDDIR)/vt_render --cols 100 --rows 30 "$(RECDIR)/gallery-smoke.raw" | grep -q 'gallery' \
+	  && printf "$(C_GREEN)✓ gallery$(C_RESET) headless smoke rendered a frame\n" \
+	  || { printf "$(C_YELL)✗ gallery$(C_RESET) smoke: dashboard not rendered\n"; exit 1; }
 
 # Record a REAL interactive session (you type) to recordings/<name>.cast — the
 # raw byte stream, viewable with `asciinema play` and analysable by the verifier.

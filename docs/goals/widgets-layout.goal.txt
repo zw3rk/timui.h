@@ -1,0 +1,24 @@
+Goal: two foundational additions to timui.h — a Layout engine + light styling (PRIORITY) and a widget sweep (enhance the basic table/tree/textarea; add the missing tabs/chart/gauge/progress/spinner/border/code). Idiomatic C99; work ONLY via `nix develop -c make <target>`. Promote existing code — vendor NOTHING new. A new widget is a `src/timui_<w>.c` section; add its public API + a `#include "../src/timui_<w>.c"` directive to include/timui.h; `make amalgamate` regenerates the header. Tests follow tests/test_chat_text.c (standalone `check-<w>`) and/or TEST_SRCS.
+
+CONTEXT: the library ALREADY has BASIC timui_table/tree/textarea (src/timui_{table,tree,textarea}.c, used by examples/file_manager.c + procmon.c) — enhance them BACKWARD-COMPATIBLY (file_manager + procmon MUST stay green). radio.c/sqlite_tui.c/chat.c rolled example-local versions; the reusable pure logic is in examples/{radio_dsp.h, sqlite_table.h, chat_text.h, chat_highlight.h} — lift + generalize, don't rewrite blind.
+
+Run L,W1..W4 AS PARALLEL SUBAGENTS (only include/timui.h + Makefile are shared — append; a final pass reconciles + runs `make amalgamate`):
+ L (PRIORITY) — src/timui_layout.c: `timui_split(rect, axis, const TimuiConstraint*, n, out)` solving LEN(n)/PCT(p)/FLEX(w)/MIN/MAX with gap + margin, and `timui_grid` (rows×cols). src/timui_box.c: `timui_border(f,r,style,title)`→inner rect (SINGLE/ROUNDED/DOUBLE/THICK) + `timui_lerp_rgb(a,b,t)`. TDD hand-computed rects (w=100 [LEN20,FLEX1,FLEX2] → 0-20,20-47,47-100), over-constrain / min-max / rounding / zero-children; border inner-rect math.
+ W1 — enhance timui_table into a multi-column virtual grid (column headers, h+v scroll, per-column content-fit width with cap + ellipsis, sticky header, row selection) reusing sqlite_table.h's math; add scroll to timui_tree for large trees. BACKWARD-COMPATIBLE. TDD col-fit / paging / tree-flatten.
+ W2 — src/timui_tabs.c: `timui_tabs(f,id,r,labels,n,*sel)` (click + arrows, overflow scroll). TDD tab x-spans + overflow.
+ W3 — src/timui_chart.c: barchart/sparkline (N values, gradient bars, peak-hold caps) + gauge/meter/progress (0..1 + readout) + spinner (tick). Promote radio_dsp peak-hold. TDD peak-hold decay, bar layout, gradient.
+ W4 — src/timui_syntax.c (promote chat_highlight C/sh/py/sql/generic lexers) + `timui_code(f,r,src,len,lang,*scroll)` highlighted read-only viewer. TDD highlight spans + scroll clamp.
+
+RECONCILE + GALLERY + INTEGRATE: merge include/timui.h (API decls + section #includes) + Makefile (append each target to its group — see HYGIENE); `make amalgamate`; then build examples/gallery.c showcasing every new/enhanced widget on canned data + a headless smoke. Full gate green incl. new check-*, the gallery smoke, AND file_manager + procmon. Commit each concern separately; rebase + FF master (parity 0/0); check off shipped rows in docs/backlog.md + note them in USAGE.md.
+
+MAKEFILE HYGIENE: keep it grouped by section header — general · run/rec/drive · check/smoke · vt_gif/gif · packaging(man). Append each new target into its group, not the file end.
+
+NON-NEGOTIABLE:
+- TDD every pure unit (layout solve, col-fit, tab-spans, peak-hold, highlight spans); a regression test precedes any bugfix.
+- MUST NOT regress the gate: make test (196, grows), check-vt-gif-all, check-chat-*, check-radio, check-sqlite-tui, file_manager + procmon — all green; ?2026 fix; cp_width == timui_utf8_width.
+- Enhancements BACKWARD-COMPATIBLE. NO new vendored deps; NO crypto/hand-rolled DSP.
+- Apache-2.0 header + `Copyright 2026 Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd.` on our files. Commits single-purpose, imperative ≤72 chars, body=why; NO banned trailers. FF-only to master; never push/--force without an explicit ask.
+
+ACCEPTANCE: layout + widget unit tests + gallery smoke green; `make build`; full gate green; each concern committed + FF'd to master (parity 0/0); backlog + docs updated.
+
+PARALLELIZE: L ∥ W1 ∥ W2 ∥ W3 ∥ W4 → reconcile + gallery + integrate.
