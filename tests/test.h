@@ -279,6 +279,7 @@ void test_vt_wide_glyph(void);
 void test_text_area_renders(void);
 void test_text_area_utf8_no_split(void);
 void test_text_area_utf8_backspace(void);
+void test_text_area_paste_preserves_newline(void);
 void test_text_area_zero_cap_safe(void);
 void test_text_area_cursor_overcap_safe(void);
 void test_text_area_cursor_clamped_to_text(void);

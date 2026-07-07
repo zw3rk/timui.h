@@ -271,6 +271,7 @@ int main(void){
         test_text_area_renders,
         test_text_area_utf8_no_split,
         test_text_area_utf8_backspace,
+        test_text_area_paste_preserves_newline,
         test_text_area_zero_cap_safe,
         test_text_area_cursor_overcap_safe,
         test_text_area_cursor_clamped_to_text,

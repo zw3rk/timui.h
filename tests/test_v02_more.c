@@ -91,6 +91,28 @@ TIMUI_TEST(test_text_area_utf8_backspace){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_text_area_paste_preserves_newline){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    char text[16] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+#define TA_PASTE_FRAME() do{ timui_begin(ui,&f); timui_text_area(f, TIMUI_ID("ta"), r, &tas); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TA_PASTE_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TA_PASTE_FRAME();
+    SETIN(&fake, "\x1b[200~a\nb\x1b[201~"); TA_PASTE_FRAME();
+    TIMUI_CHECK(strcmp(text, "a\nb") == 0);
+#undef TA_PASTE_FRAME
+    timui_close(ui);
+}
+
 /* F1.3: text_area in-line cursor editing — LEFT/RIGHT/HOME/END/DELETE move and
  * edit at st->cursor (mid-string), not just append-at-end. */
 TIMUI_TEST(test_text_area_cursor_edit){
