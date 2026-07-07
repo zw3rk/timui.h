@@ -661,8 +661,6 @@ int main(int argc, char **argv){
     int port = 6667, demo = 0, max_frames = 0, frames = 0, a;
     char compose[IRC_MSG_MAX] = {0};
     TimuiInputState compose_state = { compose, sizeof compose, 0, 0 };
-    static char history[64][IRC_MSG_MAX];      /* sent lines, for ↑/↓ recall (static: off-stack) */
-    int hist_count = 0, hist_pos = 0;
 
     for(a = 1; a < argc; a++){
         if(!strcmp(argv[a], "--connect") && a + 1 < argc) host = argv[++a];
@@ -745,7 +743,7 @@ int main(int argc, char **argv){
           /* header: nick @ server + active channel + connection state. */
           { char hdr[160];
             IrcBuffer *ab = &client.bufs[client.active];
-            const char *st = worker_started ? (net.state == NET_REGISTERED ? "online" :
+            const char *st = host ? (net.state == NET_REGISTERED ? "online" :
                                      net.state == NET_CONNECTING ? "connecting" : "offline")
                                   : (demo ? "demo" : "replay");
             timui_draw_fill(timui_frame_buffer(f), rows[0], status);
@@ -793,88 +791,25 @@ int main(int argc, char **argv){
           }
 
           /* composer: a single-line editor (Enter submits) framed like a prompt.
-           * The single-line field is submit-capable (text_area has no submit
-           * event). Shift+←/→ switch channels; ↑/↓ recall sent lines; /connect
-           * starts the worker on demand; other /commands go through irc_submit. */
+           * timui_text_area has no submit event, so the composer uses the
+           * submit-capable single-line field — a channel line becomes a PRIVMSG,
+           * a /command is dispatched by irc_submit. */
           { TimuiRect in = timui_border(f, rows[3], TIMUI_BOX_ROUNDED,
-                TIMUI_STR_LIT(" /connect /join /part /msg /nick /me /quit \xC2\xB7 \xE2\x86\x91\xE2\x86\x93 history \xC2\xB7 Shift+\xE2\x86\x90\xE2\x86\x92 channel "),
-                border_st);
-            TimuiRect line = in, fld; line.h = 1;
-            fld = line; fld.x += 2; fld.w -= 2;
+                                        TIMUI_STR_LIT(" say / /join /part /msg /nick /me /quit "), border_st);
+            TimuiRect line = in; line.h = 1;
             timui_label(f, in.x, in.y, TIMUI_STR_LIT("\xE2\x9D\xAF "),
                         timui_style_make(link_fg, panel.bg, TIMUI_ATTR_BOLD));
-
-            /* Keep the composer focused so you can always type — clicking a tab
-             * still switches channel (the tab consumes the click) but focus
-             * returns here, and the nick list / tabs are mouse-driven. */
-            if(timui_focus(f) != TIMUI_ID("compose")) timui_set_focus(f, TIMUI_ID("compose"));
-
-            /* Shift+←/→ switch the active buffer (channel), like clicking a tab. */
-            if(client.nbufs > 0){
-                if(timui_key_pressed_mods(f, TIMUI_KEY_LEFT,  TIMUI_MOD_SHIFT))
-                    client.active = (client.active - 1 + client.nbufs) % client.nbufs;
-                if(timui_key_pressed_mods(f, TIMUI_KEY_RIGHT, TIMUI_MOD_SHIFT))
-                    client.active = (client.active + 1) % client.nbufs;
+            { TimuiRect fld = line; fld.x += 2; fld.w -= 2;
+              if(timui_focus(f) == 0) timui_set_focus(f, TIMUI_ID("compose"));
+              if(timui_input_field_styled(f, TIMUI_ID("compose"), fld, &compose_state,
+                                          timui_style_make(text_fg, panel.bg, 0))){
+                  irc_submit(&client, host ? &net : NULL, compose);
+                  if(irc_ieq_(compose, "/quit")) timui_quit(ui);
+                  compose[0] = '\0'; compose_state.cursor = 0; compose_state.scroll_x = 0;
+                  client.bufs[client.active].scroll = 0;        /* snap to newest on send */
+              }
             }
-
-            /* ↑/↓ recall previously-sent lines (shell-style). */
-            if(timui_key_pressed(f, TIMUI_KEY_UP) &&
-               !timui_key_pressed_mods(f, TIMUI_KEY_UP, TIMUI_MOD_SHIFT) &&
-               hist_count > 0 && hist_pos > 0){
-                hist_pos--;
-                snprintf(compose, sizeof compose, "%s", history[hist_pos]);
-                compose_state.cursor = strlen(compose); compose_state.scroll_x = 0;
-            }
-            if(timui_key_pressed(f, TIMUI_KEY_DOWN) &&
-               !timui_key_pressed_mods(f, TIMUI_KEY_DOWN, TIMUI_MOD_SHIFT) &&
-               hist_pos < hist_count){
-                hist_pos++;
-                if(hist_pos == hist_count){ compose[0] = '\0'; compose_state.cursor = 0; }
-                else { snprintf(compose, sizeof compose, "%s", history[hist_pos]);
-                       compose_state.cursor = strlen(compose); }
-                compose_state.scroll_x = 0;
-            }
-
-            if(timui_input_field_styled(f, TIMUI_ID("compose"), fld, &compose_state,
-                                        timui_style_make(text_fg, panel.bg, 0))){
-                if(compose[0] && hist_count < (int)(sizeof history / sizeof history[0]))
-                    snprintf(history[hist_count++], IRC_MSG_MAX, "%s", compose);   /* record for ↑/↓ */
-                hist_pos = hist_count;
-                /* /connect <host> [port]: start the worker on demand (needs the
-                 * thread + net in this scope, unlike the other slash commands). */
-                if(!strncmp(compose, "/connect", 8) && (compose[8] == ' ' || compose[8] == '\0')){
-                    if(worker_started)
-                        buf_logf(&client.bufs[0], LK_ERROR, "already connected to %s", net.host);
-                    else {
-                        char h[128]; int p = 6667, hi = 0; const char *r = compose + 8;
-                        while(*r == ' ') r++;
-                        while(*r && *r != ' ' && hi < (int)sizeof h - 1) h[hi++] = *r++;
-                        h[hi] = '\0';
-                        while(*r == ' ') r++;
-                        if(*r) p = atoi(r);
-                        if(!h[0]) buf_logf(&client.bufs[0], LK_ERROR, "usage: /connect <host> [port]");
-                        else {
-                            net.ui = ui; net.stop = 0; net.state = NET_CONNECTING; net.port = p;
-                            snprintf(net.host, sizeof net.host, "%s", h);
-                            snprintf(net.nick, sizeof net.nick, "%s", client.nick);
-                            snprintf(net.channel, sizeof net.channel, "%s", channel);
-                            snprintf(client.server, sizeof client.server, "%s", h);
-                            pthread_mutex_init(&net.out_lock, NULL);
-                            if(pthread_create(&th, NULL, irc_worker, &net) == 0){
-                                worker_started = 1;
-                                buf_logf(&client.bufs[0], LK_SYSTEM, "connecting to %s:%d\xE2\x80\xA6", h, p);
-                            } else { pthread_mutex_destroy(&net.out_lock);
-                                buf_logf(&client.bufs[0], LK_ERROR, "could not start network worker"); }
-                        }
-                    }
-                } else {
-                    irc_submit(&client, worker_started ? &net : NULL, compose);
-                    if(irc_ieq_(compose, "/quit")) timui_quit(ui);
-                }
-                compose[0] = '\0'; compose_state.cursor = 0; compose_state.scroll_x = 0;
-                client.bufs[client.active].scroll = 0;        /* snap to newest on send */
-            }
-            (void)title_st; (void)host;
+            (void)title_st;
           }
 
           timui_end(f);
