@@ -200,6 +200,28 @@ TIMUI_TEST(test_function_bar_widget){
     timui_fake_destroy(&fake);
 }
 
+TIMUI_TEST(test_function_bar_clipped){
+    TimuiAllocator def = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+
+    timui_fake_init(&fake, &def);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 10, 3, &def);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_function_bar(f, TIMUI_RECT(1, 1, 4, 1), TIMUI_STR_LIT("abcdefgh"));
+    TIMUI_CHECK(timui_cells_get(buf, 5, 1)->codepoint == 0);
+    timui_end(f);
+
+    timui_close(ui);
+    timui_fake_destroy(&fake);
+}
+
 /* Z21: the interact tab_order grow-OOM branch (V24 covered only the success
  * path). A failed grow must drop the widget from the Tab cycle without writing
  * past the (unallocated) tab_order — never crash, never tab_count > tab_cap. */

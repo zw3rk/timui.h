@@ -199,11 +199,11 @@ TIMUI_API TimuiBoolEdit timui_radio(TimuiFrame *f, TimuiId id, TimuiRect r, Timu
 }
 TIMUI_API void timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text){
     Timui *ui;
+    TimuiStyle st;
     if(!f || !f->ui) return;
     ui = f->ui;
-    timui_draw_fill(&ui->curr, r, timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
-    timui_draw_text(&ui->curr, r.x, r.y, text,
-                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
+    st = timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0);
+    timui_draw_row_(&ui->curr, r, 0, text, st);
 }
 /* ---- UTF-8 / grapheme edit helpers (shared with timui_text_area) -------- *
  * text_in carries UTF-8 (since the G8 fix), so text inputs must append and
@@ -306,7 +306,7 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
                              ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
                              ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     timui_draw_fill(&ui->curr, r, st);
-    timui_draw_text(&ui->curr, r.x, r.y, timui_str_from_cstr(buf), st);
+    widget_draw_text_clipped(f, r, r.x, r.y, timui_str_from_cstr(buf), st);
     return submitted;
 }
 /* Display column of the cursor: sum of grapheme widths over buf[0..upto) (F1.5). */

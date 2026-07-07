@@ -151,6 +151,29 @@ TIMUI_TEST(test_input_line_grapheme_backspace){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_line_buf_clipped){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiCellBuffer *cells;
+    char buf[16] = "abcdef";
+    TimuiRect r = TIMUI_RECT(1, 1, 4, 1);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 10, 3, &al);
+
+    timui_begin(ui, &f);
+    cells = timui_frame_buffer(f);
+    (void)timui_input_line_buf(f, TIMUI_ID("short"), r, buf, sizeof buf);
+    TIMUI_CHECK(timui_cells_get(cells, 5, 1)->codepoint == 0);
+    timui_end(f);
+
+    timui_close(ui);
+}
+
 /* F1.5: input_field — in-line cursor editing (single line). */
 TIMUI_TEST(test_input_field_edit){
     TimuiAllocator al = timui_default_allocator();

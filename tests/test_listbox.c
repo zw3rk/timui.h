@@ -86,3 +86,31 @@ TIMUI_TEST(test_listbox_selected_clamped){
     TIMUI_CHECK(res.selected == 2);               /* clamped to count-1 */
     timui_close(ui);
 }
+
+static const char *lb_long_label(void *ud, int i){
+    (void)ud; (void)i;
+    return "abcdefgh";
+}
+
+TIMUI_TEST(test_listbox_label_clipped){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiCellBuffer *cells;
+    TimuiListState st = {0, 0};
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 10, 3, &al);
+
+    timui_begin(ui, &f);
+    cells = timui_frame_buffer(f);
+    (void)timui_listbox_mut(f, TIMUI_ID("L"), TIMUI_RECT(1, 1, 4, 1),
+                            &st, 1, lb_long_label, 0);
+    TIMUI_CHECK(timui_cells_get(cells, 5, 1)->codepoint == 0);
+    timui_end(f);
+
+    timui_close(ui);
+}

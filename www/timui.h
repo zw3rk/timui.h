@@ -1506,11 +1506,45 @@ static int timui_utf8_encode_(uint32_t cp, char *out){
  * palette / menu. Defined here (first-included) so every section can call them;
  * they only reference already-declared public primitives. */
 
+static TimuiRect timui_intersect_rect_(TimuiRect a, TimuiRect b){
+    TimuiRect r;
+    int64_t ax2 = (int64_t)a.x + (int64_t)a.w;
+    int64_t ay2 = (int64_t)a.y + (int64_t)a.h;
+    int64_t bx2 = (int64_t)b.x + (int64_t)b.w;
+    int64_t by2 = (int64_t)b.y + (int64_t)b.h;
+    int64_t x1 = a.x > b.x ? (int64_t)a.x : (int64_t)b.x;
+    int64_t y1 = a.y > b.y ? (int64_t)a.y : (int64_t)b.y;
+    int64_t x2 = ax2 < bx2 ? ax2 : bx2;
+    int64_t y2 = ay2 < by2 ? ay2 : by2;
+    int64_t rw = x2 > x1 ? x2 - x1 : 0;
+    int64_t rh = y2 > y1 ? y2 - y1 : 0;
+    r.x = x1 < INT_MIN ? INT_MIN : (x1 > INT_MAX ? INT_MAX : (int)x1);
+    r.y = y1 < INT_MIN ? INT_MIN : (y1 > INT_MAX ? INT_MAX : (int)y1);
+    r.w = rw > INT_MAX ? INT_MAX : (int)rw;
+    r.h = rh > INT_MAX ? INT_MAX : (int)rh;
+    return r;
+}
+
+static void timui_draw_text_clipped_(TimuiCellBuffer *buf, TimuiRect clip, int x, int y,
+                                     TimuiStr text, TimuiStyle st){
+    TimuiRect old_clip, active;
+    int old_has_clip;
+    if(!buf) return;
+    old_clip = buf->clip;
+    old_has_clip = buf->has_clip;
+    active = buf->has_clip ? buf->clip : TIMUI_RECT(0, 0, buf->w, buf->h);
+    buf->clip = timui_intersect_rect_(active, clip);
+    buf->has_clip = 1;
+    timui_draw_text(buf, x, y, text, st);
+    buf->clip = old_clip;
+    buf->has_clip = old_has_clip;
+}
+
 /* Fill a one-row rect with style `st`, then draw `text` at column offset `xoff`
  * within it (draw_text ignores a NULL/empty str, so callers can pass either). */
 static void timui_draw_row_(TimuiCellBuffer *buf, TimuiRect row, int xoff, TimuiStr text, TimuiStyle st){
     timui_draw_fill(buf, row, st);
-    timui_draw_text(buf, row.x + xoff, row.y, text, st);
+    timui_draw_text_clipped_(buf, row, row.x + xoff, row.y, text, st);
 }
 
 /* Move a selection index by one on Up/Down (mutually exclusive), clamped to
@@ -4514,11 +4548,11 @@ TIMUI_API TimuiBoolEdit timui_radio(TimuiFrame *f, TimuiId id, TimuiRect r, Timu
 }
 TIMUI_API void timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text){
     Timui *ui;
+    TimuiStyle st;
     if(!f || !f->ui) return;
     ui = f->ui;
-    timui_draw_fill(&ui->curr, r, timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
-    timui_draw_text(&ui->curr, r.x, r.y, text,
-                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
+    st = timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0);
+    timui_draw_row_(&ui->curr, r, 0, text, st);
 }
 /* ---- UTF-8 / grapheme edit helpers (shared with timui_text_area) -------- *
  * text_in carries UTF-8 (since the G8 fix), so text inputs must append and
@@ -4621,7 +4655,7 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
                              ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
                              ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     timui_draw_fill(&ui->curr, r, st);
-    timui_draw_text(&ui->curr, r.x, r.y, timui_str_from_cstr(buf), st);
+    widget_draw_text_clipped(f, r, r.x, r.y, timui_str_from_cstr(buf), st);
     return submitted;
 }
 /* Display column of the cursor: sum of grapheme widths over buf[0..upto) (F1.5). */
