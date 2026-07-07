@@ -7,10 +7,13 @@
 #include "timui.h"
 
 #include <fcntl.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+
+static void test_sigterm_handler(int sig){ (void)sig; }
 
 /* Exercises the real termios path through a posix_openpt pty pair (no -lutil
  * needed): raw mode clears ICANON/ECHO; restore reproduces the original c_lflag. */
@@ -108,4 +111,44 @@ TIMUI_TEST(test_open_restores_input_fd_flags){
 
     close(p[0]);
     close(p[1]);
+}
+
+TIMUI_TEST(test_open_restores_previous_signal_handler){
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int slave, nullfd;
+    char *name;
+    struct sigaction orig, custom, after;
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+
+    TIMUI_CHECK(master >= 0);
+    if(master < 0) return;
+    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
+    name = ptsname(master);
+    if(!name){ close(master); TIMUI_CHECK(0); return; }
+    slave = open(name, O_RDWR);
+    if(slave < 0){ close(master); TIMUI_CHECK(0); return; }
+    nullfd = open("/dev/null", O_WRONLY);
+    if(nullfd < 0){ close(slave); close(master); TIMUI_CHECK(0); return; }
+
+    TIMUI_CHECK(sigaction(SIGTERM, NULL, &orig) == 0);
+    memset(&custom, 0, sizeof custom);
+    custom.sa_handler = test_sigterm_handler;
+    sigemptyset(&custom.sa_mask);
+    TIMUI_CHECK(sigaction(SIGTERM, &custom, NULL) == 0);
+
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = slave;
+    cfg.output_fd = nullfd;
+    cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_RESTORE_ON_EXIT;
+    TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);
+    timui_close(ui);
+
+    TIMUI_CHECK(sigaction(SIGTERM, NULL, &after) == 0);
+    TIMUI_CHECK(after.sa_handler == test_sigterm_handler);
+
+    (void)sigaction(SIGTERM, &orig, NULL);
+    close(nullfd);
+    close(slave);
+    close(master);
 }

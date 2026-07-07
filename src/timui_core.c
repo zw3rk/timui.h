@@ -165,14 +165,29 @@ TIMUI_API void timui_restore_terminal(Timui *ui){
     if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
     if(ui->termios_active) timui_termios_restore(&ui->termios);
 }
+static void timui_restore_previous_signal(Timui *ui, int sig){
+    if(!ui){ signal(sig, SIG_DFL); return; }
+    if(sig == SIGTERM && ui->prev_sigterm_saved){
+        sigaction(SIGTERM, &ui->prev_sigterm, NULL); ui->prev_sigterm_saved = 0; return;
+    }
+    if(sig == SIGHUP && ui->prev_sighup_saved){
+        sigaction(SIGHUP, &ui->prev_sighup, NULL); ui->prev_sighup_saved = 0; return;
+    }
+    if(sig == SIGQUIT && ui->prev_sigquit_saved){
+        sigaction(SIGQUIT, &ui->prev_sigquit, NULL); ui->prev_sigquit_saved = 0; return;
+    }
+    signal(sig, SIG_DFL);
+}
 static void timui_sig_restore(int sig){
-    timui_restore_terminal(g_sig_restore_ui);
-    signal(sig, SIG_DFL);     /* default disposition, then re-raise to terminate */
+    Timui *ui = g_sig_restore_ui;
+    timui_restore_terminal(ui);
+    if(g_sig_restore_ui == ui) g_sig_restore_ui = NULL;
+    timui_restore_previous_signal(ui, sig);
     raise(sig);
 }
 static void timui_install_sig_handlers(Timui *ui){
     struct sigaction sa;
-    if(!ui || (!ui->termios_active && !ui->screen_active)) return;
+    if(!ui || !(ui->cfg.flags & TIMUI_FLAG_RESTORE_ON_EXIT) || (!ui->termios_active && !ui->screen_active)) return;
     g_sig_restore_ui = ui;
     memset(&sa, 0, sizeof sa);
     sa.sa_handler = timui_sig_restore;
@@ -180,18 +195,16 @@ static void timui_install_sig_handlers(Timui *ui){
 #ifdef SA_RESTART
     sa.sa_flags = SA_RESTART;
 #endif
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGHUP,  &sa, NULL);
-    sigaction(SIGQUIT, &sa, NULL);
+    ui->prev_sigterm_saved = (sigaction(SIGTERM, &sa, &ui->prev_sigterm) == 0);
+    ui->prev_sighup_saved  = (sigaction(SIGHUP,  &sa, &ui->prev_sighup)  == 0);
+    ui->prev_sigquit_saved = (sigaction(SIGQUIT, &sa, &ui->prev_sigquit) == 0);
 }
-static void timui_remove_sig_handlers(void){
-    struct sigaction sa;
-    g_sig_restore_ui = NULL;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = SIG_DFL;
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGHUP,  &sa, NULL);
-    sigaction(SIGQUIT, &sa, NULL);
+static void timui_remove_sig_handlers(Timui *ui){
+    if(g_sig_restore_ui == ui) g_sig_restore_ui = NULL;
+    if(!ui) return;
+    if(ui->prev_sigterm_saved){ sigaction(SIGTERM, &ui->prev_sigterm, NULL); ui->prev_sigterm_saved = 0; }
+    if(ui->prev_sighup_saved){  sigaction(SIGHUP,  &ui->prev_sighup,  NULL); ui->prev_sighup_saved = 0; }
+    if(ui->prev_sigquit_saved){ sigaction(SIGQUIT, &ui->prev_sigquit, NULL); ui->prev_sigquit_saved = 0; }
 }
 static void timui_restore_input_flags(Timui *ui){
     if(!ui || !ui->input_flags_saved) return;
@@ -255,7 +268,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
 TIMUI_API void timui_close(Timui *ui){
     TimuiAllocator al;
     if(!ui) return;
-    timui_remove_sig_handlers();      /* W6: stop intercepting (close restores itself) */
+    timui_remove_sig_handlers(ui);    /* W6: stop intercepting (close restores itself) */
     if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
     if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
     timui_restore_input_flags(ui);

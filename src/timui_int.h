@@ -30,6 +30,12 @@ struct Timui {
     int               screen_active;
     TimuiTermios      termios;
     int               termios_active;
+    struct sigaction  prev_sigterm;
+    struct sigaction  prev_sighup;
+    struct sigaction  prev_sigquit;
+    int               prev_sigterm_saved;
+    int               prev_sighup_saved;
+    int               prev_sigquit_saved;
     TimuiCellBuffer   curr;
     TimuiCellBuffer   prev;
     int               have_buffers;
