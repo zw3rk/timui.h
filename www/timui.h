@@ -2044,6 +2044,7 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
 TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
     TimuiMpscNode *n;
     if(!q) return 0;
+    if(size > 0 && !data) return 0;
     if(size > SIZE_MAX - sizeof(*n)) return 0;   /* overflow guard (cf. msgq_emit) */
     n = (TimuiMpscNode *)q->alloc.alloc(q->alloc.userdata, sizeof(*n) + size);
     if(!n) return 0;

@@ -81,3 +81,17 @@ TIMUI_TEST(test_mpsc_overflow_guard){
     TIMUI_CHECK(timui_mpsc_post(&q, 1, "x", (size_t)-1) == 0);   /* SIZE_MAX -> guard */
     timui_mpsc_destroy(&q);
 }
+
+TIMUI_TEST(test_mpsc_null_data_rejected){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiMpsc q;
+    uint32_t type = 0;
+    size_t sz = 1;
+    TIMUI_CHECK(timui_mpsc_init(&q, &al) == TIMUI_OK);
+    TIMUI_CHECK(timui_mpsc_post(&q, 1, NULL, 1) == 0);
+    TIMUI_CHECK(timui_mpsc_empty(&q));
+    TIMUI_CHECK(timui_mpsc_post(&q, 2, NULL, 0) == 1);
+    TIMUI_CHECK(timui_mpsc_recv(&q, &type, NULL, &sz) == 1);
+    TIMUI_CHECK(type == 2 && sz == 0);
+    timui_mpsc_destroy(&q);
+}
