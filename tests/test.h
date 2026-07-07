@@ -58,6 +58,7 @@ void test_mpsc_fifo_single(void);
 void test_mpsc_multi_producer(void);
 void test_mpsc_overflow_guard(void);
 void test_mpsc_null_data_rejected(void);
+void test_mpsc_destroy_is_idempotent(void);
 void test_mpsc_serializes_custom_allocator(void);
 void test_fake_capture_output(void);
 void test_fake_inject_input(void);

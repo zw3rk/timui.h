@@ -98,6 +98,21 @@ TIMUI_TEST(test_mpsc_null_data_rejected){
     timui_mpsc_destroy(&q);
 }
 
+TIMUI_TEST(test_mpsc_destroy_is_idempotent){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiMpsc q;
+    uint32_t type = 0;
+    size_t sz = 0;
+
+    TIMUI_CHECK(timui_mpsc_init(&q, &al) == TIMUI_OK);
+    TIMUI_CHECK(timui_mpsc_post(&q, 1, "x", 1));
+    timui_mpsc_destroy(&q);
+    timui_mpsc_destroy(&q);
+    TIMUI_CHECK(timui_mpsc_empty(&q));
+    TIMUI_CHECK(!timui_mpsc_recv(&q, &type, NULL, &sz));
+    TIMUI_CHECK(!timui_mpsc_post(&q, 2, NULL, 0));
+}
+
 typedef struct {
     pthread_mutex_t guard;
     int violations;

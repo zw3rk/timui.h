@@ -47,6 +47,7 @@ int main(void){
         test_mpsc_multi_producer,
         test_mpsc_overflow_guard,
         test_mpsc_null_data_rejected,
+        test_mpsc_destroy_is_idempotent,
         test_mpsc_serializes_custom_allocator,
         test_fake_capture_output,
         test_fake_inject_input,

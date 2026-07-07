@@ -880,6 +880,14 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
     uint32_t t;
     size_t s = 0;
     if(!q) return;
+#ifndef TIMUI_NO_THREADS
+    if(!q->lock){
+        q->head = q->tail = NULL;
+        q->pending = 0;
+        memset(&q->alloc, 0, sizeof q->alloc);
+        return;
+    }
+#endif
     while(timui_mpsc_recv(q, &t, NULL, &s)){ }       /* drain remaining nodes */
 #ifndef TIMUI_NO_THREADS
     if(q->lock){
@@ -888,10 +896,17 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
         q->lock = NULL;
     }
 #endif
+    q->head = q->tail = NULL;
+    q->pending = 0;
+    memset(&q->alloc, 0, sizeof q->alloc);
 }
 TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
     TimuiMpscNode *n;
     if(!q) return 0;
+    if(!timui_allocator_valid_(&q->alloc)) return 0;
+#ifndef TIMUI_NO_THREADS
+    if(!q->lock) return 0;
+#endif
     if(size > 0 && !data) return 0;
     if(size > SIZE_MAX - sizeof(*n)) return 0;   /* overflow guard (cf. msgq_emit) */
     TIMUI_MPSC_LOCK(q);
@@ -909,6 +924,9 @@ TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, s
     TimuiMpscNode *n;
     size_t copy;
     if(!q) return 0;
+#ifndef TIMUI_NO_THREADS
+    if(!q->lock) return 0;
+#endif
     TIMUI_MPSC_LOCK(q);
     n = q->head;
     if(n){
@@ -933,6 +951,9 @@ TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, s
 TIMUI_API int timui_mpsc_empty(TimuiMpsc *q){
     int e;
     if(!q) return 1;
+#ifndef TIMUI_NO_THREADS
+    if(!q->lock) return 1;
+#endif
     TIMUI_MPSC_LOCK(q);
     e = (q->pending == 0);
     TIMUI_MPSC_UNLOCK(q);
