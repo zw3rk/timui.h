@@ -9,7 +9,7 @@ tiers validate that pipeline at increasing fidelity:
 | **A** | emitted escapes reconstruct the screen  | libvterm   | `make vt-test`  |
 
 Both run in CI: Tier B inside `check` (zero deps, every PR), Tier A in its
-own `vterm` job (libvterm is Linux-only in nixpkgs, so it runs on ubuntu).
+own `vterm` job using the neovim/Paul Evans libvterm API.
 
 ---
 
@@ -78,11 +78,14 @@ round-trip TU into a separate `build/test_vt` binary — the core
 
 ### Platform note
 
-libvterm's `meta.platforms` in nixpkgs is **Linux-only**, so the flake adds
-it conditionally (`stdenv.isLinux`); on macOS `make vt-test` reports the
-missing dependency and runs the core tests. The canonical run is Linux CI.
-(The harness was verified end-to-end on darwin against a source-built
-libvterm — 125/125.)
+nixpkgs has multiple packages named around libvterm. This harness requires
+`libvterm-neovim` (the Paul Evans/neovim API: `VTerm`, `VTermScreen`,
+`vterm_new`, `vterm_input_write`, ...), whose pkg-config module is `vterm`.
+The unrelated `libvterm` package exposes a different `vterm_t` API and is not
+compatible with these tests.
+
+The flake includes `libvterm-neovim`, so `nix develop -c make vt-test` runs on
+both Linux CI and the supported Darwin dev shells.
 
 ### Cell-mapping footguns (TimuiCell ↔ VTermScreenCell)
 
@@ -115,10 +118,10 @@ These are the subtle bits, documented in `tests/test_vt_roundtrip.c`:
    parses OSC 8 but stores nothing. The hyperlink scene verifies only that
    the OSC 8 sequence doesn't corrupt the glyph stream (the link text still
    lands) — the link target itself is not round-trip-verifiable.
-8. **`__has_include` gating**: the eight scene tests are registered in
-   `test_main.c` under `#if __has_include(<vterm.h>)`, so `test_main`
-   references the vterm symbols only when libvterm is on the include path.
-   Plain `make test` compiles `test_main` with zero vterm references.
+8. **Explicit test gating**: the eight scene tests are registered in
+   `test_main.c` only when `TIMUI_WITH_VTERM_TESTS` is defined by the
+   `WITH_VTERM=1` build path. Plain `make test` must not gain vterm references
+   just because a system include path happens to contain a `vterm.h`.
 
 ---
 

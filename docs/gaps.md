@@ -140,7 +140,7 @@ amalgamate + release-check green.
 ## Verification
 
 `nix develop -c make test` (unit + Tier-B goldens), `make vt-test` (Tier A
-libvterm round-trip — libvterm is Linux-only in nixpkgs; see
+libvterm round-trip — requires `libvterm-neovim`; see
 [`docs/visual-tests.md`](visual-tests.md)), `make amalgamate` + `release-check`.
 148→160 unit + 8 libvterm round-trip green after round 6 (G6/G7/G13); UBSAN
 clean; ASAN clean (system clang); goldens clean; amalgamate + release-check

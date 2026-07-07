@@ -62,10 +62,9 @@ jobs:
       - uses: cachix/install-nix-action@v27
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-      # The flake provides libvterm on Linux (it's Linux-only in nixpkgs);
-      # vt-test feeds the renderer's bytes through a real VT emulator and
-      # compares the resulting grid. Its own job so a libvterm upstream
-      # regression doesn't gate the core build+test.
+      # vt-test feeds the renderer's bytes through the neovim/Paul Evans
+      # libvterm API and compares the resulting grid. Its own job keeps an
+      # upstream vterm regression separate from the core build+test.
       - run: nix develop -c make vt-test
 
   sanitizers:

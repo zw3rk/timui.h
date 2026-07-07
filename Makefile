@@ -40,23 +40,27 @@ TEST_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TST
 TEST_BIN  := $(BLDDIR)/test_unit
 GOLDEN_BIN := $(BLDDIR)/gen_golden
 
-# libvterm round-trip tests (Tier A) are opt-in. WITH_VTERM=1 resolves libvterm
-# via pkg-config and compiles tests/test_vt_roundtrip.c into a SEPARATE binary
-# (build/test_vt), so the core `make test` never depends on libvterm. The vterm
-# tests are registered only when TIMUI_WITH_VTERM_TESTS is defined by this
-# build path; ambient include paths must not change the core test binary.
+# libvterm round-trip tests (Tier A) are opt-in. WITH_VTERM=1 resolves the
+# neovim/Paul Evans libvterm API via pkg-config and compiles
+# tests/test_vt_roundtrip.c into a SEPARATE binary (build/test_vt), so the core
+# `make test` never depends on libvterm. The vterm tests are registered only
+# when TIMUI_WITH_VTERM_TESTS is defined by this build path; ambient include
+# paths must not change the core test binary.
 VT_BIN    := $(BLDDIR)/test_vt
 VT_CFLAGS :=
 VT_LIBS   :=
 VT_SRCS   :=
 ifeq ($(WITH_VTERM),1)
-  VT_CFLAGS := $(shell pkg-config --cflags libvterm 2>/dev/null)
-  VT_LIBS   := $(shell pkg-config --libs   libvterm 2>/dev/null)
+  VT_CFLAGS := $(shell pkg-config --cflags vterm 2>/dev/null)
+  VT_LIBS   := $(shell pkg-config --libs   vterm 2>/dev/null)
   ifeq ($(VT_LIBS),)
-    # nixpkgs' libvterm has no libvterm.pc; nix develop still exposes the
-    # library path through the compiler wrapper, so fall back to the link name.
-    # vterm.h includes glib.h and curses.h, and both dependency packages ship
-    # pkg-config metadata in nixpkgs.
+    VT_CFLAGS := $(shell pkg-config --cflags libvterm 2>/dev/null)
+    VT_LIBS   := $(shell pkg-config --libs   libvterm 2>/dev/null)
+  endif
+  ifeq ($(VT_LIBS),)
+    # Last resort for shells where the compiler wrapper exposes the vterm
+    # include/lib paths but no vterm pkg-config module is visible. The older
+    # nixpkgs libvterm package's public header also needs GLib + curses flags.
     VT_CFLAGS += $(shell pkg-config --cflags glib-2.0 ncursesw 2>/dev/null)
     VT_LIBS := -lvterm $(shell pkg-config --libs glib-2.0 ncursesw 2>/dev/null)
   endif
@@ -294,7 +298,7 @@ test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=addre
 	@$(CC) -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O1 -g -fsanitize=$(SAN) -I$(INCDIR) $(TEST_SRCS) -o $(BLDDIR)/test_san
 	@./$(BLDDIR)/test_san
 
-vt-test: build ## Compile + run unit tests WITH libvterm round-trip tests (needs libvterm)
+vt-test: build ## Compile + run unit tests WITH vterm round-trip tests (needs libvterm-neovim)
 	@$(MAKE) $(VT_BIN) WITH_VTERM=1
 	@printf "$(C_YELL)▶ running vt-tests$(C_RESET)\n"
 	@./$(VT_BIN)

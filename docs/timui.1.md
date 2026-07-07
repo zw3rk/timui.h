@@ -81,8 +81,8 @@ The following `make` targets are the primary interface. Each is invoked as
 
 **vt-test**
 : Run the unit tests together with the libvterm round-trip (Tier A) tests.
-  Requires libvterm, which in nixpkgs is Linux-only; on macOS the target
-  reports the missing dependency and the core targets still work.
+  Requires the neovim/Paul Evans libvterm API, provided by the flake as
+  `libvterm-neovim`.
 
 **goldens**
 : Regenerate the Tier B golden cell-buffer snapshots under `tests/golden/*.txt`.
@@ -208,7 +208,7 @@ external screen recorder:
 
 *flake.nix*
 : The nix dev shell providing the toolchain (clang, gnumake, pkg-config,
-  asciinema, and libvterm on Linux).
+  asciinema, and libvterm-neovim).
 
 *examples/*
 : Example applications — `hello`, `counter`, `form`, `mini_commander`,
