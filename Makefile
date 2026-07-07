@@ -643,7 +643,7 @@ gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated
 
 amalgamate: $(BLDDIR)/amalgamate $(HEADER) $(LIB_SECTIONS) ## Regenerate the flat release single-header into release/
 	@mkdir -p $(RELDIR)
-	@./$(BLDDIR)/amalgamate $(HEADER) $(RELDIR)/timui.h
+	@$(BLDDIR)/amalgamate $(HEADER) $(RELDIR)/timui.h
 	@printf "$(C_GREEN)✓ wrote $(RELDIR)/timui.h$(C_RESET)\n"
 
 www: amalgamate ## Refresh static website assets under www/
@@ -657,8 +657,8 @@ $(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
 
 release-check: amalgamate ## Verify the amalgamated release header compiles standalone
 	@printf "$(C_CYAN)build$(C_RESET) release self-test\n"
-	@printf '#define TIMUI_IMPLEMENTATION\n#include "../$(RELDIR)/timui.h"\nint main(void){return 0;}\n' > $(BLDDIR)/release_selftest.c
-	@$(CC) $(CFLAGS) $(BLDDIR)/release_selftest.c -o $(BLDDIR)/release_selftest
+	@printf '#define TIMUI_IMPLEMENTATION\n#include "timui.h"\nint main(void){return 0;}\n' > $(BLDDIR)/release_selftest.c
+	@$(CC) $(CFLAGS) -I$(RELDIR) $(BLDDIR)/release_selftest.c -o $(BLDDIR)/release_selftest
 	@printf "$(C_GREEN)✓ release header compiles standalone$(C_RESET)\n"
 
 # ---- man page ------------------------------------------------------------- #
