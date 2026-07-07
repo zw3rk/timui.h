@@ -57,6 +57,12 @@ active channel's **nick list** (`timui_table`), and a slash-command **composer**
 — all in a 3-pane `timui_split` (tabs · scrollback + nicks · composer) inside
 rounded borders, with a status line (nick · server · active buffer · state).
 
+**Commands** (typed in the composer): `/connect <host> [port]` goes live from an
+offline session (starts the network worker on demand), plus
+`/join /part /msg /nick /me /quit`. **Keys:** `↑`/`↓` recall sent lines,
+`Shift+←`/`→` switch channels (or click a tab), `Esc`/`F10` quit. The composer
+keeps focus, so clicking a tab switches channel without taking away your typing.
+
     nix develop -c make run-irc                          # offline --demo (no network)
     nix develop -c make run-irc HOST=irc.libera.chat     # connect live (best-effort)
     nix develop -c make run-irc HOST=irc.libera.chat NICK=me CHAN='#timui'

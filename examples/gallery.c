@@ -118,6 +118,10 @@ int main(int argc, char **argv){
           if(!timui_begin(ui, &f)) break;
           root = timui_root(f);
 
+          /* Esc / F10 quit (interactive); the headless smoke exits via --frames. */
+          if(timui_key_pressed(f, TIMUI_KEY_ESCAPE) || timui_key_pressed(f, TIMUI_KEY_F10))
+              timui_quit(ui);
+
           /* header · tabs · body(3 cols) · status */
           timui_split_v(root, vmain, 4, rows);
           { TimuiTableModel m = model; m.headers = headers;   /* header labels */
@@ -161,7 +165,7 @@ int main(int argc, char **argv){
 
             /* status */
             timui_label(f, rows[3].x + 1, rows[3].y,
-                        TIMUI_STR_LIT("Tab/click widgets · arrows scroll · F10/q quit"),
+                        TIMUI_STR_LIT("Tab/click widgets · arrows scroll · Esc/F10 quit"),
                         timui_style_make(dim, bg, 0));
             (void)text;
           }
