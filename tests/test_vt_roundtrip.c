@@ -26,10 +26,10 @@
 /* ---- TimuiCell <-> VTermScreenCell mapping ------------------------------ *
  * Rationale (see docs/visual-tests.md):
  *  - vterm_new takes (rows, cols); timui buffers are (w, h)  ->  transpose.
- *  - timui fg/bg == 0 means "default" (emit_sgr emits no color SGR), which
- *    maps to libvterm's VTERM_COLOR_IS_DEFAULT_FG/BG. NB: convert_color_to_rgb
- *    RESETS the default flags, so the default check must happen BEFORE any
- *    conversion.
+ *  - timui fg/bg == TIMUI_COLOR_DEFAULT means "default" (emit_sgr emits no
+ *    color SGR), which maps to libvterm's VTERM_COLOR_IS_DEFAULT_FG/BG. NB:
+ *    convert_color_to_rgb RESETS the default flags, so the default check must
+ *    happen BEFORE any conversion.
  *  - An empty timui cell (codepoint 0) renders as a space (' '), and a reset
  *    libvterm screen is full of spaces, so codepoint 0 and ' ' are treated as
  *    interchangeable "blank".
@@ -40,7 +40,7 @@
  *    the comparison (it is still verified by the Tier-B golden snapshot). */
 
 /* Decode a vterm color into a packed 0xRRGGBB timui value. Default colors
- * (fg or bg) map to 0, timui's "no SGR" sentinel. */
+ * (fg or bg) map to TIMUI_COLOR_DEFAULT, timui's "no SGR" sentinel. */
 static uint32_t vterm_color_to_timui(VTermScreen *s, const VTermColor *col){
     if(VTERM_COLOR_IS_DEFAULT_FG(col) || VTERM_COLOR_IS_DEFAULT_BG(col)) return TIMUI_COLOR_DEFAULT;
     { VTermColor c = *col;

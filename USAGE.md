@@ -200,6 +200,9 @@ This shows exactly what the terminal sends (e.g. a drag-drop may arrive as
 
 ## Single-header drop-in
 
+Download the amalgamated release header from `https://timui.dev/timui.h`, or
+use `www/timui.h` after `make www`.
+
     #define TIMUI_IMPLEMENTATION
     #include "timui.h"
 
@@ -207,8 +210,12 @@ Define `TIMUI_IMPLEMENTATION` in exactly one translation unit.
 
 ## Split build
 
-`src/timui_core.c` already defines `TIMUI_IMPLEMENTATION` and includes `include/timui.h`; compile it once and link the rest of your program against the declarations. The unit tests are built this way (see the `test` target).
+For repository development, compile `src/timui.c` once and include
+`include/timui.h` elsewhere for declarations. Public consumers should prefer the
+amalgamated release header.
 
 ## Feature macros
 
-`TIMUI_IMPLEMENTATION`, `TIMUI_NO_STDIO`, `TIMUI_NO_THREADS`, `TIMUI_NO_IMAGES`, `TIMUI_NO_UTF8_TABLES`, `TIMUI_API`. See the header for details.
+Implemented knobs: `TIMUI_IMPLEMENTATION`, `TIMUI_NO_THREADS`, and `TIMUI_API`.
+Reserved compatibility no-ops: `TIMUI_NO_STDIO`, `TIMUI_NO_IMAGES`, and
+`TIMUI_NO_UTF8_TABLES`.

@@ -26,7 +26,7 @@ void        timui_quit(Timui *ui);
 bool        timui_should_quit(const Timui *ui);
 TimuiRect   timui_root(const TimuiFrame *frame);
 int         timui_width/height(const TimuiFrame *frame);
-void        timui_ui_resize(Timui *ui, int w, int h);
+TimuiResult timui_ui_resize(Timui *ui, int w, int h);
 TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
 ```
 
@@ -118,9 +118,10 @@ bool timui_post(Timui *, uint32_t type, const void *data, size_t size);  /* any 
 
 ## Feature macros
 
-`TIMUI_IMPLEMENTATION`, `TIMUI_NO_STDIO`, `TIMUI_NO_THREADS`, `TIMUI_NO_IMAGES`,
-`TIMUI_NO_UTF8_TABLES`, `TIMUI_API`. Single-header users link `-pthread` (or
-define `TIMUI_NO_THREADS`).
+`TIMUI_IMPLEMENTATION`, `TIMUI_NO_THREADS`, and `TIMUI_API` are implemented.
+`TIMUI_NO_STDIO`, `TIMUI_NO_IMAGES`, and `TIMUI_NO_UTF8_TABLES` are reserved
+compatibility no-ops. Single-header users link `-pthread` (or define
+`TIMUI_NO_THREADS`).
 
 ---
 This is a concise reference; see [DESIGN.md](DESIGN.md) for architecture and

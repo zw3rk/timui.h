@@ -25,11 +25,9 @@ R<row>: <codepoint>|<fg>|<bg>|<attrs>|<width> ...
 
 - **codepoint** — the literal glyph for printable ASCII (`0x20`–`0x7e`);
   `.` for an empty cell (codepoint 0); `U+XXXX` (uppercase hex) otherwise.
-- **fg / bg** — `-` when "default" (field `== 0`, i.e. `emit_sgr` emits no
-  color SGR); otherwise 6-digit lowercase hex `rrggbb`. NB: pure black
-  `0x000000` is indistinguishable from default here — that faithfully
-  mirrors the renderer's own model (`emit_sgr` treats `fg==0`/`bg==0` as
-  default, so a cell cannot represent black-as-set-color anyway).
+- **fg / bg** — `-` when the field is `TIMUI_COLOR_DEFAULT` (`0xffffffff`,
+  i.e. `emit_sgr` emits no color SGR); otherwise 6-digit lowercase hex
+  `rrggbb`. Pure black `0x000000` is literal black and distinct from default.
 - **attrs** — `.` if none, else sorted flag letters:
   `b`(old) `d`(im) `i`(talic) `u`(nderline) `r`(everse) `k`(blink) `s`(trike).
 - **width** — the cell's `width` field (1 or 2; 0 for a cleared/empty cell,
@@ -93,7 +91,8 @@ These are the subtle bits, documented in `tests/test_vt_roundtrip.c`:
 
 1. **`vterm_new(rows, cols)`** — libvterm takes rows then cols; timui
    buffers are `(w, h)`. Transpose when creating the vterm.
-2. **Default colors**: timui `fg==0`/`bg==0` means "no SGR" ↔ libvterm
+2. **Default colors**: timui `fg==TIMUI_COLOR_DEFAULT` /
+   `bg==TIMUI_COLOR_DEFAULT` means "no SGR" ↔ libvterm
    `VTERM_COLOR_IS_DEFAULT_FG`/`BG`. **Check the default flag *before*
    `vterm_screen_convert_color_to_rgb`** — that call *resets* the default
    flags, so checking after conversion silently turns "default" into the

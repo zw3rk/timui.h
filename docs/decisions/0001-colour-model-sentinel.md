@@ -6,12 +6,12 @@ status: Accepted
 ## Context
 
 `TimuiStyle`/`TimuiCell` store foreground/background as packed `0xRRGGBB`
-(`uint32_t`). The value `0` was overloaded to mean **"default"** — `emit_sgr`
-emits no colour SGR when `fg==0`/`bg==0`. Pure black (`0x000000 == 0`) is
-therefore indistinguishable from default and **unrepresentable**. This is the
-V27 gap: a black-foreground theme slot (e.g. DOS_GRAY's button) rendered with
-the terminal's default foreground instead of black on any terminal whose
-default fg isn't already black.
+(`uint32_t`). Before this decision, the value `0` was overloaded to mean
+**"default"** — `emit_sgr` emitted no colour SGR when `fg==0`/`bg==0`. Pure
+black (`0x000000 == 0`) was therefore indistinguishable from default and
+**unrepresentable**. This was the V27 gap: a black-foreground theme slot
+(e.g. DOS_GRAY's button) rendered with the terminal's default foreground
+instead of black on any terminal whose default fg wasn't already black.
 
 ## Decision
 

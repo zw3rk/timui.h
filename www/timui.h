@@ -4862,12 +4862,9 @@ TIMUI_API int timui_snapshot_row_eq(const TimuiCellBuffer *buf, int row, const c
  * Each cell is five '|'-separated fields: <codepoint>|<fg>|<bg>|<attrs>|<width>
  *   codepoint : glyph for printable ASCII (0x20-0x7e); '.' for an empty cell
  *               (cp==0); otherwise U+XXXX (uppercase hex).
- *   fg / bg   : '-' when "default" (field == 0, matching emit_sgr's "no SGR"
- *               emitted); otherwise 6-digit lowercase hex rrggbb. NOTE: pure
- *               black (0x000000) is indistinguishable from default here, but
- *               that faithfully mirrors the renderer's own model — emit_sgr
- *               treats fg==0/bg==0 as default, so a cell cannot represent
- *               black-as-set-color anyway.
+ *   fg / bg   : '-' when "default" (field == TIMUI_COLOR_DEFAULT, matching
+ *               emit_sgr's "no SGR" emitted); otherwise 6-digit lowercase
+ *               hex rrggbb. Pure black (0x000000) is literal black.
  *   attrs     : '.' if none, else the sorted flag letters:
  *               b(old) d(im) i(talic) u(nderline) r(everse) k(blink) s(trike).
  *   width     : the cell's width field (1 or 2; 0 for a continuation cell).

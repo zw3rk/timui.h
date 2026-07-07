@@ -2,8 +2,9 @@
 
 > Single-header **C99** immediate-mode TUI for modern terminals (Ghostty, kitty, …) with a safe ANSI fallback. DOS / Midnight-Commander aesthetic. Functional / immutable by default, with `_mut` convenience wrappers. No ncurses.
 
-**Status:** v0.2.0 — a working immediate-mode TUI, not a scaffold (202 tests
-green; ASAN/UBSAN clean). See [CHANGELOG.md](CHANGELOG.md):
+**Status:** v0.2.0 — a working immediate-mode TUI, not a scaffold. The unit
+suite is green; CI also runs ASAN/UBSAN/TSAN, golden staleness checks, and the
+Tier A libvterm round-trip gate. See [CHANGELOG.md](CHANGELOG.md):
 
 - **Terminal backend:** POSIX raw mode, screen-mode setup/teardown, terminal-size
   query, capability detection (modern-terminal allowlist + multiplexer reduction),
@@ -21,9 +22,10 @@ green; ASAN/UBSAN clean). See [CHANGELOG.md](CHANGELOG.md):
   `editor`, `file_manager`, `todo`, `procmon`, `chat`, `gallery`, `irc`,
   `radio`, and `sqlite_tui`. Run one with `make run-<name>`.
 
-See [USAGE.md](USAGE.md), [docs/PRD.md](docs/PRD.md), and
-[docs/DECISIONS.md](docs/DECISIONS.md). The website build lives in `www/` and
-publishes the downloadable amalgamated header as `www/timui.h`.
+See [USAGE.md](USAGE.md), [docs/API.md](docs/API.md), and
+[docs/visual-tests.md](docs/visual-tests.md). Historical planning notes live
+under `docs/`. The website build lives in `www/` and publishes the downloadable
+amalgamated header as `www/timui.h`.
 
 ## Build & test
 
@@ -37,10 +39,15 @@ A C99 compiler and libc are the only hard dependencies.
 
 ## Single-header drop-in
 
+Download the release header from <https://timui.dev/timui.h> or use
+`www/timui.h` after `make www`. The repo's `include/timui.h` is the development
+header used by the split source tree.
+
     #define TIMUI_IMPLEMENTATION
     #include "timui.h"
 
-Define `TIMUI_IMPLEMENTATION` in exactly one translation unit. See [USAGE.md](USAGE.md), [docs/PRD.md](docs/PRD.md), and [docs/DECISIONS.md](docs/DECISIONS.md).
+Define `TIMUI_IMPLEMENTATION` in exactly one translation unit. See
+[USAGE.md](USAGE.md) and [docs/API.md](docs/API.md).
 
 ## License
 

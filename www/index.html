@@ -192,13 +192,17 @@
     </p>
 
     <h2>SYNOPSIS</h2>
-    <p>
-      <strong>#define TIMUI_IMPLEMENTATION</strong><br>
-      <strong>#include "timui.h"</strong><br><br>
-      <strong>TimuiConfig</strong> <u>cfg</u> = {0};<br>
-      <strong>Timui</strong> *<u>ui</u> = 0;<br>
-      <strong>timui_open</strong>(&<u>cfg</u>, &<u>ui</u>);
-    </p>
+    <pre><code><span class="c-preproc">#include</span> <span class="c-string">&lt;unistd.h&gt;</span>
+
+<span class="c-preproc">#define</span> <span class="c-define">TIMUI_IMPLEMENTATION</span>
+<span class="c-preproc">#include</span> <span class="c-string">"timui.h"</span>
+
+<span class="c-type">TimuiConfig</span> cfg = {<span class="c-number">0</span>};
+<span class="c-type">Timui</span> *ui = <span class="c-number">0</span>;
+cfg.input_fd = <span class="c-define">STDIN_FILENO</span>;
+cfg.output_fd = <span class="c-define">STDOUT_FILENO</span>;
+cfg.flags = <span class="c-define">TIMUI_FLAG_ALT_SCREEN</span> | <span class="c-define">TIMUI_FLAG_RESTORE_ON_EXIT</span>;
+<span class="c-call">timui_open</span>(&amp;cfg, &amp;ui);</code></pre>
 
     <h2>DESCRIPTION</h2>
     <p>
@@ -235,7 +239,7 @@
       </video>
     </div>
     <div class="caption">
-      Figure 1: Executing `make run-chat`
+      Figure 1: Executing `make run-chat-demo`
     </div>
     <p>
       Or start smaller. The smallest useful program opens the terminal, draws
@@ -298,7 +302,7 @@ Make no mistakes. If mistakes occur, make them small and blame curses.</code></p
 
     <h2>TESTING</h2>
     <p>
-      The library is not a toy. It maintains 202 verified tests via <strong>make test</strong>. Continuous integration runs address, undefined, and thread sanitizers. Golden staleness checks and Tier A libvterm round-trip verification are enforced.
+      The library is not a toy. It maintains 207 verified tests via <strong>make test</strong>. Continuous integration runs address, undefined, and thread sanitizers. Golden staleness checks and Tier A libvterm round-trip verification are enforced.
     </p>
 
     <h2>BUGS AND LIMITATIONS</h2>

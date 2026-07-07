@@ -7,6 +7,15 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 ## [Unreleased]
 
 ### Fixed
+- **Terminal lifecycle hardening**: `timui_open` now fails cleanly when raw-mode
+  setup fails, restores the caller's original input-fd flags on close, restores
+  previous signal handlers instead of resetting them to defaults, and closes any
+  trace fd opened during a failed setup.
+- **Allocator ownership during cell-buffer resize**: an existing buffer keeps
+  the allocator that originally owns its storage when resized, instead of
+  switching to the allocator passed to the resize call.
+- **MPSC payload validation**: `timui_post` rejects `NULL` payloads when
+  `size > 0`, preventing uninitialized queue payload bytes from being copied.
 - **Multiple inline images collapsed to one**: every Kitty placement used `p=1`,
   so messages sharing an image (same id) each replaced the previous placement —
   only one showed. Each on-screen slot now gets a distinct placement id, and last

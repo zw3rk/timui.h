@@ -74,7 +74,7 @@ Evidence: `include/timui.h:1-17`, `include/timui.h:176-205`,
 Core:
 
 - Header-only / stb-style usage via `#define TIMUI_IMPLEMENTATION`.
-- Split development build via `src/timui_core.c` and included sections.
+- Split development build via `src/timui.c` and included sections.
 - C99 baseline, libc hard dependency, optional pthreads.
 - POSIX raw-mode terminal backend.
 - Win32 ConPTY is explicitly a stub returning unsupported.
@@ -113,7 +113,7 @@ Evidence: `README.md:8-24`, `include/timui.h:225-330`,
 
 Use proof, not just claims:
 
-- `nix develop -c make test` currently passes: `all tests passed (196)`.
+- `nix develop -c make test` currently passes with over 200 tests.
 - CI runs `make check`, `make release-check`, golden staleness checks,
   libvterm round-trip tests, and address/undefined/thread sanitizers.
 - `make build` compiles all examples in single-header mode.
@@ -127,9 +127,8 @@ Evidence: `Makefile:68-83`, `Makefile:131-156`, `Makefile:161-248`,
 `Makefile:289-336`, `.github/workflows/ci.yml:20-55`,
 `docs/visual-tests.md:3-13`, `docs/visual-tests.md:60-85`.
 
-Important copy cleanup: `README.md:5-6` still says 182 tests, but the current
-verified count is 196. Use 196 on the website, or avoid a hard count unless the
-site pulls it from CI.
+Important copy cleanup: keep proof current. Prefer "over 200 tests" in planning
+docs, or update any exact public count together with `make test`.
 
 ## Demo story
 
@@ -251,7 +250,7 @@ Avoid:
    ncurses.
 5. Feature grid: terminal protocols, widgets, async messages, images/links,
    testing/rendering, single-header release.
-6. Quality proof: 196 tests, CI gates, sanitizers, libvterm, goldens,
+6. Quality proof: over 200 tests, CI gates, sanitizers, libvterm, goldens,
    release-check.
 7. Honest limitations: Windows stub, terminal-dependent images/Shift+Enter,
    limited bidi/grapheme support, pre-1.0 API movement.
@@ -263,6 +262,8 @@ Keep the first snippet small. Show the loop shape and controlled result, not
 every subsystem.
 
 ```c
+#include <unistd.h>
+
 #define TIMUI_IMPLEMENTATION
 #include "timui.h"
 
@@ -272,8 +273,8 @@ int main(void) {
     bool enabled = true;
 
     cfg.title = "hello timui";
-    cfg.input_fd = 0;
-    cfg.output_fd = 1;
+    cfg.input_fd = STDIN_FILENO;
+    cfg.output_fd = STDOUT_FILENO;
     cfg.profile = TIMUI_PROFILE_AUTO;
     cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_MOUSE |
                 TIMUI_FLAG_RESTORE_ON_EXIT;
