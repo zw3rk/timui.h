@@ -1975,15 +1975,23 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->mouse_clicked = 0;
     {
         TimuiEvent ev;
+        int saw_mouse_press = 0, saw_mouse_release = 0;
+        int press_x = 0, press_y = 0;
         while(timui_poll_event(ui, &ev)){
             if(ev.kind == TIMUI_EVENT_MOUSE){
+                int mx = ev.as.mouse.x - 1;
+                int my = ev.as.mouse.y - 1;
                 ui->mouse_wheel += ev.as.mouse.wheel_y;   /* expose wheel to the app */
-                ui->mouse_x = ev.as.mouse.x - 1; ui->mouse_y = ev.as.mouse.y - 1;
+                ui->mouse_x = mx; ui->mouse_y = my;
                 if(ev.as.mouse.wheel_y == 0 &&
-                   (ev.as.mouse.button == 0 || ev.as.mouse.released))
-                    timui_interact_set_mouse(&ui->ia, ev.as.mouse.x - 1, ev.as.mouse.y - 1,
+                   (ev.as.mouse.button == 0 || ev.as.mouse.released)){
+                    timui_interact_set_mouse(&ui->ia, mx, my,
                                              ev.as.mouse.button == 0 && ev.as.mouse.pressed);
-                if(ev.as.mouse.button == 0 && ev.as.mouse.pressed) ui->mouse_clicked = 1;
+                    if(ev.as.mouse.button == 0 && ev.as.mouse.pressed){
+                        saw_mouse_press = 1; press_x = mx; press_y = my; ui->mouse_clicked = 1;
+                    }
+                    if(ev.as.mouse.released) saw_mouse_release = 1;
+                }
             } else if(ev.kind == TIMUI_EVENT_KEY){
                 ui->key_pressed = ev.as.key.key;   /* app-level key detection */
                 ui->key_mods = ev.as.key.mods;
@@ -2040,9 +2048,13 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 }
             }
         }
+        if(saw_mouse_press && saw_mouse_release)
+            timui_interact_set_mouse(&ui->ia, press_x, press_y, ui->ia.mouse_down);
+        timui_interact_begin(&ui->ia);
+        if(saw_mouse_press) ui->ia.mouse_pressed = 1;
+        if(saw_mouse_release) ui->ia.mouse_released = 1;
         ui->paste_len = 0;   /* queued paste slices have been consumed */
     }
-    timui_interact_begin(&ui->ia);
     ui->cursor_visible = 0;           /* F1.4: focused input re-requests each frame */
     ui->curr.has_clip = 0;            /* fresh clip stack each frame */
     ui->clip_count = 0;
