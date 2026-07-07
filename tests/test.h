@@ -57,6 +57,7 @@ void test_mpsc_overflow_guard(void);
 void test_fake_capture_output(void);
 void test_fake_inject_input(void);
 void test_fake_grows(void);
+void test_transport_close_hook(void);
 void test_write_all_under_backpressure(void);
 void test_screen_enter_emits_modes(void);
 void test_screen_exit_reverses(void);

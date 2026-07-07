@@ -52,12 +52,14 @@ VT_SRCS   :=
 ifeq ($(WITH_VTERM),1)
   VT_CFLAGS := $(shell pkg-config --cflags libvterm 2>/dev/null)
   VT_LIBS   := $(shell pkg-config --libs   libvterm 2>/dev/null)
-  ifneq ($(VT_LIBS),)
-    VT_CFLAGS += -DTIMUI_WITH_VTERM_TESTS
-    VT_SRCS := $(TSTDIR)/test_vt_roundtrip.c
-  else
-    $(error libvterm not found via pkg-config; run inside `nix develop`, or install libvterm)
+  ifeq ($(VT_LIBS),)
+    # nixpkgs' libvterm has no libvterm.pc; nix develop still exposes the
+    # library path through the compiler wrapper, so fall back to the link name
+    # and let compile/link fail honestly if libvterm is absent.
+    VT_LIBS := -lvterm
   endif
+  VT_CFLAGS += -DTIMUI_WITH_VTERM_TESTS
+  VT_SRCS := $(TSTDIR)/test_vt_roundtrip.c
 endif
 
 ifeq ($(NO_COLOR),)

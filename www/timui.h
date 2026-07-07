@@ -1424,7 +1424,11 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     ui->trace_fd = -1;
     timui_caps_detect(&ui->caps, NULL, NULL, NULL);
     r = timui_setup(ui, w, h);
-    if(r != TIMUI_OK){ alloc->free(alloc->userdata, ui, sizeof *ui); return r; }
+    if(r != TIMUI_OK){
+        if(transport.close) transport.close(&transport);
+        alloc->free(alloc->userdata, ui, sizeof *ui);
+        return r;
+    }
     *out_ui = ui;
     return TIMUI_OK;
 }
@@ -1538,6 +1542,7 @@ TIMUI_API void timui_close(Timui *ui){
     timui_interact_destroy(&ui->ia);   /* V24: free the dynamic tab_order */
     if(ui->have_ids) timui_id_stack_destroy(&ui->ids);
     if(ui->trace_fd >= 0) close(ui->trace_fd);
+    if(ui->have_transport && ui->transport.close) ui->transport.close(&ui->transport);
     al = ui->alloc;
     al.free(al.userdata, ui, sizeof *ui);
 }
@@ -2723,7 +2728,9 @@ static int fake_read(TimuiTransport *t, void *buf, size_t cap){
     return (int)n;
 }
 static int fake_flush(TimuiTransport *t){ (void)t; return 0; }
-static void fake_close(TimuiTransport *t){ (void)t; }
+static void fake_close(TimuiTransport *t){
+    if(t && t->ctx) timui_fake_destroy((TimuiFakeTransport *)t->ctx);
+}
 
 TIMUI_API TimuiResult timui_fake_init(TimuiFakeTransport *f, const TimuiAllocator *alloc){
     if(!f || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
@@ -2946,7 +2953,6 @@ TIMUI_API void timui_sync_end(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?2026l"); 
 TIMUI_API void timui_hide_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25l"); }
 TIMUI_API void timui_show_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25h"); }
 #undef TIMUI_EMIT   /* Z10: impl-only macro must not leak into the consumer TU */
-
 /* ---- input parser ------------------------------------------------------ *
  * Incremental byte->event state machine: ground/esc/csi/ss3/utf8. Emits a
  * TimuiEvent through cb for each complete key or text rune; invalid bytes

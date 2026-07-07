@@ -2,7 +2,7 @@
 
 > Single-header **C99** immediate-mode TUI for modern terminals (Ghostty, kitty, …) with a safe ANSI fallback. DOS / Midnight-Commander aesthetic. Functional / immutable by default, with `_mut` convenience wrappers. No ncurses.
 
-**Status:** v0.2.0 — a working immediate-mode TUI, not a scaffold (201 tests
+**Status:** v0.2.0 — a working immediate-mode TUI, not a scaffold (202 tests
 green; ASAN/UBSAN clean). See [CHANGELOG.md](CHANGELOG.md):
 
 - **Terminal backend:** POSIX raw mode, screen-mode setup/teardown, terminal-size

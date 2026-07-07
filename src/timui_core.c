@@ -138,7 +138,11 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     ui->trace_fd = -1;
     timui_caps_detect(&ui->caps, NULL, NULL, NULL);
     r = timui_setup(ui, w, h);
-    if(r != TIMUI_OK){ alloc->free(alloc->userdata, ui, sizeof *ui); return r; }
+    if(r != TIMUI_OK){
+        if(transport.close) transport.close(&transport);
+        alloc->free(alloc->userdata, ui, sizeof *ui);
+        return r;
+    }
     *out_ui = ui;
     return TIMUI_OK;
 }
@@ -252,6 +256,7 @@ TIMUI_API void timui_close(Timui *ui){
     timui_interact_destroy(&ui->ia);   /* V24: free the dynamic tab_order */
     if(ui->have_ids) timui_id_stack_destroy(&ui->ids);
     if(ui->trace_fd >= 0) close(ui->trace_fd);
+    if(ui->have_transport && ui->transport.close) ui->transport.close(&ui->transport);
     al = ui->alloc;
     al.free(al.userdata, ui, sizeof *ui);
 }

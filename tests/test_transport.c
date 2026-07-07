@@ -53,6 +53,45 @@ TIMUI_TEST(test_fake_grows){
     timui_fake_destroy(&f);
 }
 
+typedef struct CloseProbe {
+    int closed;
+} CloseProbe;
+
+static int close_probe_write(TimuiTransport *t, const void *data, size_t len){
+    (void)t; (void)data;
+    return (int)len;
+}
+static int close_probe_read(TimuiTransport *t, void *buf, size_t cap){
+    (void)t; (void)buf; (void)cap;
+    return 0;
+}
+static int close_probe_flush(TimuiTransport *t){
+    (void)t;
+    return 0;
+}
+static void close_probe_close(TimuiTransport *t){
+    CloseProbe *p = (CloseProbe *)t->ctx;
+    p->closed++;
+}
+
+TIMUI_TEST(test_transport_close_hook){
+    TimuiAllocator al = timui_default_allocator();
+    CloseProbe p = {0};
+    TimuiTransport t;
+    Timui *ui = NULL;
+
+    t.write = close_probe_write;
+    t.read = close_probe_read;
+    t.flush = close_probe_flush;
+    t.close = close_probe_close;
+    t.ctx = &p;
+
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 2, 2, &al) == TIMUI_OK);
+    TIMUI_CHECK(p.closed == 0);
+    timui_close(ui);
+    TIMUI_CHECK(p.closed == 1);
+}
+
 /* The real-fd transport must write EVERY byte even when the fd is non-blocking
  * and its buffer is full (heavy render + fast typing) — a single write() that
  * dropped the remainder loses render bytes and garbles the screen. Drive a pipe

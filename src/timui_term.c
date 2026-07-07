@@ -26,7 +26,9 @@ static int fake_read(TimuiTransport *t, void *buf, size_t cap){
     return (int)n;
 }
 static int fake_flush(TimuiTransport *t){ (void)t; return 0; }
-static void fake_close(TimuiTransport *t){ (void)t; }
+static void fake_close(TimuiTransport *t){
+    if(t && t->ctx) timui_fake_destroy((TimuiFakeTransport *)t->ctx);
+}
 
 TIMUI_API TimuiResult timui_fake_init(TimuiFakeTransport *f, const TimuiAllocator *alloc){
     if(!f || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
@@ -249,4 +251,3 @@ TIMUI_API void timui_sync_end(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?2026l"); 
 TIMUI_API void timui_hide_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25l"); }
 TIMUI_API void timui_show_cursor(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?25h"); }
 #undef TIMUI_EMIT   /* Z10: impl-only macro must not leak into the consumer TU */
-
