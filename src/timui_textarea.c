@@ -70,7 +70,9 @@ TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, Timu
     res.submitted = 0;
     res.focused = 0;
     if(!f || !f->ui || !st.text || st.cap == 0) return res;
-    if(st.cursor >= st.cap) st.cursor = st.cap - 1;   /* Y1: untrusted cursor -> OOB */
+    { size_t text_len = text_len_bounded_(st.text, st.cap);
+      if(text_len >= st.cap) text_len = st.cap - 1;
+      if(st.cursor > text_len) st.cursor = text_len; }   /* Y1: untrusted cursor -> OOB */
     ui = f->ui;
     ir = timui_interact_button(&ui->ia, id, r);
     res.focused = ir.focused;

@@ -236,6 +236,28 @@ TIMUI_TEST(test_input_field_grapheme_edit){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_field_cursor_clamped_to_text){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    char text[8] = { 'a', 'b', 'c', '\0', 'X', 'Y', 'Z', '\0' };
+    TimuiInputState is = { text, sizeof text, 6, 0 };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+
+    timui_begin(ui, &f);
+    (void)timui_input_field(f, TIMUI_ID("if"), TIMUI_RECT(0, 0, 10, 1), &is);
+    timui_end(f);
+
+    TIMUI_CHECK(is.cursor == 3);
+    TIMUI_CHECK(strcmp(text, "abc") == 0);
+    timui_close(ui);
+}
+
 /* Regression: several Enters arriving in ONE frame (a paste, or input faster
  * than the frame rate) must submit ONE segment per frame, not merge — so
  * "one\rtwo\r" yields "one" then "two", never "onetwo". The caller consumes and

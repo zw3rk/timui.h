@@ -387,6 +387,28 @@ TIMUI_TEST(test_text_area_cursor_overcap_safe){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_text_area_cursor_clamped_to_text){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    char text[8] = { 'a', 'b', 'c', '\0', 'X', 'Y', 'Z', '\0' };
+    TimuiTextAreaState tas = { text, sizeof text, 6, 0 };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+
+    timui_begin(ui, &f);
+    timui_text_area(f, TIMUI_ID("ta"), TIMUI_RECT(0, 0, 10, 3), &tas);
+    timui_end(f);
+
+    TIMUI_CHECK(tas.cursor == 3);
+    TIMUI_CHECK(strcmp(text, "abc") == 0);
+    timui_close(ui);
+}
+
 /* ---- ConPTY (#55) ---- */
 TIMUI_TEST(test_conpty_unsupported){
     TimuiTransport tr;

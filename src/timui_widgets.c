@@ -269,6 +269,11 @@ static size_t text_erase_(char *buf, size_t from, size_t to){
     memmove(buf + from, buf + to, len - to + 1);     /* +1 also moves the NUL */
     return from;
 }
+static size_t text_len_bounded_(const char *buf, size_t cap){
+    size_t len = 0;
+    while(len < cap && buf[len]) len++;
+    return len;
+}
 
 TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char *buf, size_t cap){
     Timui *ui;
@@ -346,7 +351,9 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
     bool submitted = false;
     if(!f || !f->ui || !st || !st->text || st->cap == 0) return false;
     ui = f->ui;
-    if(st->cursor >= st->cap) st->cursor = st->cap - 1;   /* Y1-style: distrust caller cursor */
+    { size_t text_len = text_len_bounded_(st->text, st->cap);
+      if(text_len >= st->cap) text_len = st->cap - 1;
+      if(st->cursor > text_len) st->cursor = text_len; }   /* Y1-style: distrust caller cursor */
     {
         ir = timui_interact_button(&ui->ia, id, r);
         if(ir.focused){
