@@ -108,6 +108,7 @@ void test_cells_resize(void);
 void test_cells_init_overflow_guard(void);
 void test_cells_resize_keeps_original_allocator(void);
 void test_resize_oom_keeps_dims(void);
+void test_resize_oom_rollback_failure_keeps_dims(void);
 void test_utf8_decode(void);
 void test_utf8_width(void);
 void test_utf8_decode_above_max(void);

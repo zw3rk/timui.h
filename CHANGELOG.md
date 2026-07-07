@@ -11,6 +11,9 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   setup fails, restores the caller's original input-fd flags on close, restores
   previous signal handlers instead of resetting them to defaults, and closes any
   trace fd opened during a failed setup.
+- **Transactional UI resize**: `timui_ui_resize` now allocates replacement
+  buffers before touching the live buffers, so an out-of-memory error cannot
+  leave `curr`, `prev`, and `ui->w/h` with divergent dimensions.
 - **Allocator ownership during cell-buffer resize**: an existing buffer keeps
   the allocator that originally owns its storage when resized, instead of
   switching to the allocator passed to the resize call.

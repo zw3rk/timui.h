@@ -480,17 +480,22 @@ TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame){
 }
 TIMUI_API TimuiResult timui_ui_resize(Timui *ui, int w, int h){
     TimuiResult r;
-    int ow, oh;
+    TimuiCellBuffer next_prev, next_curr;
     if(!ui || w <= 0 || h <= 0) return TIMUI_ERR_INVALID_ARGUMENT;
-    ow = ui->w; oh = ui->h;
-    /* Resize prev first; if curr then fails, roll prev back. The old order
-     * (curr then prev) left curr at the new size but ui->w/h and prev at the
-     * old — a divergence where layout used stale dims while the cell buffer
-     * had grown. ui->w/h commit only when both buffers succeed. */
-    r = timui_cells_resize(&ui->prev, w, h, &ui->alloc);
-    if(r != TIMUI_OK) return r;                                         /* Z12: report OOM */
-    r = timui_cells_resize(&ui->curr, w, h, &ui->alloc);
-    if(r != TIMUI_OK){ (void)timui_cells_resize(&ui->prev, ow, oh, &ui->alloc); return r; }
+    memset(&next_prev, 0, sizeof next_prev);
+    memset(&next_curr, 0, sizeof next_curr);
+    /* Allocate the replacement buffers before touching the live pair. A failed
+     * resize then leaves curr/prev/ui dimensions identical, with no rollback
+     * allocation needed. */
+    r = timui_cells_init(&next_prev, w, h, &ui->alloc);
+    if(r != TIMUI_OK) return r;
+    r = timui_cells_init(&next_curr, w, h, &ui->alloc);
+    if(r != TIMUI_OK){ timui_cells_destroy(&next_prev); return r; }
+    timui_cells_destroy(&ui->prev);
+    timui_cells_destroy(&ui->curr);
+    ui->prev = next_prev;
+    ui->curr = next_curr;
+    ui->have_buffers = 1;
     ui->w = w;
     ui->h = h;
     timui_renderer_reset(&ui->renderer);   /* cursor/SGR tracking invalidated */

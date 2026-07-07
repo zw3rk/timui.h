@@ -105,15 +105,23 @@ TIMUI_TEST(test_cells_resize_keeps_original_allocator){
     TIMUI_CHECK(c1.wrong_free == 0 && c2.wrong_free == 0);
 }
 
-/* V10: if curr's resize fails after prev's succeeded, ui_resize must roll back
- * so curr/prev/ui dimensions never diverge. We arm a failing realloc to fail
- * the 2nd realloc after arming (curr's), then assert the frame width AND the
- * frame buffer width both stay at the original. */
-typedef struct { int armed; int fail_on; int n; } FailCtx;
-static void *fc_alloc(void *ud, size_t sz){ (void)ud; return malloc(sz); }
+/* V10: a failed ui_resize must leave curr/prev/ui dimensions identical. The
+ * failure injector counts armed alloc/realloc calls so this covers both the old
+ * rollback path and the transactional replacement-buffer path. */
+typedef struct { int armed; int fail_on; int fail_on2; int n; } FailCtx;
+static int fc_should_fail(FailCtx *fc){
+    if(!fc->armed) return 0;
+    fc->n++;
+    return fc->n == fc->fail_on || fc->n == fc->fail_on2;
+}
+static void *fc_alloc(void *ud, size_t sz){
+    FailCtx *fc = (FailCtx *)ud;
+    if(fc_should_fail(fc)) return NULL;
+    return malloc(sz);
+}
 static void *fc_realloc(void *ud, void *p, size_t os, size_t ns){
     FailCtx *fc = (FailCtx *)ud; (void)os;
-    if(fc->armed){ fc->n++; if(fc->n == fc->fail_on) return NULL; }
+    if(fc_should_fail(fc)) return NULL;
     return realloc(p, ns);
 }
 static void fc_free(void *ud, void *p, size_t sz){ (void)ud; (void)sz; free(p); }
@@ -124,14 +132,14 @@ TIMUI_TEST(test_resize_oom_keeps_dims){
     TimuiTransport t;
     Timui *ui = NULL;
     TimuiFrame *f = NULL;
-    FailCtx fc = {0, 0, 0};
+    FailCtx fc = {0, 0, 0, 0};
     al.userdata = &fc;
     al.alloc = fc_alloc; al.realloc = fc_realloc; al.free = fc_free;
 
     timui_fake_init(&fake, &al);
     t = timui_fake_transport(&fake);
     timui_open_for_test(&ui, t, 30, 10, &al);
-    fc.armed = 1; fc.fail_on = 2;             /* fail curr's resize (2nd armed realloc) */
+    fc.armed = 1; fc.fail_on = 2;             /* fail curr/2nd replacement buffer */
     /* Z12: the OOM is now reported to the caller (was void). */
     TIMUI_CHECK(timui_ui_resize(ui, 40, 12) == TIMUI_ERR_OUT_OF_MEMORY);
     timui_begin(ui, &f);
@@ -145,4 +153,36 @@ TIMUI_TEST(test_resize_oom_keeps_dims){
     TIMUI_CHECK(timui_ui_resize(NULL, 40, 12) == TIMUI_ERR_INVALID_ARGUMENT);
     TIMUI_CHECK(timui_ui_resize(ui, 0, 12) == TIMUI_ERR_INVALID_ARGUMENT);
     timui_close(ui);
+}
+
+TIMUI_TEST(test_resize_oom_rollback_failure_keeps_dims){
+    TimuiAllocator al;
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    FailCtx fc = {0, 0, 0, 0};
+    al.userdata = &fc;
+    al.alloc = fc_alloc; al.realloc = fc_realloc; al.free = fc_free;
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    fc.armed = 1;
+    fc.fail_on = 2;                              /* fail curr/2nd replacement buffer */
+    fc.fail_on2 = 3;                             /* fail the old rollback path too */
+
+    TIMUI_CHECK(timui_ui_resize(ui, 40, 12) == TIMUI_ERR_OUT_OF_MEMORY);
+    timui_begin(ui, &f);
+    TIMUI_CHECK(timui_width(f) == 30 && timui_height(f) == 10);
+    TIMUI_CHECK(timui_frame_buffer(f)->w == 30);
+    timui_end(f);                                /* swaps prev/curr */
+
+    timui_begin(ui, &f);
+    TIMUI_CHECK(timui_width(f) == 30 && timui_height(f) == 10);
+    TIMUI_CHECK(timui_frame_buffer(f)->w == 30);
+    timui_end(f);
+
+    timui_close(ui);
+    timui_fake_destroy(&fake);
 }
