@@ -118,6 +118,21 @@
       color: var(--bg);
     }
 
+    a.timui-link,
+    a.timui-link strong {
+      color: var(--bold-color);
+    }
+
+    a.timui-link:hover {
+      text-decoration: underline;
+      background: var(--bold-color);
+      color: var(--bg);
+    }
+
+    a.timui-link:hover strong {
+      color: var(--bg);
+    }
+
     /* Code & Pre */
     pre {
       padding: 0;
@@ -173,7 +188,7 @@
 
     <h2>NAME</h2>
     <p>
-      <strong>timui.h</strong> (pronounced "timmy") - tiny immediate-mode UI for terminals
+      <a class="timui-link" href="timui.h"><strong>timui.h</strong></a> (pronounced "timmy") - tiny immediate-mode UI for terminals
     </p>
 
     <h2>SYNOPSIS</h2>
@@ -187,7 +202,7 @@
 
     <h2>DESCRIPTION</h2>
     <p>
-      <a href="timui.h"><strong>timui.h</strong></a> is a single-header C99 immediate-mode TUI library for modern terminals. It brings DOS-era ergonomics to Kitty-class terminal protocol reality. No ncurses. No runtime circus.
+      <a class="timui-link" href="timui.h"><strong>timui.h</strong></a> is a single-header C99 immediate-mode TUI library for modern terminals. It brings DOS-era ergonomics to Kitty-class terminal protocol reality. No ncurses. No runtime circus.
     </p>
     <p>
       The library is designed for a very specific contradiction:
@@ -300,12 +315,12 @@ Make no mistakes. If mistakes occur, make them small and blame curses.</code></p
     <p>
       <strong>Header</strong>: <a href="timui.h">timui.h</a><br>
       <strong>Agent notes</strong>: <a href="llms.txt">llms.txt</a><br>
-      <strong>Source repo</strong>: <a href="https://github.com/zw3rk/timui.h">github.com/zw3rk/timui.h</a> - opening shortly; use the header for now.
+      <strong>Source repo</strong>: <a href="https://github.com/zw3rk/timui.h">github.com/zw3rk/timui.h</a> - opening shortly, cleanup in progress; use the header for now.
     </p>
 
     <h2>AUTHORS</h2>
     <p>
-      The terminal is weird. <strong>timui.h</strong> is weird back.<br>
+      The terminal is weird. <a class="timui-link" href="timui.h"><strong>timui.h</strong></a> is weird back.<br>
       Curse curses, not your users.
     </p>
 

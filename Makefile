@@ -121,13 +121,18 @@ endif
 .PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-irc run-irc smoke-irc
 
 help: ## Show this help
-	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n\n"
-	@printf "$(C_CYAN)usage: nix develop -c make <target>$(C_RESET)\n\n"
-	@printf "  $(C_BOLD)targets$(C_RESET)\n"
-	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(C_GREEN)%-14s$(C_RESET) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
-	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "run-<name>" "run one example: editor procmon todo chat file_manager"
-	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "rec-<name>" "record an interactive session -> recordings/<name>.cast"
-	@printf "  $(C_GREEN)%-14s$(C_RESET) %s\n" "drive-<name>" "drive headless w/ recordings/<name>.in -> .raw + .txt"
+	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n"
+	@printf "$(C_CYAN)usage: nix develop -c make <target>$(C_RESET)  $(C_YELL)(grouped by section)$(C_RESET)\n"
+	@# Walk the file: a "# N. NAME — …" banner opens a group (printed lazily on its
+	@# first documented target); each "target: ## desc" prints under it, name padded.
+	@awk 'BEGIN{FS=":.*##"} \
+	  /^# [0-9]+\. /{s=substr($$0,3);sub(/ *—.*/,"",s);sub(/^[0-9]+\. /,"",s);sec=s;shown=0;next} \
+	  /^[a-zA-Z0-9_-]+:.*##/{if(!shown){printf "\n  $(C_BOLD)%s$(C_RESET)\n",sec;shown=1} \
+	                         printf "    $(C_GREEN)%-24s$(C_RESET) %s\n",$$1,$$2}' $(MAKEFILE_LIST)
+	@printf "\n  $(C_BOLD)WILDCARDS$(C_RESET)\n"
+	@printf "    $(C_GREEN)%-24s$(C_RESET) %s\n" "run-<name>"   "run one example (editor procmon todo chat file_manager gallery irc)"
+	@printf "    $(C_GREEN)%-24s$(C_RESET) %s\n" "rec-<name>"   "record an interactive session -> recordings/<name>.cast"
+	@printf "    $(C_GREEN)%-24s$(C_RESET) %s\n" "drive-<name>" "drive headless w/ recordings/<name>.in -> .raw + .txt"
 
 build: $(EXAMPLES) $(BLDDIR)/radio ## Build all examples (single-header mode)
 	@printf "$(C_GREEN)✓ build complete$(C_RESET)\n"
