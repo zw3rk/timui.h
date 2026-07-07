@@ -2,8 +2,8 @@
 
 > Single-header **C99** immediate-mode TUI for modern terminals (Ghostty, kitty, …) with a safe ANSI fallback. DOS / Midnight-Commander aesthetic. Functional / immutable by default, with `_mut` convenience wrappers. No ncurses.
 
-**Status:** v0.2.0 — a working immediate-mode TUI, not a scaffold (182 unit
-tests green; ASAN/UBSAN clean). See [CHANGELOG.md](CHANGELOG.md):
+**Status:** v0.2.0 — a working immediate-mode TUI, not a scaffold (201 tests
+green; ASAN/UBSAN clean). See [CHANGELOG.md](CHANGELOG.md):
 
 - **Terminal backend:** POSIX raw mode, screen-mode setup/teardown, terminal-size
   query, capability detection (modern-terminal allowlist + multiplexer reduction),
@@ -17,13 +17,13 @@ tests green; ASAN/UBSAN clean). See [CHANGELOG.md](CHANGELOG.md):
   **`input_field`/`text_area` with in-line cursor editing**, listbox, tree,
   table, command palette, panel/label, function bar, menu bar, message box —
   controlled + `_mut`.
-- **Examples:** `hello`, `counter` (functional), `form`, `mini_commander`, and
-  five larger demos — `editor` (text_area cursor editing), `file_manager`
-  (MC-style dual-pane browser), `todo` (functional model/view/update), `procmon`
-  (live `ps` table), `chat` (thread-safe `timui_post` from a worker thread). Run
-  one with `make run-<name>`.
+- **Examples:** `hello`, `counter` (functional), `form`, `mini_commander`,
+  `editor`, `file_manager`, `todo`, `procmon`, `chat`, `gallery`, `irc`,
+  `radio`, and `sqlite_tui`. Run one with `make run-<name>`.
 
-See [docs/PRD.md](docs/PRD.md) (roadmap, §15 progress) and [docs/DECISIONS.md](docs/DECISIONS.md).
+See [USAGE.md](USAGE.md), [docs/PRD.md](docs/PRD.md), and
+[docs/DECISIONS.md](docs/DECISIONS.md). The website build lives in `www/` and
+publishes the downloadable amalgamated header as `www/timui.h`.
 
 ## Build & test
 
