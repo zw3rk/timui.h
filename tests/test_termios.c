@@ -152,3 +152,40 @@ TIMUI_TEST(test_open_restores_previous_signal_handler){
     close(slave);
     close(master);
 }
+
+TIMUI_TEST(test_open_fails_when_raw_mode_fails){
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int slave, nullfd, orig_flags, after_flags;
+    char *name;
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+    TimuiResult r;
+
+    TIMUI_CHECK(master >= 0);
+    if(master < 0) return;
+    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
+    name = ptsname(master);
+    if(!name){ close(master); TIMUI_CHECK(0); return; }
+    slave = open(name, O_RDWR);
+    if(slave < 0){ close(master); TIMUI_CHECK(0); return; }
+    nullfd = open("/dev/null", O_WRONLY);
+    if(nullfd < 0){ close(slave); close(master); TIMUI_CHECK(0); return; }
+
+    orig_flags = fcntl(slave, F_GETFL, 0);
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = slave;
+    cfg.output_fd = nullfd;
+
+    timui_termios_fail_tcsetattr_for_test(1);
+    r = timui_open(&cfg, &ui);
+    timui_termios_fail_tcsetattr_for_test(0);
+
+    TIMUI_CHECK(r == TIMUI_ERR_OS);
+    TIMUI_CHECK(ui == NULL);
+    after_flags = fcntl(slave, F_GETFL, 0);
+    TIMUI_CHECK(orig_flags >= 0 && after_flags == orig_flags);
+
+    close(nullfd);
+    close(slave);
+    close(master);
+}

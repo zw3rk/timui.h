@@ -1504,6 +1504,13 @@ static void timui_restore_input_flags(Timui *ui){
     (void)fcntl(ui->fd.read_fd, F_SETFL, ui->input_flags);
     ui->input_flags_saved = 0;
 }
+static void timui_open_cleanup_failed(Timui *ui){
+    if(!ui) return;
+    if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
+    if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); ui->termios_active = 0; }
+    timui_restore_input_flags(ui);
+    if(ui->trace_fd >= 0){ close(ui->trace_fd); ui->trace_fd = -1; }
+}
 
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     Timui *ui;
@@ -1542,15 +1549,19 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
         }
     }
     if(isatty(cfg->input_fd)){
-        if(timui_termios_enter(&ui->termios, cfg->input_fd) == TIMUI_OK) ui->termios_active = 1;
+        r = timui_termios_enter(&ui->termios, cfg->input_fd);
+        if(r != TIMUI_OK){
+            timui_open_cleanup_failed(ui);
+            al.free(al.userdata, ui, sizeof *ui);
+            return r;
+        }
+        ui->termios_active = 1;
         timui_screen_enter(&ui->transport, &ui->screen, cfg->flags, timui_str_from_cstr(cfg->title));
         ui->screen_active = 1;
     }
     r = timui_setup(ui, w, h);
     if(r != TIMUI_OK){
-        if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
-        if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
-        timui_restore_input_flags(ui);
+        timui_open_cleanup_failed(ui);
         al.free(al.userdata, ui, sizeof *ui);
         return r;
     }
