@@ -30,7 +30,7 @@ TIMUI_API TimuiResult timui_cells_resize(TimuiCellBuffer *buf, int w, int h, con
     size_t n, oldn;
     TimuiCell *nc;
     if(!buf || w <= 0 || h <= 0) return TIMUI_ERR_INVALID_ARGUMENT;
-    if(alloc) buf->alloc = *alloc;
+    if(!buf->cells && alloc) buf->alloc = *alloc;
     if((size_t)w > SIZE_MAX / (size_t)h) return TIMUI_ERR_OUT_OF_MEMORY;     /* w*h overflow */
     n = (size_t)w * (size_t)h;
     if(n > SIZE_MAX / sizeof(TimuiCell)) return TIMUI_ERR_OUT_OF_MEMORY;     /* n*sizeof overflow */
@@ -499,4 +499,3 @@ TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot
     return th->slots[slot];
 }
 #undef R_EMIT   /* Z10: impl-only macro must not leak into the consumer TU */
-

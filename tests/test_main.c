@@ -93,6 +93,7 @@ int main(void){
         test_cells_put_get_roundtrip,
         test_cells_resize,
         test_cells_init_overflow_guard,
+        test_cells_resize_keeps_original_allocator,
         test_resize_oom_keeps_dims,
         test_utf8_decode,
         test_utf8_width,

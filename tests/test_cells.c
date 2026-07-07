@@ -61,6 +61,50 @@ TIMUI_TEST(test_cells_init_overflow_guard){
     TIMUI_CHECK(b.cells == NULL);
 }
 
+typedef struct { size_t owner; } OwnerHdr;
+typedef struct { size_t id; int wrong_realloc; int wrong_free; } OwnerCtx;
+static void *owner_alloc(void *ud, size_t sz){
+    OwnerCtx *ctx = (OwnerCtx *)ud;
+    OwnerHdr *h = (OwnerHdr *)malloc(sizeof(*h) + sz);
+    if(!h) return NULL;
+    h->owner = ctx->id;
+    return h + 1;
+}
+static void *owner_realloc(void *ud, void *p, size_t os, size_t ns){
+    OwnerCtx *ctx = (OwnerCtx *)ud;
+    OwnerHdr *h;
+    (void)os;
+    if(!p) return owner_alloc(ud, ns);
+    h = ((OwnerHdr *)p) - 1;
+    if(h->owner != ctx->id){ ctx->wrong_realloc++; return NULL; }
+    h = (OwnerHdr *)realloc(h, sizeof(*h) + ns);
+    if(!h) return NULL;
+    h->owner = ctx->id;
+    return h + 1;
+}
+static void owner_free(void *ud, void *p, size_t sz){
+    OwnerCtx *ctx = (OwnerCtx *)ud;
+    OwnerHdr *h;
+    (void)sz;
+    if(!p) return;
+    h = ((OwnerHdr *)p) - 1;
+    if(h->owner != ctx->id) ctx->wrong_free++;
+    free(h);
+}
+
+TIMUI_TEST(test_cells_resize_keeps_original_allocator){
+    OwnerCtx c1 = {1, 0, 0}, c2 = {2, 0, 0};
+    TimuiAllocator a1 = {&c1, owner_alloc, owner_realloc, owner_free};
+    TimuiAllocator a2 = {&c2, owner_alloc, owner_realloc, owner_free};
+    TimuiCellBuffer b;
+
+    TIMUI_CHECK(timui_cells_init(&b, 4, 4, &a1) == TIMUI_OK);
+    TIMUI_CHECK(timui_cells_resize(&b, 8, 8, &a2) == TIMUI_OK);
+    TIMUI_CHECK(c1.wrong_realloc == 0 && c2.wrong_realloc == 0);
+    timui_cells_destroy(&b);
+    TIMUI_CHECK(c1.wrong_free == 0 && c2.wrong_free == 0);
+}
+
 /* V10: if curr's resize fails after prev's succeeded, ui_resize must roll back
  * so curr/prev/ui dimensions never diverge. We arm a failing realloc to fail
  * the 2nd realloc after arming (curr's), then assert the frame width AND the
