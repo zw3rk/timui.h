@@ -57,8 +57,9 @@ TIMUI_TEST(test_cells_resize){
 TIMUI_TEST(test_cells_init_overflow_guard){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;
+    memset(&b, 0xA5, sizeof b);
     TIMUI_CHECK(timui_cells_init(&b, 0x7fffffff, 0x7fffffff, &al) == TIMUI_ERR_OUT_OF_MEMORY);
-    TIMUI_CHECK(b.cells == NULL);
+    TIMUI_CHECK(b.cells == NULL && b.links == NULL && b.w == 0 && b.h == 0);
 }
 
 typedef struct { size_t owner; } OwnerHdr;

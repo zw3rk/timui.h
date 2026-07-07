@@ -1,7 +1,9 @@
 /* ---- cell buffer ------------------------------------------------------ */
 TIMUI_API TimuiResult timui_cells_init(TimuiCellBuffer *buf, int w, int h, const TimuiAllocator *alloc){
     size_t n;
-    if(!buf || w <= 0 || h <= 0 || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!buf) return TIMUI_ERR_INVALID_ARGUMENT;
+    memset(buf, 0, sizeof *buf);
+    if(w <= 0 || h <= 0 || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
     if((size_t)w > SIZE_MAX / (size_t)h) return TIMUI_ERR_OUT_OF_MEMORY;     /* w*h overflow */
     n = (size_t)w * (size_t)h;
     if(n > SIZE_MAX / sizeof(TimuiCell)) return TIMUI_ERR_OUT_OF_MEMORY;     /* n*sizeof overflow */
@@ -373,6 +375,12 @@ TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
             r->last_x = x + (cc->width >= 2 ? 2 : 1);   /* wide glyph advances cursor by 2 */
             r->last_y = y;
         }
+    }
+    if(r->have_last_link){
+        emit_osc8(t, NULL);
+        r->last_link = 0;
+        r->have_last_link = 0;
+        r->last_link_uri[0] = '\0';
     }
     if(t->flush) t->flush(t);
 }

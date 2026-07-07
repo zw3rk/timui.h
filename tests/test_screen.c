@@ -39,10 +39,12 @@ TIMUI_TEST(test_screen_exit_reverses){
     TimuiTransport t;
     TimuiScreenMode m;
     TimuiStr out;
-    /* teardown reverses enter order, each mode set -> 'l' */
+    /* teardown reverses enter order, each mode set -> 'l'; cursor show is
+     * unconditional because focused inputs may hide it during the session. */
     static const char expected[] =
         "\x1b[?2004l"              /* bracketed paste off */
         "\x1b[?1006l" "\x1b[?1000l"/* SGR + mouse off */
+        "\x1b[?25h"                /* cursor shown */
         "\x1b[?1049l"              /* alt screen off */
         "\x1b[?7h";                /* auto-wrap restored */
 

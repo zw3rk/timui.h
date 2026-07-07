@@ -168,3 +168,30 @@ TIMUI_TEST(test_render_hyperlink_uri_change){
     timui_cells_destroy(&empty); timui_cells_destroy(&bufA); timui_cells_destroy(&bufB);
     timui_fake_destroy(&f);
 }
+
+TIMUI_TEST(test_render_hyperlink_closes_at_frame_end){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiCellBuffer prev, curr;
+    TimuiFakeTransport f;
+    TimuiTransport t;
+    TimuiRenderer r;
+    TimuiStr out;
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
+    uint32_t link;
+    static const char close[] = "\x1b]8;;\x1b\\";
+
+    timui_cells_init(&prev, 10, 1, &al);
+    timui_cells_init(&curr, 10, 1, &al);
+    link = timui_hyperlink_set(&curr, "https://example.com");
+    timui_draw_text_linked(&curr, 0, 0, TIMUI_STR_LIT("x"), s, link);
+    timui_fake_init(&f, &al);
+    t = timui_fake_transport(&f);
+    timui_renderer_reset(&r);
+
+    timui_render_diff(&t, &prev, &curr, &r);
+    out = timui_fake_output(&f);
+    TIMUI_CHECK(r_contains(out.ptr, out.len, close));
+    TIMUI_CHECK(r.have_last_link == 0);
+
+    timui_cells_destroy(&prev); timui_cells_destroy(&curr); timui_fake_destroy(&f);
+}

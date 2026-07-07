@@ -7,6 +7,24 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 ## [Unreleased]
 
 ### Fixed
+- **Release header validation**: amalgamation now fails hard if an inlined source
+  section cannot be read, and `release-check` compiles a copied header from an
+  isolated directory so repo-relative `../src/...` includes cannot slip through.
+- **Paste event ordering**: bracketed paste is now queued in input order with
+  surrounding text and keys, so `x <paste>P</paste> y` reaches apps as `xPy`,
+  and paste-then-Enter submits the pasted text rather than an empty segment.
+- **Thread-safe custom allocators for `timui_post`**: MPSC node allocation and
+  free are serialized under the queue mutex, preserving the public "post from
+  worker threads" contract even when the configured allocator is not reentrant.
+- **Failed-init cleanup hardening**: id-stack capacity overflow, termios enter
+  failures, and cell-buffer init overflow now leave their destination objects in
+  a destroy-safe empty state.
+- **OSC 8 hyperlink closure**: the renderer now closes any open hyperlink at the
+  end of a diff frame so later cursor/sync/shell bytes are not accidentally part
+  of the last link.
+- **Cursor restoration**: screen exit always emits cursor-show, because focused
+  input widgets can hide the cursor during a session even when startup did not
+  request `TIMUI_FLAG_HIDE_CURSOR`.
 - **Terminal lifecycle hardening**: `timui_open` now fails cleanly when raw-mode
   setup fails, restores the caller's original input-fd flags on close, restores
   previous signal handlers instead of resetting them to defaults, and closes any

@@ -657,8 +657,12 @@ $(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
 
 release-check: amalgamate ## Verify the amalgamated release header compiles standalone
 	@printf "$(C_CYAN)build$(C_RESET) release self-test\n"
-	@printf '#define TIMUI_IMPLEMENTATION\n#include "timui.h"\nint main(void){return 0;}\n' > $(BLDDIR)/release_selftest.c
-	@$(CC) $(CFLAGS) -I$(RELDIR) $(BLDDIR)/release_selftest.c -o $(BLDDIR)/release_selftest
+	@if grep -nE '#[[:space:]]*include[[:space:]]+"\\.\\./src/' $(RELDIR)/timui.h; then \
+	  printf "$(C_YELL)✗ release header retained repo-relative src include$(C_RESET)\n"; exit 1; fi
+	@tmp="$(BLDDIR)/release_selftest.d"; rm -rf "$$tmp"; mkdir -p "$$tmp"; \
+	  install -m 0644 $(RELDIR)/timui.h "$$tmp/timui.h"; \
+	  printf '#define TIMUI_IMPLEMENTATION\n#include "timui.h"\nint main(void){return 0;}\n' > "$$tmp/release_selftest.c"; \
+	  $(CC) $(CFLAGS) -I"$$tmp" "$$tmp/release_selftest.c" -o "$$tmp/release_selftest"
 	@printf "$(C_GREEN)✓ release header compiles standalone$(C_RESET)\n"
 
 # ---- man page ------------------------------------------------------------- #

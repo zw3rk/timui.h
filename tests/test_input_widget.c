@@ -233,6 +233,45 @@ TIMUI_TEST(test_input_field_paste_split){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_paste_preserves_text_order){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr typed;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 3, &al);
+
+    SETIN(&fake, "x\x1b[200~P\x1b[201~y");
+    timui_begin(ui, &f);
+    typed = timui_text_input(f);
+    TIMUI_CHECK(typed.len == 3 && memcmp(typed.ptr, "xPy", 3) == 0);
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_input_field_paste_enter_order){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    char got[32] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 1);
+    bool submitted = false;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 5, &al);
+#define PE_FRAME() do{ timui_begin(ui,&f); \
+        submitted = timui_input_field(f, TIMUI_ID("in"), r, &is); \
+        if(submitted){ strcpy(got, text); text[0]='\0'; is.cursor=0; is.scroll_x=0; } \
+        timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PE_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); PE_FRAME();
+    SETIN(&fake, "\x1b[200~abc\x1b[201~\r"); PE_FRAME();
+    TIMUI_CHECK(submitted && strcmp(got, "abc") == 0);
+#undef PE_FRAME
+    timui_close(ui);
+}
+
 /* A long burst of typed text in one read — how Ghostty inserts a drag-drop path
  * (plain text, not a paste) — must reach the input in full. The parser emits one
  * event per char, so a 73-char path is 73 events; the queue must hold them all

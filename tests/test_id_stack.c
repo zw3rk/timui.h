@@ -7,6 +7,7 @@
 #include "timui.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 static TimuiId push_path(TimuiIdStack *s, const char *a, const char *b){
     timui_id_stack_push_cstr(s, a);
@@ -106,4 +107,12 @@ TIMUI_TEST(test_id_stack_push_oom){
     timui_id_stack_pop(&s);
     TIMUI_CHECK(s.count == 1);
     timui_id_stack_destroy(&s);
+}
+
+TIMUI_TEST(test_id_stack_init_overflow_guard){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiIdStack s;
+    memset(&s, 0xA5, sizeof s);
+    TIMUI_CHECK(timui_id_stack_init(&s, &al, SIZE_MAX / sizeof(TimuiId) + 1) == TIMUI_ERR_OUT_OF_MEMORY);
+    TIMUI_CHECK(s.seeds == NULL && s.cap == 0 && s.count == 0);
 }

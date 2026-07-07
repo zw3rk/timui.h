@@ -120,7 +120,7 @@ TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m){
     if(flags & TIMUI_FLAG_FOCUS_EVENTS)    TIMUI_EMIT(t, "\x1b[?1004l");
     if(flags & TIMUI_FLAG_BRACKETED_PASTE) TIMUI_EMIT(t, "\x1b[?2004l");
     if(flags & TIMUI_FLAG_MOUSE){          TIMUI_EMIT(t, "\x1b[?1006l"); TIMUI_EMIT(t, "\x1b[?1000l"); }
-    if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25h");
+    TIMUI_EMIT(t, "\x1b[?25h");
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049l");
     TIMUI_EMIT(t, "\x1b[?7h");             /* restore auto-wrap on exit */
 }
@@ -136,10 +136,12 @@ TIMUI_API void timui_termios_fail_tcsetattr_for_test(int on){ g_tcsetattr_fail_f
 TIMUI_API TimuiResult timui_termios_enter(TimuiTermios *t, int fd){
     struct termios *orig, raw;
     if(!t) return TIMUI_ERR_INVALID_ARGUMENT;
+    t->fd = fd;
+    t->saved = NULL;
+    t->have_saved = 0;
     orig = (struct termios *)malloc(sizeof(struct termios));
     if(!orig) return TIMUI_ERR_OUT_OF_MEMORY;
     if(tcgetattr(fd, orig) != 0){ free(orig); return TIMUI_ERR_OS; }
-    t->fd = fd;
     t->saved = orig;
     t->have_saved = 1;
     raw = *orig;

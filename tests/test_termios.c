@@ -82,6 +82,16 @@ TIMUI_TEST(test_termios_setattr_failure){
     close(master);
 }
 
+TIMUI_TEST(test_termios_enter_failure_clears_state){
+    TimuiTermios t;
+    t.fd = 123;
+    t.saved = (void *)1;
+    t.have_saved = 1;
+
+    TIMUI_CHECK(timui_termios_enter(&t, -1) == TIMUI_ERR_OS);
+    TIMUI_CHECK(t.saved == NULL && t.have_saved == 0);
+}
+
 /* Regression: timui_open makes input non-blocking for frame polling, but the
  * caller owns the fd and must get its original status flags back on close. */
 TIMUI_TEST(test_open_restores_input_fd_flags){

@@ -37,18 +37,22 @@ static void trace_write_(int fd, const char *tag, const unsigned char *b, size_t
 }
 static void ui_event_cb(void *ctx, const TimuiEvent *ev){
     Timui *ui = (Timui *)ctx;
-    /* Bracketed paste (incl. a Finder drag-drop of a path) arrives here during
-     * the parse, while its ptr into the read buffer is still valid — and a paste
-     * split across reads produces SEVERAL paste events in a frame. Accumulate
-     * their content into a persistent buffer (not enqueued) so nothing dangles
-     * or gets overwritten; the frame appends it to the focused input's text. */
+    TimuiEvent queued;
     if(ev->kind == TIMUI_EVENT_PASTE){
-        size_t k;
+        size_t start, room, copy, orig_len, k;
         if(ui->trace_fd >= 0)
             trace_write_(ui->trace_fd, "PASTE ", (const unsigned char *)ev->as.paste.ptr, ev->as.paste.len);
-        for(k = 0; k < ev->as.paste.len && ui->paste_len < (int)sizeof(ui->paste_buf); k++)
-            ui->paste_buf[ui->paste_len++] = ev->as.paste.ptr[k];
-        return;
+        orig_len = ev->as.paste.len;
+        start = (size_t)ui->paste_len;
+        room = sizeof(ui->paste_buf) - start;
+        copy = orig_len < room ? orig_len : room;
+        if(copy == 0){ ui->events_dropped++; return; }
+        for(k = 0; k < copy; k++) ui->paste_buf[ui->paste_len++] = ev->as.paste.ptr[k];
+        queued = *ev;
+        queued.as.paste.ptr = ui->paste_buf + start;
+        queued.as.paste.len = copy;
+        ev = &queued;
+        if(copy < orig_len) ui->events_dropped++;
     }
     if(ui->event_count < (int)(sizeof(ui->events) / sizeof(ui->events[0])))
         ui->events[ui->event_count++] = *ev;
@@ -395,19 +399,15 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                     int ei;
                     for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
                 }
+            } else if(ev.kind == TIMUI_EVENT_PASTE){
+                size_t pk;
+                for(pk = 0; pk < ev.as.paste.len && ui->text_in_len < (int)sizeof(ui->text_in); pk++){
+                    unsigned char pc = (unsigned char)ev.as.paste.ptr[pk];
+                    if(pc >= 0x20 && pc != 0x7f) ui->text_in[ui->text_in_len++] = (char)pc;
+                }
             }
         }
-        /* Append the frame's accumulated bracketed-paste content (a real paste
-         * or a Finder drag-drop path) to the focused input as text. Control
-         * bytes — newlines etc. — are dropped so a single-line field gets a
-         * clean string and no escape sequence can be injected. */
-        { int pk;
-          for(pk = 0; pk < ui->paste_len && ui->text_in_len < (int)sizeof(ui->text_in); pk++){
-              unsigned char pc = (unsigned char)ui->paste_buf[pk];
-              if(pc >= 0x20 && pc != 0x7f) ui->text_in[ui->text_in_len++] = (char)pc;
-          }
-          ui->paste_len = 0;   /* consumed; reset for the next frame's feed */
-        }
+        ui->paste_len = 0;   /* queued paste slices have been consumed */
     }
     timui_interact_begin(&ui->ia);
     ui->cursor_visible = 0;           /* F1.4: focused input re-requests each frame */
@@ -599,9 +599,10 @@ static TimuiId id_compose(TimuiId parent, TimuiId child){
 }
 TIMUI_API TimuiResult timui_id_stack_init(TimuiIdStack *s, const TimuiAllocator *alloc, size_t cap){
     if(!s || !alloc || cap == 0) return TIMUI_ERR_INVALID_ARGUMENT;
+    memset(s, 0, sizeof *s);
+    if(cap > SIZE_MAX / sizeof(TimuiId)) return TIMUI_ERR_OUT_OF_MEMORY;
     s->alloc = *alloc;
     s->root  = TIMUI_ID_ROOT;
-    s->count = 0;
     s->cap   = cap;
     s->seeds = (TimuiId *)alloc->alloc(alloc->userdata, cap * sizeof(TimuiId));
     if(!s->seeds){ s->cap = 0; return TIMUI_ERR_OUT_OF_MEMORY; }
@@ -788,11 +789,11 @@ TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, siz
     if(!q) return 0;
     if(size > 0 && !data) return 0;
     if(size > SIZE_MAX - sizeof(*n)) return 0;   /* overflow guard (cf. msgq_emit) */
+    TIMUI_MPSC_LOCK(q);
     n = (TimuiMpscNode *)q->alloc.alloc(q->alloc.userdata, sizeof(*n) + size);
-    if(!n) return 0;
+    if(!n){ TIMUI_MPSC_UNLOCK(q); return 0; }
     n->next = NULL; n->type = type; n->size = size;
     if(size > 0 && data) memcpy(n->data, data, size);
-    TIMUI_MPSC_LOCK(q);
     if(q->tail) q->tail->next = n; else q->head = n;
     q->tail = n;
     q->pending++;
@@ -819,7 +820,9 @@ TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, s
         if(out_buf && copy > 0) memcpy(out_buf, n->data, copy);
         *inout_size = n->size;
     }
+    TIMUI_MPSC_LOCK(q);
     q->alloc.free(q->alloc.userdata, n, sizeof(*n) + n->size);
+    TIMUI_MPSC_UNLOCK(q);
     return 1;
 }
 TIMUI_API int timui_mpsc_empty(TimuiMpsc *q){

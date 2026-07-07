@@ -22,7 +22,8 @@ static int starts_with(const char *s, const char *p){
     return 1;
 }
 
-/* If `line` is a `#include "../src/..."`, inline that file; return 1 if handled. */
+/* If `line` is a `#include "../src/..."`, inline that file.
+ * Returns 1 if handled, 0 if not an inline candidate, -1 on an inline error. */
 static int try_inline(const char *line, const char *infile, FILE *out, int depth){
     char path[512];
     const char *p = line;
@@ -52,11 +53,15 @@ static int try_inline(const char *line, const char *infile, FILE *out, int depth
         char full[1024];
         const char *slash = strrchr(infile, '/');
         size_t dlen = slash ? (size_t)(slash - infile) + 1 : 0;
+        if(dlen + len >= sizeof dir){
+            fprintf(stderr, "amalgamate: include path too long in %s\n", infile);
+            return -1;
+        }
         if(dlen) memcpy(dir, infile, dlen);
         dir[dlen] = '\0';
         snprintf(dir + dlen, sizeof dir - dlen, "%s", path);  /* append path to dir */
         snprintf(full, sizeof full, "%s", dir);               /* (dir already holds full) */
-        if(process(full, out, depth + 1) != 0) return 0;
+        if(process(full, out, depth + 1) != 0) return -1;
     }
     return 1;
 }
@@ -68,7 +73,9 @@ static int process(const char *path, FILE *out, int depth){
     in = fopen(path, "rb");
     if(!in){ fprintf(stderr, "amalgamate: cannot open %s\n", path); return -1; }
     while(fgets(line, sizeof line, in)){
-        if(!try_inline(line, path, out, depth)) fputs(line, out);
+        int inlined = try_inline(line, path, out, depth);
+        if(inlined < 0){ fclose(in); return -1; }
+        if(!inlined) fputs(line, out);
     }
     fclose(in);
     return 0;
