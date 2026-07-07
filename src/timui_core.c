@@ -193,6 +193,11 @@ static void timui_remove_sig_handlers(void){
     sigaction(SIGHUP,  &sa, NULL);
     sigaction(SIGQUIT, &sa, NULL);
 }
+static void timui_restore_input_flags(Timui *ui){
+    if(!ui || !ui->input_flags_saved) return;
+    (void)fcntl(ui->fd.read_fd, F_SETFL, ui->input_flags);
+    ui->input_flags_saved = 0;
+}
 
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     Timui *ui;
@@ -222,22 +227,24 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     ui->have_transport  = 1;
     timui_caps_detect(&ui->caps, getenv("TERM"), getenv("TERM_PROGRAM"), getenv("COLORTERM"));
     if(timui_term_size(cfg->output_fd, &w, &h) != TIMUI_OK){ w = 80; h = 24; }
-    if(isatty(cfg->input_fd)){
+    {
         int flags = fcntl(cfg->input_fd, F_GETFL, 0);
-        if(flags >= 0) (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);  /* nonblocking tty input */
+        if(flags >= 0){
+            ui->input_flags = flags;
+            ui->input_flags_saved = 1;
+            (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);
+        }
+    }
+    if(isatty(cfg->input_fd)){
         if(timui_termios_enter(&ui->termios, cfg->input_fd) == TIMUI_OK) ui->termios_active = 1;
         timui_screen_enter(&ui->transport, &ui->screen, cfg->flags, timui_str_from_cstr(cfg->title));
         ui->screen_active = 1;
-    }else{
-        /* non-tty real fd (piped/headless input): make it non-blocking so a read
-         * with no data returns EAGAIN instead of blocking (W7 hot-spin fix). */
-        int flags = fcntl(cfg->input_fd, F_GETFL, 0);
-        if(flags >= 0) (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);
     }
     r = timui_setup(ui, w, h);
     if(r != TIMUI_OK){
         if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
         if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
+        timui_restore_input_flags(ui);
         al.free(al.userdata, ui, sizeof *ui);
         return r;
     }
@@ -251,6 +258,7 @@ TIMUI_API void timui_close(Timui *ui){
     timui_remove_sig_handlers();      /* W6: stop intercepting (close restores itself) */
     if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
     if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
+    timui_restore_input_flags(ui);
     if(ui->have_buffers){ timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); }
     if(ui->have_postq) timui_mpsc_destroy(&ui->postq);
     timui_interact_destroy(&ui->ia);   /* V24: free the dynamic tab_order */

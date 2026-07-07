@@ -85,6 +85,7 @@ void test_input_esc_mid_csi_restarts(void);
 void test_input_csi_subparam_ignored(void);
 void test_termios_raw_and_restore(void);
 void test_termios_setattr_failure(void);
+void test_open_restores_input_fd_flags(void);
 void test_term_size_query(void);
 void test_term_size_not_a_tty(void);
 void test_caps_modern_kitty_family(void);

@@ -74,6 +74,7 @@ int main(void){
         test_input_csi_subparam_ignored,
         test_termios_raw_and_restore,
         test_termios_setattr_failure,
+        test_open_restores_input_fd_flags,
         test_term_size_query,
         test_term_size_not_a_tty,
         test_caps_modern_kitty_family,

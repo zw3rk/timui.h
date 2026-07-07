@@ -8,6 +8,7 @@
 
 #include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -76,4 +77,35 @@ TIMUI_TEST(test_termios_setattr_failure){
 
     close(slave);
     close(master);
+}
+
+/* Regression: timui_open makes input non-blocking for frame polling, but the
+ * caller owns the fd and must get its original status flags back on close. */
+TIMUI_TEST(test_open_restores_input_fd_flags){
+    int p[2];
+    int orig, during, after;
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+    int ok;
+
+    ok = pipe(p);
+    TIMUI_CHECK(ok == 0);
+    if(ok != 0) return;
+
+    orig = fcntl(p[0], F_GETFL, 0);
+    TIMUI_CHECK(orig >= 0);
+
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = p[0];
+    cfg.output_fd = p[1];
+    TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);
+    during = fcntl(p[0], F_GETFL, 0);
+    TIMUI_CHECK(during >= 0 && (during & O_NONBLOCK));
+
+    timui_close(ui);
+    after = fcntl(p[0], F_GETFL, 0);
+    TIMUI_CHECK(after == orig);
+
+    close(p[0]);
+    close(p[1]);
 }

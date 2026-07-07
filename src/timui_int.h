@@ -23,6 +23,8 @@ struct Timui {
     TimuiTransport    transport;
     int               have_transport;
     TimuiFdCtx        fd;
+    int               input_flags_saved;
+    int               input_flags;
     TimuiCaps         caps;
     TimuiScreenMode   screen;
     int               screen_active;
@@ -130,4 +132,3 @@ static int timui_updown_nav_(TimuiFrame *f, int selected, int count){
     else if(timui_key_pressed(f, TIMUI_KEY_DOWN) && selected < count - 1) selected++;
     return selected;
 }
-
