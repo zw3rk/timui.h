@@ -13,7 +13,11 @@
       version = "0.2.0";
       src = nixpkgs.lib.cleanSource ./.;
       nativeInputs = pkgs: [ pkgs.clang pkgs.gawk pkgs.gnumake pkgs.pkg-config ];
-      buildInputs = pkgs: pkgs.lib.optional pkgs.stdenv.isLinux pkgs.libvterm;
+      buildInputs = pkgs: pkgs.lib.optionals pkgs.stdenv.isLinux [
+        pkgs.glib
+        pkgs.libvterm
+        pkgs.ncurses
+      ];
       mkWww = system:
         let pkgs = forPkgs system;
         in pkgs.stdenv.mkDerivation {
@@ -100,8 +104,9 @@
         let pkgs = forPkgs system;
         in {
           default = pkgs.mkShell {
-            # pkg-config lets `make vt-test` resolve libvterm (and is harmless
-            # where libvterm is absent — the Makefile warns gracefully).
+            # pkg-config lets `make vt-test` resolve libvterm's public-header
+            # dependencies (and is harmless where libvterm is absent — the
+            # Makefile warns gracefully).
             # asciinema records a real terminal session's raw byte stream to a
             # .cast for `make rec-<name>` (feedable to the render verifier).
             nativeBuildInputs = [ pkgs.gnumake pkgs.pkg-config pkgs.asciinema ];
@@ -110,7 +115,7 @@
             # fail to evaluate on macOS. On darwin, `make vt-test` reports the
             # missing dep; the core `make`/test/goldens targets work everywhere.
             buildInputs = [ pkgs.clang ]
-              ++ pkgs.lib.optional pkgs.stdenv.isLinux pkgs.libvterm;
+              ++ buildInputs pkgs;
           };
         });
     };

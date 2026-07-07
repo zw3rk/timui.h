@@ -55,9 +55,10 @@ ifeq ($(WITH_VTERM),1)
   ifeq ($(VT_LIBS),)
     # nixpkgs' libvterm has no libvterm.pc; nix develop still exposes the
     # library path through the compiler wrapper, so fall back to the link name.
-    # vterm.h includes glib.h, and GLib does ship pkg-config metadata.
-    VT_CFLAGS += $(shell pkg-config --cflags glib-2.0 2>/dev/null)
-    VT_LIBS := -lvterm $(shell pkg-config --libs glib-2.0 2>/dev/null)
+    # vterm.h includes glib.h and curses.h, and both dependency packages ship
+    # pkg-config metadata in nixpkgs.
+    VT_CFLAGS += $(shell pkg-config --cflags glib-2.0 ncursesw 2>/dev/null)
+    VT_LIBS := -lvterm $(shell pkg-config --libs glib-2.0 ncursesw 2>/dev/null)
   endif
   VT_CFLAGS += -DTIMUI_WITH_VTERM_TESTS
   VT_SRCS := $(TSTDIR)/test_vt_roundtrip.c
