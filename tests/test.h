@@ -33,6 +33,7 @@ void test_default_allocator(void);
 void test_arena_alloc_reset(void);
 void test_arena_oom(void);
 void test_arena_alignment(void);
+void test_arena_alignment_uses_base_address(void);
 void test_arena_custom_allocator(void);
 void test_partial_allocator_rejected(void);
 void test_arena_invalid_args(void);

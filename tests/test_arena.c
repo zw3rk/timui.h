@@ -21,6 +21,32 @@ static void counting_free(void *ud, void *p, size_t sz){
     (void)ud; (void)sz; free(p);
 }
 
+typedef struct {
+    void *raw;
+} MisalignAlloc;
+
+static void *misalign_alloc(void *ud, size_t sz){
+    MisalignAlloc *ma = (MisalignAlloc *)ud;
+    unsigned char *raw = (unsigned char *)malloc(sz + 64);
+    int off;
+    if(!raw) return NULL;
+    ma->raw = raw;
+    for(off = 0; off < 64; off += 16){
+        unsigned char *p = raw + off;
+        if(((uintptr_t)p % 64) != 0) return p;
+    }
+    return raw + 16;
+}
+static void *misalign_realloc(void *ud, void *p, size_t os, size_t ns){
+    (void)ud; (void)p; (void)os; (void)ns; return NULL;
+}
+static void misalign_free(void *ud, void *p, size_t sz){
+    MisalignAlloc *ma = (MisalignAlloc *)ud;
+    (void)p; (void)sz;
+    free(ma->raw);
+    ma->raw = NULL;
+}
+
 TIMUI_TEST(test_default_allocator){
     TimuiAllocator a = timui_default_allocator();
     TIMUI_CHECK(a.alloc != NULL && a.realloc != NULL && a.free != NULL);
@@ -64,6 +90,24 @@ TIMUI_TEST(test_arena_alignment){
     timui_arena_alloc(&ar, 1, 1);                          /* off = 1 */
     unsigned char *p = timui_arena_alloc(&ar, 4, 16);
     TIMUI_CHECK(p != NULL && ((uintptr_t)p % 16) == 0);
+    timui_arena_free(&ar);
+}
+
+TIMUI_TEST(test_arena_alignment_uses_base_address){
+    TimuiArena ar;
+    MisalignAlloc ma = {0};
+    TimuiAllocator a = {0};
+    unsigned char *p;
+
+    a.userdata = &ma;
+    a.alloc = misalign_alloc;
+    a.realloc = misalign_realloc;
+    a.free = misalign_free;
+
+    TIMUI_CHECK(timui_arena_init(&ar, &a, 128) == TIMUI_OK);
+    TIMUI_CHECK(((uintptr_t)ar.base % 64) != 0);
+    p = timui_arena_alloc(&ar, 1, 64);
+    TIMUI_CHECK(p != NULL && ((uintptr_t)p % 64) == 0);
     timui_arena_free(&ar);
 }
 

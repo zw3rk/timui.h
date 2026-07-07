@@ -2524,13 +2524,21 @@ TIMUI_API TimuiResult timui_arena_init(TimuiArena *a, const TimuiAllocator *allo
     return TIMUI_OK;
 }
 TIMUI_API void *timui_arena_alloc(TimuiArena *a, size_t size, size_t align){
-    size_t mask, aligned;
+    uintptr_t base, addr, aligned_addr, delta, mask;
+    size_t aligned;
     if(!a || align == 0) return NULL;
     if(align & (align - 1)) return NULL;     /* alignment must be a power of two */
     if(size == 0) size = 1;
-    mask    = align - 1;
-    aligned = (a->off + mask) & ~mask;
-    if(aligned < a->off) return NULL;             /* wraparound guard */
+    base = (uintptr_t)a->base;
+    if((uintptr_t)a->off > UINTPTR_MAX - base) return NULL;
+    addr = base + (uintptr_t)a->off;
+    mask = (uintptr_t)align - 1u;
+    if(addr + mask < addr) return NULL;
+    aligned_addr = (addr + mask) & ~mask;
+    if(aligned_addr < base) return NULL;
+    delta = aligned_addr - base;
+    if(delta > (uintptr_t)SIZE_MAX) return NULL;
+    aligned = (size_t)delta;
     if(aligned + size < aligned) return NULL;     /* wraparound guard */
     if(aligned + size > a->cap) return NULL;      /* out of memory */
     a->off = aligned + size;

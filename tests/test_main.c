@@ -22,6 +22,7 @@ int main(void){
         test_arena_alloc_reset,
         test_arena_oom,
         test_arena_alignment,
+        test_arena_alignment_uses_base_address,
         test_arena_custom_allocator,
         test_partial_allocator_rejected,
         test_arena_invalid_args,
