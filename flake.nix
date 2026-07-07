@@ -9,9 +9,95 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      forPkgs = system: import nixpkgs { inherit system; };
+      version = "0.2.0";
+      src = nixpkgs.lib.cleanSource ./.;
+      nativeInputs = pkgs: [ pkgs.clang pkgs.gawk pkgs.gnumake pkgs.pkg-config ];
+      buildInputs = pkgs: pkgs.lib.optional pkgs.stdenv.isLinux pkgs.libvterm;
+      mkWww = system:
+        let pkgs = forPkgs system;
+        in pkgs.stdenv.mkDerivation {
+          pname = "timui-www";
+          inherit version src;
+
+          nativeBuildInputs = nativeInputs pkgs;
+          buildInputs = buildInputs pkgs;
+
+          dontConfigure = true;
+
+          buildPhase = ''
+            runHook preBuild
+            make www
+            runHook postBuild
+          '';
+
+          installPhase = ''
+            runHook preInstall
+            mkdir -p "$out"
+            cp -R www/. "$out"/
+            runHook postInstall
+          '';
+        };
+      mkCiCheck = system:
+        let pkgs = forPkgs system;
+        in pkgs.stdenv.mkDerivation {
+          pname = "timui-ci-check";
+          inherit version src;
+
+          nativeBuildInputs = nativeInputs pkgs;
+          buildInputs = buildInputs pkgs;
+
+          dontConfigure = true;
+
+          buildPhase = ''
+            runHook preBuild
+            cp -R tests/golden "$TMPDIR/golden.before"
+            cp www/timui.h "$TMPDIR/www-timui.before"
+            make check
+            make release-check
+            make goldens
+            diff -ru "$TMPDIR/golden.before" tests/golden
+            make www
+            cmp -s "$TMPDIR/www-timui.before" www/timui.h
+            cmp -s release/timui.h www/timui.h
+            mkdir -p build
+            awk 'BEGIN{n=0; emit=0}
+                 /^```c$/{n++; if(n==2){emit=1; next}}
+                 /^```$/{if(emit) exit}
+                 emit{print}' www/llms.txt > build/llms_smoke.c
+            cc -std=c99 -Wall -Wextra -Wpedantic -O2 -pthread \
+              -Iwww build/llms_smoke.c -o build/llms_smoke
+            runHook postBuild
+          '';
+
+          installPhase = ''
+            runHook preInstall
+            mkdir -p "$out"
+            touch "$out/ok"
+            runHook postInstall
+          '';
+        };
     in {
+      packages = forAllSystems (system: {
+        default = self.packages.${system}.www;
+        www = mkWww system;
+      });
+
+      checks = forAllSystems (system: {
+        ci = mkCiCheck system;
+        www = self.packages.${system}.www;
+      });
+
+      # ci.zw3rk.com consumes Hydra-style flake jobs.  Keep the static site as a
+      # first-class build artifact, while the CI check enforces generated-file
+      # freshness without depending on a git checkout.
+      hydraJobs = forAllSystems (system: {
+        ci = self.checks.${system}.ci;
+        www = self.packages.${system}.www;
+      });
+
       devShells = forAllSystems (system:
-        let pkgs = import nixpkgs { inherit system; };
+        let pkgs = forPkgs system;
         in {
           default = pkgs.mkShell {
             # pkg-config lets `make vt-test` resolve libvterm (and is harmless
