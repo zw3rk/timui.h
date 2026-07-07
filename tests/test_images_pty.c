@@ -298,6 +298,38 @@ TIMUI_TEST(test_kitty_clipped_invalid_visible_no_image_escape){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_kitty_graphics_respects_active_clip){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    static const unsigned char png[] = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_KITTY);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_push_clip(f, TIMUI_RECT(0, 0, 2, 2));
+    timui_image_draw(f, img, TIMUI_RECT(10, 10, 1, 1));
+    timui_pop_clip(f);
+    timui_end(f);
+    out = timui_fake_output(&fake);
+
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1b_G"));
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "a=p"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_kitty_graphics_placeholder){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;

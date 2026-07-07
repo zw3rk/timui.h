@@ -15300,7 +15300,6 @@ static void kitty_place_(TimuiTransport *t, uint32_t id, int cols, int rows, int
 static void kitty_delete_all_placements(TimuiTransport *t){
     image_write_all_(t, "\x1b_Ga=d,d=a\x1b\\", 12);
 }
-
 static int image_cup_(TimuiTransport *t, int x, int y){
     char cup[32];
     int cn = 0;
@@ -15745,13 +15744,25 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
     }
 }
 TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){
-    if(!f || !f->ui || !img) return;
-    image_record_(f->ui, img, r, r);
+    Timui *ui;
+    TimuiRect active, visible;
+    if(!f || !f->ui || !img || r.w <= 0 || r.h <= 0) return;
+    ui = f->ui;
+    active = ui->curr.has_clip ? ui->curr.clip : TIMUI_RECT(0, 0, ui->curr.w, ui->curr.h);
+    visible = timui_intersect_rect_(r, active);
+    if(visible.w <= 0 || visible.h <= 0) return;
+    image_record_(ui, img, visible, r);
 }
 TIMUI_API void timui_image_draw_clipped(TimuiFrame *f, TimuiImage *img,
                                         TimuiRect full, TimuiRect visible){
+    Timui *ui;
+    TimuiRect active;
     if(!f || !f->ui || !img || visible.w <= 0 || visible.h <= 0) return;
-    image_record_(f->ui, img, visible, full);
+    ui = f->ui;
+    active = ui->curr.has_clip ? ui->curr.clip : TIMUI_RECT(0, 0, ui->curr.w, ui->curr.h);
+    visible = timui_intersect_rect_(visible, active);
+    if(visible.w <= 0 || visible.h <= 0) return;
+    image_record_(ui, img, visible, full);
 }
 /* ---- menu bar + popups (T5.7) + menu focus (T4.5) -------------------- *
  * menu_bar_begin/end bracket the bar; menu_begin draws a header and toggles

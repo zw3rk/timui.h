@@ -296,6 +296,7 @@ int main(void){
         test_kitty_graphics_clip,
         test_image_png_ihdr_over_int_ignored,
         test_kitty_clipped_invalid_visible_no_image_escape,
+        test_kitty_graphics_respects_active_clip,
         test_kitty_graphics_placeholder,
         test_image_protocol_force_none_placeholder,
         test_sixel_malformed_png_still_placeholder,
