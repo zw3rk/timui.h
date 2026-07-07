@@ -149,6 +149,15 @@ static TimuiRect timui_intersect_rect_(TimuiRect a, TimuiRect b){
     return r;
 }
 
+static int timui_rect_contains_(TimuiRect r, int x, int y){
+    int64_t rx2, ry2;
+    if(r.w <= 0 || r.h <= 0) return 0;
+    rx2 = (int64_t)r.x + (int64_t)r.w;
+    ry2 = (int64_t)r.y + (int64_t)r.h;
+    return (int64_t)x >= (int64_t)r.x && (int64_t)x < rx2 &&
+           (int64_t)y >= (int64_t)r.y && (int64_t)y < ry2;
+}
+
 static void timui_draw_text_clipped_(TimuiCellBuffer *buf, TimuiRect clip, int x, int y,
                                      TimuiStr text, TimuiStyle st){
     TimuiRect old_clip, active;

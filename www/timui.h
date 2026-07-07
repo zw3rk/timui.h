@@ -1525,6 +1525,15 @@ static TimuiRect timui_intersect_rect_(TimuiRect a, TimuiRect b){
     return r;
 }
 
+static int timui_rect_contains_(TimuiRect r, int x, int y){
+    int64_t rx2, ry2;
+    if(r.w <= 0 || r.h <= 0) return 0;
+    rx2 = (int64_t)r.x + (int64_t)r.w;
+    ry2 = (int64_t)r.y + (int64_t)r.h;
+    return (int64_t)x >= (int64_t)r.x && (int64_t)x < rx2 &&
+           (int64_t)y >= (int64_t)r.y && (int64_t)y < ry2;
+}
+
 static void timui_draw_text_clipped_(TimuiCellBuffer *buf, TimuiRect clip, int x, int y,
                                      TimuiStr text, TimuiStyle st){
     TimuiRect old_clip, active;
@@ -4465,12 +4474,10 @@ TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId i
     int hover;
     if(!ia) return res;
     if(ia->modal_active){      /* modal focus trap: widgets behind the modal are inert */
-        int in_m = (ia->mouse_x >= ia->modal_rect.x && ia->mouse_x < ia->modal_rect.x + ia->modal_rect.w &&
-                   ia->mouse_y >= ia->modal_rect.y && ia->mouse_y < ia->modal_rect.y + ia->modal_rect.h);
+        int in_m = timui_rect_contains_(ia->modal_rect, ia->mouse_x, ia->mouse_y);
         if(!in_m) return res;
     }
-    hover = (ia->mouse_x >= r.x && ia->mouse_x < r.x + r.w &&
-             ia->mouse_y >= r.y && ia->mouse_y < r.y + r.h);
+    hover = timui_rect_contains_(r, ia->mouse_x, ia->mouse_y);
     if(hover) ia->hot = id;
     if(hover && ia->mouse_pressed){ ia->active = id; ia->focus = id; }
     res.hovered = hover;
@@ -5121,9 +5128,7 @@ TIMUI_API int timui_tabs(TimuiFrame *f, TimuiId id, TimuiRect r,
     /* Mouse: a click landing on a visible tab selects it. Hit-test in bar-local,
      * scroll-adjusted columns and require the pointer inside the bar (so a
      * keyboard activation with the mouse elsewhere can't grab a tab). */
-    if(ir.clicked &&
-       ui->ia.mouse_x >= r.x && ui->ia.mouse_x < r.x + r.w &&
-       ui->ia.mouse_y >= r.y && ui->ia.mouse_y < r.y + r.h){
+    if(ir.clicked && timui_rect_contains_(r, ui->ia.mouse_x, ui->ia.mouse_y)){
         int lx = ui->ia.mouse_x - r.x + scroll;       /* column in the unscrolled bar */
         for(i = 0; i < n; i++){
             if(lx >= spans[i].x && lx < spans[i].x + spans[i].w){ sel = i; break; }

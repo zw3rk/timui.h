@@ -143,6 +143,7 @@ int main(void){
         test_events_dropped,
         test_interact_click,
         test_interact_hover_only,
+        test_interact_extreme_rect_hit_test,
         test_interact_tab_cycles,
         test_interact_keyboard_activate,
         test_interact_tab_many_widgets,

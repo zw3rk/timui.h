@@ -137,9 +137,7 @@ TIMUI_API int timui_tabs(TimuiFrame *f, TimuiId id, TimuiRect r,
     /* Mouse: a click landing on a visible tab selects it. Hit-test in bar-local,
      * scroll-adjusted columns and require the pointer inside the bar (so a
      * keyboard activation with the mouse elsewhere can't grab a tab). */
-    if(ir.clicked &&
-       ui->ia.mouse_x >= r.x && ui->ia.mouse_x < r.x + r.w &&
-       ui->ia.mouse_y >= r.y && ui->ia.mouse_y < r.y + r.h){
+    if(ir.clicked && timui_rect_contains_(r, ui->ia.mouse_x, ui->ia.mouse_y)){
         int lx = ui->ia.mouse_x - r.x + scroll;       /* column in the unscrolled bar */
         for(i = 0; i < n; i++){
             if(lx >= spans[i].x && lx < spans[i].x + spans[i].w){ sel = i; break; }

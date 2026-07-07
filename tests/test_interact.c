@@ -6,6 +6,8 @@
 #include "test.h"
 #include "timui.h"
 
+#include <limits.h>
+
 TIMUI_TEST(test_interact_click){
     TimuiInteract ia;
     TimuiAllocator al = timui_default_allocator();
@@ -40,6 +42,20 @@ TIMUI_TEST(test_interact_hover_only){
     timui_interact_begin(&ia);
     res = timui_interact_button(&ia, TIMUI_ID("b"), r);
     TIMUI_CHECK(res.hovered && !res.pressed && !res.clicked);
+    timui_interact_end(&ia);
+    timui_interact_destroy(&ia);
+}
+
+TIMUI_TEST(test_interact_extreme_rect_hit_test){
+    TimuiInteract ia;
+    TimuiAllocator al = timui_default_allocator();
+    TimuiInteractResult res;
+
+    timui_interact_init(&ia, &al);
+    timui_interact_set_mouse(&ia, INT_MAX - 1, 0, 0);
+    timui_interact_begin(&ia);
+    res = timui_interact_button(&ia, TIMUI_ID("edge"), TIMUI_RECT(INT_MAX - 1, 0, 10, 1));
+    TIMUI_CHECK(res.hovered);
     timui_interact_end(&ia);
     timui_interact_destroy(&ia);
 }

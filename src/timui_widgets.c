@@ -48,12 +48,10 @@ TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId i
     int hover;
     if(!ia) return res;
     if(ia->modal_active){      /* modal focus trap: widgets behind the modal are inert */
-        int in_m = (ia->mouse_x >= ia->modal_rect.x && ia->mouse_x < ia->modal_rect.x + ia->modal_rect.w &&
-                   ia->mouse_y >= ia->modal_rect.y && ia->mouse_y < ia->modal_rect.y + ia->modal_rect.h);
+        int in_m = timui_rect_contains_(ia->modal_rect, ia->mouse_x, ia->mouse_y);
         if(!in_m) return res;
     }
-    hover = (ia->mouse_x >= r.x && ia->mouse_x < r.x + r.w &&
-             ia->mouse_y >= r.y && ia->mouse_y < r.y + r.h);
+    hover = timui_rect_contains_(r, ia->mouse_x, ia->mouse_y);
     if(hover) ia->hot = id;
     if(hover && ia->mouse_pressed){ ia->active = id; ia->focus = id; }
     res.hovered = hover;
