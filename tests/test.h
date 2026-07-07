@@ -138,6 +138,7 @@ void test_render_diff_wide_to_narrow(void);
 void test_render_hyperlink_uri_change(void);
 void test_render_hyperlink_closes_at_frame_end(void);
 void test_render_controls_are_not_emitted_as_glyphs(void);
+void test_draw_wide_glyph_left_of_buffer_does_not_blank_edge(void);
 void test_render_black_vs_default(void);
 void test_render_cursor_visible(void);
 void test_render_cursor_hidden(void);

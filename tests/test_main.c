@@ -127,6 +127,7 @@ int main(void){
         test_render_hyperlink_uri_change,
         test_render_hyperlink_closes_at_frame_end,
         test_render_controls_are_not_emitted_as_glyphs,
+        test_draw_wide_glyph_left_of_buffer_does_not_blank_edge,
         test_render_black_vs_default,
         test_render_cursor_visible,
         test_render_cursor_hidden,

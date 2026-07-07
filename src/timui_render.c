@@ -125,6 +125,7 @@ TIMUI_API int timui_utf8_width(uint32_t cp){
 static void put_glyph_link(TimuiCellBuffer *buf, int x, int y, uint32_t cp, TimuiStyle st, uint32_t link){
     TimuiCell c;
     int w;
+    if(!buf || !buf->cells || x < 0 || y < 0 || x >= buf->w || y >= buf->h) return;
     if(buf->has_clip && (x < buf->clip.x || y < buf->clip.y ||
        x >= buf->clip.x + buf->clip.w || y >= buf->clip.y + buf->clip.h)) return;
     memset(&c, 0, sizeof c);

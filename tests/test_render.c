@@ -230,3 +230,18 @@ TIMUI_TEST(test_render_controls_are_not_emitted_as_glyphs){
     timui_cells_destroy(&curr);
     timui_fake_destroy(&f);
 }
+
+TIMUI_TEST(test_draw_wide_glyph_left_of_buffer_does_not_blank_edge){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiCellBuffer b;
+    TimuiStyle st = timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0);
+
+    TIMUI_CHECK(timui_cells_init(&b, 3, 1, &al) == TIMUI_OK);
+    timui_draw_text(&b, 0, 0, TIMUI_STR_LIT("A"), st);
+    timui_draw_text(&b, -1, 0, TIMUI_STR_LIT("\xE4\xB8\xAD"), st); /* 中 */
+
+    TIMUI_CHECK(timui_cells_get(&b, 0, 0)->codepoint == 'A');
+    TIMUI_CHECK(timui_cells_get(&b, 0, 0)->flags == TIMUI_CELL_EMPTY);
+
+    timui_cells_destroy(&b);
+}
