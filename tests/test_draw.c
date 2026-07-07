@@ -6,6 +6,8 @@
 #include "test.h"
 #include "timui.h"
 
+#include <limits.h>
+
 TIMUI_TEST(test_draw_text){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;
@@ -29,6 +31,17 @@ TIMUI_TEST(test_draw_fill){
     TIMUI_CHECK(timui_cells_get(&b, 1, 1)->bg == 0x0000ff);
     TIMUI_CHECK(timui_cells_get(&b, 4, 3)->bg == 0x0000ff);   /* inclusive corner */
     TIMUI_CHECK(timui_cells_get(&b, 5, 3)->codepoint == 0);   /* outside the fill */
+    timui_cells_destroy(&b);
+}
+
+TIMUI_TEST(test_draw_fill_extreme_negative_rect_empty){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiCellBuffer b;
+    TimuiStyle s = timui_style_make(TIMUI_COLOR_DEFAULT, 0x0000ff, 0);
+    timui_cells_init(&b, 4, 2, &al);
+    timui_draw_fill(&b, TIMUI_RECT(-1, 0, INT_MIN, 1), s);
+    TIMUI_CHECK(timui_cells_get(&b, 0, 0)->codepoint == 0);
+    TIMUI_CHECK(timui_cells_get(&b, 0, 0)->bg == TIMUI_COLOR_DEFAULT);
     timui_cells_destroy(&b);
 }
 

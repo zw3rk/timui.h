@@ -202,15 +202,23 @@ TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiS
  * loop and signed-overflow UB (r.y+r.h) on an extreme rect; put_glyph already
  * bounds-checks each cell, so this is about loop bounds + UB, not write safety. */
 static TimuiRect rect_clamp_buf(const TimuiCellBuffer *buf, TimuiRect r){
-    if(r.x < 0){ r.w += r.x; r.x = 0; }
-    if(r.y < 0){ r.h += r.y; r.y = 0; }
-    if(r.x > buf->w) r.x = buf->w;
-    if(r.y > buf->h) r.y = buf->h;
-    if(r.w > buf->w - r.x) r.w = buf->w - r.x;
-    if(r.h > buf->h - r.y) r.h = buf->h - r.y;
-    if(r.w < 0) r.w = 0;
-    if(r.h < 0) r.h = 0;
-    return r;
+    TimuiRect out = {0, 0, 0, 0};
+    int64_t x1, y1, x2, y2;
+    if(!buf || r.w <= 0 || r.h <= 0) return out;
+    x1 = r.x; y1 = r.y;
+    x2 = (int64_t)r.x + (int64_t)r.w;
+    y2 = (int64_t)r.y + (int64_t)r.h;
+    if(x2 <= 0 || y2 <= 0 || x1 >= buf->w || y1 >= buf->h) return out;
+    if(x1 < 0) x1 = 0;
+    if(y1 < 0) y1 = 0;
+    if(x2 > buf->w) x2 = buf->w;
+    if(y2 > buf->h) y2 = buf->h;
+    if(x2 <= x1 || y2 <= y1) return out;
+    out.x = (int)x1;
+    out.y = (int)y1;
+    out.w = (int)(x2 - x1);
+    out.h = (int)(y2 - y1);
+    return out;
 }
 TIMUI_API void timui_draw_fill(TimuiCellBuffer *buf, TimuiRect r, TimuiStyle st){
     int xi, yi;

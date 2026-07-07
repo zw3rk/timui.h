@@ -131,6 +131,7 @@ void test_grapheme_next_prev(void);
 void test_grapheme_width(void);
 void test_draw_text(void);
 void test_draw_fill(void);
+void test_draw_fill_extreme_negative_rect_empty(void);
 void test_draw_box_single(void);
 void test_draw_box_ascii(void);
 void test_draw_hline_vline(void);

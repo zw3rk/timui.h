@@ -120,6 +120,7 @@ int main(void){
         test_grapheme_width,
         test_draw_text,
         test_draw_fill,
+        test_draw_fill_extreme_negative_rect_empty,
         test_draw_box_single,
         test_draw_box_ascii,
         test_draw_hline_vline,
