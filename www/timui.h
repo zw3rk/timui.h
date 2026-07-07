@@ -177,9 +177,10 @@ typedef struct {
 /* ---- Lifecycle (POSIX terminal backend; Win32 ConPTY transport) -------- */
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 TIMUI_API void        timui_close(Timui *ui);
-/* Restore the terminal (screen exit + termios) — used by the SIGTERM/SIGHUP/
- * SIGQUIT handler timui_open installs, and callable directly (e.g. from an
- * app's own signal handler or atexit hook). */
+/* Restore the terminal (screen exit + termios). Call from normal control flow
+ * or an atexit hook; do not call this public transport path from a signal
+ * handler. timui_open's optional signal handler uses an internal best-effort
+ * restoration path instead. */
 TIMUI_API void        timui_restore_terminal(Timui *ui);
 TIMUI_API const char *timui_error_string(TimuiResult result);
 TIMUI_API const char *timui_version_string(void);
