@@ -159,6 +159,34 @@ TIMUI_TEST(test_open_restores_input_fd_flags){
     close(p[1]);
 }
 
+TIMUI_TEST(test_open_fails_when_nonblock_set_fails){
+    int p[2];
+    int orig, after;
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+    TimuiResult r;
+
+    TIMUI_CHECK(pipe(p) == 0);
+    orig = fcntl(p[0], F_GETFL, 0);
+    TIMUI_CHECK(orig >= 0);
+
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = p[0];
+    cfg.output_fd = p[1];
+
+    timui_open_fail_fsetfl_for_test(1);
+    r = timui_open(&cfg, &ui);
+    timui_open_fail_fsetfl_for_test(0);
+
+    TIMUI_CHECK(r == TIMUI_ERR_OS);
+    TIMUI_CHECK(ui == NULL);
+    after = fcntl(p[0], F_GETFL, 0);
+    TIMUI_CHECK(after == orig);
+
+    close(p[0]);
+    close(p[1]);
+}
+
 TIMUI_TEST(test_restore_terminal_restores_input_fd_flags){
     int p[2];
     int orig, during, after;

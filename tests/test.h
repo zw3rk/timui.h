@@ -96,6 +96,7 @@ void test_termios_raw_and_restore(void);
 void test_termios_setattr_failure(void);
 void test_termios_enter_failure_clears_state(void);
 void test_open_restores_input_fd_flags(void);
+void test_open_fails_when_nonblock_set_fails(void);
 void test_restore_terminal_restores_input_fd_flags(void);
 void test_open_restores_previous_signal_handler(void);
 void test_open_enters_screen_when_only_output_is_tty(void);

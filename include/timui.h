@@ -785,6 +785,7 @@ TIMUI_API void        timui_termios_destroy(TimuiTermios *t);
  * portable way to make a real fd's tcsetattr fail while tcgetattr succeeds. Inert
  * (off) in production; pass non-zero to arm, zero to disarm. Test-only. */
 TIMUI_API void        timui_termios_fail_tcsetattr_for_test(int on);
+TIMUI_API void        timui_open_fail_fsetfl_for_test(int on);
 
 /* Query the terminal size (cols x rows) via TIOCGWINSZ. Applications that need
  * live resize handling should call this on the output fd and then call

@@ -786,6 +786,7 @@ TIMUI_API void        timui_termios_destroy(TimuiTermios *t);
  * portable way to make a real fd's tcsetattr fail while tcgetattr succeeds. Inert
  * (off) in production; pass non-zero to arm, zero to disarm. Test-only. */
 TIMUI_API void        timui_termios_fail_tcsetattr_for_test(int on);
+TIMUI_API void        timui_open_fail_fsetfl_for_test(int on);
 
 /* Query the terminal size (cols x rows) via TIOCGWINSZ. Applications that need
  * live resize handling should call this on the output fd and then call
@@ -1739,10 +1740,12 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     *out_ui = ui;
     return TIMUI_OK;
 }
-
 TIMUI_API void timui_set_cell_pixels_for_test(Timui *ui, int cell_w_px, int cell_h_px){
     timui_set_cell_pixels_(ui, cell_w_px, cell_h_px);
 }
+
+static int g_fsetfl_fail_for_test = 0;
+TIMUI_API void timui_open_fail_fsetfl_for_test(int on){ g_fsetfl_fail_for_test = on; }
 
 /* ---- terminal restoration on signal (W6) ------------------------------ *
  * An external termination signal (SIGTERM/SIGHUP/SIGQUIT — kill, window
@@ -1888,7 +1891,11 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     if(w <= 0 || h <= 0){ w = 80; h = 24; px_w = 0; px_h = 0; }
     ui->input_flags = input_flags;
     ui->input_flags_saved = 1;
-    (void)fcntl(cfg->input_fd, F_SETFL, input_flags | O_NONBLOCK);
+    if(g_fsetfl_fail_for_test || fcntl(cfg->input_fd, F_SETFL, input_flags | O_NONBLOCK) < 0){
+        timui_open_cleanup_failed(ui);
+        al.free(al.userdata, ui, sizeof *ui);
+        return TIMUI_ERR_OS;
+    }
     if(input_is_tty){
         r = timui_termios_enter(&ui->termios, cfg->input_fd);
         if(r != TIMUI_OK){

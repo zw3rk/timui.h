@@ -85,6 +85,7 @@ int main(void){
         test_termios_setattr_failure,
         test_termios_enter_failure_clears_state,
         test_open_restores_input_fd_flags,
+        test_open_fails_when_nonblock_set_fails,
         test_restore_terminal_restores_input_fd_flags,
         test_open_restores_previous_signal_handler,
         test_open_enters_screen_when_only_output_is_tty,
