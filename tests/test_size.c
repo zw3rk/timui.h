@@ -8,6 +8,7 @@
 
 #include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -39,6 +40,42 @@ TIMUI_TEST(test_term_size_query){
     TIMUI_CHECK(timui_term_size(slave, &w, &h) == TIMUI_OK);
     TIMUI_CHECK(w == 0 && h == 0);
 
+    close(slave);
+    close(master);
+}
+
+TIMUI_TEST(test_open_falls_back_from_zero_term_size){
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    struct winsize ws;
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+    char *name;
+    int slave, input;
+
+    TIMUI_CHECK(master >= 0);
+    if(master < 0) return;
+    grantpt(master);
+    unlockpt(master);
+    name = ptsname(master);
+    TIMUI_CHECK(name != NULL);
+    if(!name){ close(master); return; }
+    slave = open(name, O_RDWR);
+    TIMUI_CHECK(slave >= 0);
+    if(slave < 0){ close(master); return; }
+    input = open("/dev/null", O_RDONLY);
+    TIMUI_CHECK(input >= 0);
+    if(input < 0){ close(slave); close(master); return; }
+
+    ws.ws_col = 0; ws.ws_row = 0; ws.ws_xpixel = 0; ws.ws_ypixel = 0;
+    TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
+
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = input;
+    cfg.output_fd = slave;
+    TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);
+
+    timui_close(ui);
+    close(input);
     close(slave);
     close(master);
 }

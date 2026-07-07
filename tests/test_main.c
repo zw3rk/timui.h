@@ -89,6 +89,7 @@ int main(void){
         test_open_fails_when_raw_mode_fails,
         test_open_rejects_invalid_fds,
         test_term_size_query,
+        test_open_falls_back_from_zero_term_size,
         test_term_size_not_a_tty,
         test_term_size_pixels_query,
         test_term_size_pixels_not_a_tty,

@@ -100,6 +100,7 @@ void test_open_enters_screen_when_only_output_is_tty(void);
 void test_open_fails_when_raw_mode_fails(void);
 void test_open_rejects_invalid_fds(void);
 void test_term_size_query(void);
+void test_open_falls_back_from_zero_term_size(void);
 void test_term_size_not_a_tty(void);
 void test_term_size_pixels_query(void);
 void test_term_size_pixels_not_a_tty(void);

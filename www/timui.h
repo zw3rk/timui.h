@@ -1876,6 +1876,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     if(timui_term_size_pixels(cfg->output_fd, &w, &h, &px_w, &px_h) != TIMUI_OK){
         w = 80; h = 24; px_w = 0; px_h = 0;
     }
+    if(w <= 0 || h <= 0){ w = 80; h = 24; px_w = 0; px_h = 0; }
     ui->input_flags = input_flags;
     ui->input_flags_saved = 1;
     (void)fcntl(cfg->input_fd, F_SETFL, input_flags | O_NONBLOCK);
