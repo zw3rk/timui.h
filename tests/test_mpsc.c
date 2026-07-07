@@ -9,7 +9,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <time.h>
 
 #define MPSC_WORKERS 4
 #define MPSC_PER     100
@@ -104,11 +104,14 @@ typedef struct {
 } GuardAlloc;
 
 static void guard_enter(GuardAlloc *g){
+    struct timespec ts;
     if(pthread_mutex_trylock(&g->guard) != 0){
         g->violations++;
         pthread_mutex_lock(&g->guard);
     }
-    usleep(1000);
+    ts.tv_sec = 0;
+    ts.tv_nsec = 1000000L;
+    nanosleep(&ts, NULL);
 }
 static void guard_leave(GuardAlloc *g){ pthread_mutex_unlock(&g->guard); }
 static void *guard_alloc(void *ud, size_t sz){
