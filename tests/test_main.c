@@ -119,6 +119,7 @@ int main(void){
         test_grapheme_next_prev,
         test_grapheme_width,
         test_draw_text,
+        test_draw_text_truncated_utf8_replacement,
         test_draw_fill,
         test_draw_fill_extreme_negative_rect_empty,
         test_draw_box_single,

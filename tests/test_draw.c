@@ -22,6 +22,16 @@ TIMUI_TEST(test_draw_text){
     timui_cells_destroy(&b);
 }
 
+TIMUI_TEST(test_draw_text_truncated_utf8_replacement){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiCellBuffer b;
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
+    timui_cells_init(&b, 4, 1, &al);
+    timui_draw_text(&b, 0, 0, (TimuiStr){ "\xC3", 1 }, s);
+    TIMUI_CHECK(timui_cells_get(&b, 0, 0)->codepoint == 0xFFFD);
+    timui_cells_destroy(&b);
+}
+
 TIMUI_TEST(test_draw_fill){
     TimuiAllocator al = timui_default_allocator();
     TimuiCellBuffer b;

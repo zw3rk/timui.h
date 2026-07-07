@@ -189,7 +189,7 @@ TIMUI_API void timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiS
         uint32_t cp = 0;
         int adv = timui_utf8_decode(text.ptr + i, text.len - i, &cp);
         int w;
-        if(adv <= 0) adv = 1;
+        if(adv <= 0){ cp = 0xFFFD; adv = 1; }
         w = timui_utf8_width(cp);
         if(w > 0){
             put_glyph_link(buf, cx, y, cp, st, link);
