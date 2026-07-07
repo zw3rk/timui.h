@@ -7,9 +7,14 @@
 
 .DEFAULT_GOAL := help
 
-CC         ?= cc
-CFLAGS     ?= -std=c99 -Wall -Wextra -Wpedantic -O2 -pthread
-TESTCFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -O0 -g -pthread
+CC        ?= cc
+UNAME_S   := $(shell uname -s)
+POSIX_CFLAGS :=
+ifeq ($(UNAME_S),Linux)
+  POSIX_CFLAGS := -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700
+endif
+CFLAGS     ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O2 -pthread
+TESTCFLAGS ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O0 -g -pthread
 
 INCDIR   := include
 SRCDIR   := src
@@ -91,8 +96,7 @@ endif
 # macOS; -ldl -lpthread on Linux. Third-party headers build under relaxed
 # warnings (as vt_gif does); our timui + radio logic still builds under -Wall.
 RADIO_KISS  := $(TOOLDIR)/vendor/kiss_fft.c $(TOOLDIR)/vendor/kiss_fftr.c
-RADIO_CFLAGS := -std=c99 -O2 -pthread -Wall -Wno-unused-function -Wno-unused-parameter -Wno-sign-compare
-UNAME_S := $(shell uname -s)
+RADIO_CFLAGS := -std=c99 $(POSIX_CFLAGS) -O2 -pthread -Wall -Wno-unused-function -Wno-unused-parameter -Wno-sign-compare
 ifeq ($(UNAME_S),Darwin)
   RADIO_LDFLAGS := -framework CoreAudio -framework AudioToolbox -framework CoreFoundation -lm
 else
@@ -283,7 +287,7 @@ test: $(TEST_BIN) ## Compile and run the unit tests
 
 test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=address
 	@mkdir -p $(BLDDIR)
-	@$(CC) -std=c99 -Wall -Wextra -Wpedantic -O1 -g -fsanitize=$(SAN) -I$(INCDIR) $(TEST_SRCS) -o $(BLDDIR)/test_san
+	@$(CC) -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O1 -g -fsanitize=$(SAN) -I$(INCDIR) $(TEST_SRCS) -o $(BLDDIR)/test_san
 	@./$(BLDDIR)/test_san
 
 vt-test: build ## Compile + run unit tests WITH libvterm round-trip tests (needs libvterm)
