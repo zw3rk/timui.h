@@ -43,8 +43,8 @@ GOLDEN_BIN := $(BLDDIR)/gen_golden
 # libvterm round-trip tests (Tier A) are opt-in. WITH_VTERM=1 resolves libvterm
 # via pkg-config and compiles tests/test_vt_roundtrip.c into a SEPARATE binary
 # (build/test_vt), so the core `make test` never depends on libvterm. The vterm
-# tests are registered in test_main.c under #if __has_include(<vterm.h>), which
-# is true only when the libvterm include path is present.
+# tests are registered only when TIMUI_WITH_VTERM_TESTS is defined by this
+# build path; ambient include paths must not change the core test binary.
 VT_BIN    := $(BLDDIR)/test_vt
 VT_CFLAGS :=
 VT_LIBS   :=
@@ -53,10 +53,10 @@ ifeq ($(WITH_VTERM),1)
   VT_CFLAGS := $(shell pkg-config --cflags libvterm 2>/dev/null)
   VT_LIBS   := $(shell pkg-config --libs   libvterm 2>/dev/null)
   ifneq ($(VT_LIBS),)
+    VT_CFLAGS += -DTIMUI_WITH_VTERM_TESTS
     VT_SRCS := $(TSTDIR)/test_vt_roundtrip.c
   else
-    $(warning libvterm not found via pkg-config; round-trip tests disabled. \
-Run inside `nix develop`, or install libvterm, then: make vt-test WITH_VTERM=1)
+    $(error libvterm not found via pkg-config; run inside `nix develop`, or install libvterm)
   endif
 endif
 

@@ -10,8 +10,8 @@
  * This catches SGR / CUP / OSC-8 / truecolor / wide-glyph bugs that
  * byte-substring checks cannot.
  *
- * Only compiled when WITH_VTERM=1 (libvterm present); the tests are
- * registered in test_main.c under #if __has_include(<vterm.h>).
+ * Only compiled when WITH_VTERM=1 resolves libvterm via pkg-config; the tests
+ * are registered in test_main.c under TIMUI_WITH_VTERM_TESTS.
  *
  * SPDX-License-Identifier: Apache-2.0
  */

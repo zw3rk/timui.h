@@ -196,8 +196,8 @@ void test_snapshot_grid_eq_dim(void);
 void test_snapshot_goldens(void);
 void test_snapshot_grid_returns_would_be_length(void);
 void test_snapshot_grid_size_query(void);
-/* libvterm round-trip tests (Tier A) — only linked when WITH_VTERM=1.
- * Registered in test_main.c under #if __has_include(<vterm.h>). */
+/* libvterm round-trip tests (Tier A) — only registered and linked by the
+ * WITH_VTERM=1 build path. */
 void test_vt_plain_text(void);
 void test_vt_rainbow(void);
 void test_vt_attrs(void);

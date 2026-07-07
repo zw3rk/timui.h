@@ -185,9 +185,10 @@ int main(void){
         test_snapshot_goldens,
         test_snapshot_grid_returns_would_be_length,
         test_snapshot_grid_size_query,
-#if __has_include(<vterm.h>)
-        /* Tier A libvterm round-trip tests — only present when libvterm is on
-         * the include path (WITH_VTERM=1), matching tests/test_vt_roundtrip.c. */
+#ifdef TIMUI_WITH_VTERM_TESTS
+        /* Tier A libvterm round-trip tests. Registration is explicit so an
+         * ambient <vterm.h> cannot make non-vterm test binaries reference
+         * symbols that are not linked. */
         test_vt_plain_text,
         test_vt_rainbow,
         test_vt_attrs,
