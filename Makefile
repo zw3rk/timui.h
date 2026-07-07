@@ -28,6 +28,7 @@ WWWDIR   := www
 
 HEADER    := $(INCDIR)/timui.h
 WWW_HEADER := $(WWWDIR)/timui.h
+WWW_LICENSE := $(WWWDIR)/LICENSE
 # The library is a unity build: src/timui.c #includes every src/timui_*.c
 # section. Any section edit must rebuild the test binary, examples, and tools,
 # so they all depend on the whole section set (not just src/timui.c).
@@ -649,7 +650,8 @@ amalgamate: $(BLDDIR)/amalgamate $(HEADER) $(LIB_SECTIONS) ## Regenerate the fla
 www: amalgamate ## Refresh static website assets under www/
 	@mkdir -p $(WWWDIR)
 	@install -m 0644 $(RELDIR)/timui.h $(WWW_HEADER)
-	@printf "$(C_GREEN)✓ refreshed $(WWW_HEADER)$(C_RESET)\n"
+	@install -m 0644 LICENSE $(WWW_LICENSE)
+	@printf "$(C_GREEN)✓ refreshed $(WWW_HEADER) and $(WWW_LICENSE)$(C_RESET)\n"
 
 $(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
 	@mkdir -p $(@D)

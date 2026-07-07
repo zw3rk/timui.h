@@ -8,6 +8,17 @@
 
 #include <string.h>
 
+static int screen_contains(const char *haystack, size_t haystack_len, const char *needle){
+    size_t needle_len = strlen(needle);
+    size_t i;
+    if(needle_len == 0) return 1;
+    if(haystack_len < needle_len) return 0;
+    for(i = 0; i <= haystack_len - needle_len; i++){
+        if(memcmp(haystack + i, needle, needle_len) == 0) return 1;
+    }
+    return 0;
+}
+
 TIMUI_TEST(test_screen_enter_emits_modes){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport f;
@@ -58,6 +69,30 @@ TIMUI_TEST(test_screen_exit_reverses){
     out = timui_fake_output(&f);
     TIMUI_CHECK(out.len == sizeof(expected) - 1);
     TIMUI_CHECK(memcmp(out.ptr, expected, sizeof(expected) - 1) == 0);
+    timui_fake_destroy(&f);
+}
+
+TIMUI_TEST(test_kitty_keyboard_mode_enter_exit){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport f;
+    TimuiTransport t;
+    TimuiScreenMode m;
+    TimuiStr out;
+
+    TIMUI_CHECK(timui_fake_init(&f, &al) == TIMUI_OK);
+    t = timui_fake_transport(&f);
+    timui_screen_enter(&t, &m, TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_KITTY_KEYBOARD,
+                       TIMUI_STR_LIT(""));
+    out = timui_fake_output(&f);
+    TIMUI_CHECK(out.len > 0);
+    TIMUI_CHECK(screen_contains(out.ptr, out.len, "\x1b[>1u"));
+
+    timui_fake_clear_output(&f);
+    timui_screen_exit(&t, &m);
+    out = timui_fake_output(&f);
+    TIMUI_CHECK(out.len > 0);
+    TIMUI_CHECK(screen_contains(out.ptr, out.len, "\x1b[<u"));
+
     timui_fake_destroy(&f);
 }
 

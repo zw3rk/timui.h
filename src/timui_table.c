@@ -25,7 +25,7 @@ static int timui_disp_width_n_(const char *s, size_t len){
     int w = 0;
     if(!s) return 0;
     for(i = 0; i < len;){
-        uint32_t cp;
+        uint32_t cp = 0xFFFDu;
         int adv = timui_utf8_decode(s + i, len - i, &cp);
         if(adv <= 0) adv = 1;                  /* never stall on a bad byte */
         w += timui_utf8_width(cp);
@@ -71,18 +71,22 @@ TIMUI_API int timui_fit_cell(const char *s, int width, char *out, size_t cap, in
         out[n] = '\0';
         return full;
     }
+    if(cap < sizeof(TIMUI_ELLIPSIS_)){         /* no room for ellipsis + NUL */
+        if(ellipsis) *ellipsis = 1;
+        return 1;
+    }
     /* Truncate: reserve the last column for the ellipsis; never split a wide
      * glyph (when one straddles the budget the ellipsis lands early and the
      * caller pads the slack). */
     budget = width - 1;
     for(i = 0; i < len;){
-        uint32_t cp;
+        uint32_t cp = 0xFFFDu;
         int adv = timui_utf8_decode(s + i, len - i, &cp);
         int gw;
         if(adv <= 0) adv = 1;
         gw = timui_utf8_width(cp);
         if(used + gw > budget) break;
-        if(o + (size_t)adv >= cap - 4) break;  /* keep room for "…" + NUL */
+        if(o + (size_t)adv + sizeof(TIMUI_ELLIPSIS_) > cap) break;  /* keep room for "…" + NUL */
         memcpy(out + o, s + i, (size_t)adv);
         o += (size_t)adv;
         used += gw;

@@ -79,6 +79,33 @@ TIMUI_TEST(test_arena_custom_allocator){
     timui_arena_free(&ar);
 }
 
+TIMUI_TEST(test_partial_allocator_rejected){
+    int count = 0;
+    TimuiAllocator partial = {0};
+    TimuiArena ar;
+    TimuiCellBuffer cells;
+    TimuiMsgQueue msgq;
+    TimuiMpsc mpsc;
+    TimuiIdStack ids;
+    TimuiFakeTransport fake;
+    TimuiTransport transport = {0};
+    Timui *ui = NULL;
+
+    partial.userdata = &count;
+    partial.alloc = counting_alloc;
+    partial.free = counting_free;
+
+    TIMUI_CHECK(timui_arena_init(&ar, &partial, 32) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_cells_init(&cells, 2, 2, &partial) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_msgq_init(&msgq, &partial, 64) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_mpsc_init(&mpsc, &partial) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_id_stack_init(&ids, &partial, 4) == TIMUI_ERR_INVALID_ARGUMENT);
+
+    TIMUI_CHECK(timui_fake_init(&fake, &partial) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_open_for_test(&ui, transport, 2, 2, &partial) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(ui == NULL);
+}
+
 TIMUI_TEST(test_arena_invalid_args){
     TimuiArena ar;
     TimuiAllocator a = timui_default_allocator();

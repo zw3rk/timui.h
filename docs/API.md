@@ -35,6 +35,9 @@ capabilities, and sizes the buffers. `timui_begin` ingests input, clears the
 frame, and resets the id stack; `timui_end` diff-renders and swaps. A `TimuiFrame`
 is valid only between `begin` and `end`.
 
+Live terminal resize is explicit in v0.2: call `timui_term_size(output_fd, &w,
+&h)` and then `timui_ui_resize(ui, w, h)` when the dimensions change.
+
 ## Layout
 
 ```c

@@ -59,6 +59,28 @@ TIMUI_TEST(test_radio_selects){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_checkbox_label_clipped){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    TimuiRect r = TIMUI_RECT(1, 1, 6, 1);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 12, 4, &al);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    (void)timui_checkbox(f, TIMUI_ID("long"), r, TIMUI_STR_LIT("abcdefghi"), false);
+    TIMUI_CHECK(timui_cells_get(buf, 7, 1)->codepoint == 0);
+    timui_end(f);
+
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_panel_body_rect){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;

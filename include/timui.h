@@ -679,9 +679,10 @@ TIMUI_API void        timui_termios_destroy(TimuiTermios *t);
  * (off) in production; pass non-zero to arm, zero to disarm. Test-only. */
 TIMUI_API void        timui_termios_fail_tcsetattr_for_test(int on);
 
-/* Query the terminal size (cols x rows) via TIOCGWINSZ. Resize is detected
- * by polling (the frame re-queries each tick), avoiding signal-handler state.
- * Returns TIMUI_ERR_NOT_A_TTY if fd is not a terminal. */
+/* Query the terminal size (cols x rows) via TIOCGWINSZ. Applications that need
+ * live resize handling should call this on the output fd and then call
+ * timui_ui_resize(ui, w, h) when the size changes. Returns
+ * TIMUI_ERR_NOT_A_TTY if fd is not a terminal. */
 TIMUI_API TimuiResult timui_term_size(int fd, int *out_w, int *out_h);
 
 /* ---- Capability detection --------------------------------------------- */
@@ -732,7 +733,7 @@ TIMUI_API void timui_show_cursor(TimuiTransport *t);
 /* ---- Events ----------------------------------------------------------- */
 typedef enum {
     TIMUI_EVENT_NONE = 0, TIMUI_EVENT_KEY, TIMUI_EVENT_TEXT, TIMUI_EVENT_MOUSE,
-    TIMUI_EVENT_PASTE, TIMUI_EVENT_RESIZE, TIMUI_EVENT_FOCUS,
+    TIMUI_EVENT_PASTE, TIMUI_EVENT_RESIZE, TIMUI_EVENT_FOCUS, /* RESIZE reserved */
     TIMUI_EVENT_TIMER, TIMUI_EVENT_USER
 } TimuiEventKind;
 

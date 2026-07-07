@@ -195,3 +195,38 @@ TIMUI_TEST(test_render_hyperlink_closes_at_frame_end){
 
     timui_cells_destroy(&prev); timui_cells_destroy(&curr); timui_fake_destroy(&f);
 }
+
+TIMUI_TEST(test_render_controls_are_not_emitted_as_glyphs){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiCellBuffer prev, curr;
+    TimuiFakeTransport f;
+    TimuiTransport t;
+    TimuiRenderer r;
+    TimuiStr out;
+    TimuiCell c;
+    size_t i;
+
+    timui_cells_init(&prev, 4, 1, &al);
+    timui_cells_init(&curr, 4, 1, &al);
+    memset(&c, 0, sizeof c);
+    c.codepoint = 0x1bu; c.width = 1;
+    timui_cells_put(&curr, 0, 0, &c);
+    c.codepoint = 0x9bu; c.width = 1;
+    timui_cells_put(&curr, 1, 0, &c);
+
+    timui_fake_init(&f, &al);
+    t = timui_fake_transport(&f);
+    timui_renderer_reset(&r);
+    timui_render_diff(&t, &prev, &curr, &r);
+    out = timui_fake_output(&f);
+
+    for(i = 0; i < out.len; i++){
+        if((unsigned char)out.ptr[i] == 0x1b)
+            TIMUI_CHECK(i + 1 < out.len && out.ptr[i + 1] == '[');
+    }
+    TIMUI_CHECK(!r_contains(out.ptr, out.len, "\xC2\x9B"));
+
+    timui_cells_destroy(&prev);
+    timui_cells_destroy(&curr);
+    timui_fake_destroy(&f);
+}

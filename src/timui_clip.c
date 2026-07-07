@@ -4,13 +4,20 @@
  * active clip. Reset each frame in timui_begin. */
 static TimuiRect clip_intersect(TimuiRect a, TimuiRect b){
     TimuiRect r;
-    int x1 = a.x > b.x ? a.x : b.x;
-    int y1 = a.y > b.y ? a.y : b.y;
-    int x2 = (a.x + a.w) < (b.x + b.w) ? (a.x + a.w) : (b.x + b.w);
-    int y2 = (a.y + a.h) < (b.y + b.h) ? (a.y + a.h) : (b.y + b.h);
-    r.x = x1; r.y = y1;
-    r.w = x2 > x1 ? x2 - x1 : 0;
-    r.h = y2 > y1 ? y2 - y1 : 0;
+    int64_t ax2 = (int64_t)a.x + (int64_t)a.w;
+    int64_t ay2 = (int64_t)a.y + (int64_t)a.h;
+    int64_t bx2 = (int64_t)b.x + (int64_t)b.w;
+    int64_t by2 = (int64_t)b.y + (int64_t)b.h;
+    int64_t x1 = a.x > b.x ? (int64_t)a.x : (int64_t)b.x;
+    int64_t y1 = a.y > b.y ? (int64_t)a.y : (int64_t)b.y;
+    int64_t x2 = ax2 < bx2 ? ax2 : bx2;
+    int64_t y2 = ay2 < by2 ? ay2 : by2;
+    int64_t rw = x2 > x1 ? x2 - x1 : 0;
+    int64_t rh = y2 > y1 ? y2 - y1 : 0;
+    r.x = x1 < INT_MIN ? INT_MIN : (x1 > INT_MAX ? INT_MAX : (int)x1);
+    r.y = y1 < INT_MIN ? INT_MIN : (y1 > INT_MAX ? INT_MAX : (int)y1);
+    r.w = rw > INT_MAX ? INT_MAX : (int)rw;
+    r.h = rh > INT_MAX ? INT_MAX : (int)rh;
     return r;
 }
 TIMUI_API void timui_push_clip(TimuiFrame *f, TimuiRect rect){

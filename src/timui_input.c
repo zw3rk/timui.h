@@ -148,10 +148,14 @@ TIMUI_API void timui_input_set_now(TimuiInputParser *p, uint64_t now_ms){
 }
 TIMUI_API void timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx){
     if(!p) return;
-    if(p->state == 1 &&
+    if((p->state == 1 || p->state == 2 || p->state == 3) &&
        now_ms - p->esc_since_ms >= TIMUI_ESC_TIMEOUT_MS){
-        emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0);
+        if(p->state == 1) emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0);
         p->state = 0;
+        p->param = 0; p->nparams = 0;
+        p->mod_param = 0; p->has_mod = 0; p->sub_param = 0;
+        p->csi_mouse = 0; p->mcount = 0;
+        p->mparam[0] = p->mparam[1] = p->mparam[2] = 0;
         p->esc_since_ms = 0;
     }
 }
@@ -378,4 +382,3 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
     return count;
 }
 #undef TIMUI_ESC_TIMEOUT_MS   /* Z10: impl-only macro must not leak into the consumer TU */
-

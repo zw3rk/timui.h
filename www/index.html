@@ -267,7 +267,7 @@ cfg.flags = <span class="c-define">TIMUI_FLAG_ALT_SCREEN</span> | <span class="c
 
     <span class="c-keyword">while</span> (!<span class="c-call">timui_should_quit</span>(ui)) {
         <span class="c-comment">/* Stack locals, not heap allocations: f is this frame,
-           and root is recomputed after begin handles input/resize. */</span>
+           and root is recomputed every frame from the current UI size. */</span>
         <span class="c-type">TimuiFrame</span> *f = <span class="c-number">0</span>;
         <span class="c-type">TimuiRect</span> root;
 
@@ -302,7 +302,7 @@ Make no mistakes. If mistakes occur, make them small and blame curses.</code></p
 
     <h2>TESTING</h2>
     <p>
-      The library is not a toy. It maintains 214 verified tests via <strong>make test</strong>. Continuous integration runs address, undefined, and thread sanitizers. Golden staleness checks and Tier A libvterm round-trip verification are enforced.
+      The library is not a toy. It maintains 225 verified tests via <strong>make test</strong>. Continuous integration runs address, undefined, and thread sanitizers. Golden staleness checks and Tier A libvterm round-trip verification are enforced.
     </p>
 
     <h2>BUGS AND LIMITATIONS</h2>
@@ -318,6 +318,7 @@ Make no mistakes. If mistakes occur, make them small and blame curses.</code></p
     <h2>SEE ALSO</h2>
     <p>
       <strong>Header</strong>: <a href="timui.h">timui.h</a><br>
+      <strong>License</strong>: <a href="LICENSE">Apache-2.0</a><br>
       <strong>Agent notes</strong>: <a href="llms.txt">llms.txt</a><br>
       <strong>Source repo</strong>: <a href="https://github.com/zw3rk/timui.h">github.com/zw3rk/timui.h</a>
     </p>

@@ -250,6 +250,30 @@ TIMUI_TEST(test_input_esc_mid_csi_restarts){
     TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_KEY && s.ev[0].as.key.key == TIMUI_KEY_UP);
 }
 
+TIMUI_TEST(test_input_truncated_csi_ss3_timeout_resyncs){
+    TimuiInputParser p;
+    Sink s;
+
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[", 2, sink_cb, &s);
+    timui_input_flush_esc(&p, 100, sink_cb, &s);
+    timui_input_feed(&p, "123\r", 4, sink_cb, &s);
+    TIMUI_CHECK(s.n == 4);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == '1');
+    TIMUI_CHECK(s.ev[1].kind == TIMUI_EVENT_TEXT && s.ev[1].as.text.codepoint == '2');
+    TIMUI_CHECK(s.ev[2].kind == TIMUI_EVENT_TEXT && s.ev[2].as.text.codepoint == '3');
+    TIMUI_CHECK(s.ev[3].kind == TIMUI_EVENT_KEY && s.ev[3].as.key.key == TIMUI_KEY_ENTER);
+
+    s.n = 0; timui_input_init(&p);
+    timui_input_feed(&p, "\x1bO", 2, sink_cb, &s);
+    timui_input_flush_esc(&p, 100, sink_cb, &s);
+    timui_input_feed(&p, "abc", 3, sink_cb, &s);
+    TIMUI_CHECK(s.n == 3);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == 'a');
+    TIMUI_CHECK(s.ev[1].kind == TIMUI_EVENT_TEXT && s.ev[1].as.text.codepoint == 'b');
+    TIMUI_CHECK(s.ev[2].kind == TIMUI_EVENT_TEXT && s.ev[2].as.text.codepoint == 'c');
+}
+
 /* Z4: a CSI ':' sub-parameter (Kitty "report event types" / "report alternate
  * keys") is a legal ECMA-48 parameter-substring separator. It must not resync
  * the parser to ground: the base key survives and no sub-param tail leaks as
@@ -272,4 +296,3 @@ TIMUI_TEST(test_input_csi_subparam_ignored){
     TIMUI_CHECK(s.ev[0].as.key.codepoint == 97);
     TIMUI_CHECK(s.ev[0].as.key.mods == TIMUI_MOD_SHIFT);
 }
-

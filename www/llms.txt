@@ -7,6 +7,7 @@ Canonical website URLs:
 
 - Landing page: https://timui.dev/
 - Downloadable header: https://timui.dev/timui.h
+- License: https://timui.dev/LICENSE
 - Agent notes: https://timui.dev/llms.txt
 - Source repository: https://github.com/zw3rk/timui.h
 

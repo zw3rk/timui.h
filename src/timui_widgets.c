@@ -92,6 +92,16 @@ TIMUI_API void timui_interact_end(TimuiInteract *ia){
 }
 
 /* ---- widgets ---------------------------------------------------------- */
+static void widget_draw_text_clipped(TimuiFrame *f, TimuiRect clip, int x, int y,
+                                     TimuiStr text, TimuiStyle style){
+    Timui *ui;
+    if(!f || !f->ui) return;
+    ui = f->ui;
+    timui_push_clip(f, clip);
+    timui_draw_text(&ui->curr, x, y, text, style);
+    timui_pop_clip(f);
+}
+
 TIMUI_API TimuiButtonResult timui_button(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label){
     TimuiButtonResult br = {false, false, false, false};
     TimuiInteractResult ir;
@@ -111,7 +121,7 @@ TIMUI_API TimuiButtonResult timui_button(TimuiFrame *f, TimuiId id, TimuiRect r,
           : TIMUI_SLOT_BUTTON;
     st = timui_theme_style(&ui->theme, slot);
     timui_draw_fill(&ui->curr, r, st);
-    timui_draw_text(&ui->curr, r.x + 1, r.y + (r.h > 1 ? (r.h - 1) / 2 : 0), label, st);
+    widget_draw_text_clipped(f, r, r.x + 1, r.y + (r.h > 1 ? (r.h - 1) / 2 : 0), label, st);
     return br;
 }
 TIMUI_API void timui_label(TimuiFrame *f, int x, int y, TimuiStr text, TimuiStyle style){
@@ -159,8 +169,10 @@ static TimuiBoolEdit bool_widget(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiSt
     box[1] = value ? (is_radio ? 'o' : 'x') : ' ';
     box[2] = is_radio ? ')' : ']';
     box[3] = ' ';
+    timui_push_clip(f, r);
     timui_draw_text(&ui->curr, r.x, r.y, (TimuiStr){ box, 4 }, st);
     timui_draw_text(&ui->curr, r.x + 4, r.y, label, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
+    timui_pop_clip(f);
     return be;
 }
 TIMUI_API TimuiBoolEdit timui_checkbox(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiStr label, bool value){
@@ -529,4 +541,3 @@ TIMUI_API void timui_label_hyperlink(TimuiFrame *f, int x, int y, TimuiStr text,
     id = uri ? timui_hyperlink_set(&ui->curr, uri) : 0;
     timui_draw_text_linked(&ui->curr, x, y, text, style, id);
 }
-

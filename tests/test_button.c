@@ -64,3 +64,25 @@ TIMUI_TEST(test_button_outside_no_click){
 
     timui_close(ui);
 }
+
+TIMUI_TEST(test_button_label_clipped){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    TimuiRect r = TIMUI_RECT(1, 1, 5, 1);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 12, 4, &al);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    (void)timui_button(f, TIMUI_ID("long"), r, TIMUI_STR_LIT("abcdefghi"));
+    TIMUI_CHECK(timui_cells_get(buf, 6, 1)->codepoint == 0);
+    timui_end(f);
+
+    timui_close(ui);
+}

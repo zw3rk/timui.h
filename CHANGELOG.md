@@ -7,6 +7,24 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 ## [Unreleased]
 
 ### Fixed
+- **Adversarial terminal hardening**: renderer cells no longer emit raw control
+  codepoints, malformed UTF-8 width scans initialize their replacement
+  codepoint, wide glyphs render only when both cells fit the active clip, and
+  extreme clip intersections avoid signed-overflow UB.
+- **Lifecycle and allocator validation**: public entry points now reject partial
+  custom allocators, invalid file descriptors fail before setup, and terminal
+  close/signal restore puts input flags and raw mode back before screen cleanup.
+- **Input resynchronization**: truncated CSI/SS3 sequences time out without
+  swallowing the next real input sequence.
+- **Kitty keyboard mode**: `TIMUI_FLAG_KITTY_KEYBOARD` now emits the protocol's
+  enter/exit escapes, including during direct signal cleanup.
+- **Resize contract**: public docs now describe the implemented resize model:
+  query `timui_term_size()` and call `timui_ui_resize()` when dimensions change.
+- **Website release assets**: `make www` now refreshes the downloadable header
+  and the full Apache-2.0 license, with CI staleness checks for both.
+- **OSC 8 URI sanitization**: hyperlink URIs are now filtered before entering an
+  OSC payload, so ESC, BEL, DEL, and C1 controls cannot break out into terminal
+  control sequences.
 - **Release header validation**: amalgamation now fails hard if an inlined source
   section cannot be read, and `release-check` compiles a copied header from an
   isolated directory so repo-relative `../src/...` includes cannot slip through.
@@ -219,4 +237,4 @@ hardened over seven review rounds (ASAN/UBSAN clean, 182 unit tests).
 - Coverage expanded to error/OOM paths (injectable allocator), the message API,
   drawing primitives, and the termios failure branch.
 
-[0.2.0]: https://github.com/
+[0.2.0]: https://github.com/zw3rk/timui.h/releases/tag/v0.2.0

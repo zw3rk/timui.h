@@ -123,6 +123,35 @@ TIMUI_TEST(test_open_restores_input_fd_flags){
     close(p[1]);
 }
 
+TIMUI_TEST(test_restore_terminal_restores_input_fd_flags){
+    int p[2];
+    int orig, during, after;
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+    int ok;
+
+    ok = pipe(p);
+    TIMUI_CHECK(ok == 0);
+    if(ok != 0) return;
+
+    orig = fcntl(p[0], F_GETFL, 0);
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = p[0];
+    cfg.output_fd = p[1];
+    TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);
+
+    during = fcntl(p[0], F_GETFL, 0);
+    TIMUI_CHECK(during >= 0 && (during & O_NONBLOCK));
+
+    timui_restore_terminal(ui);
+    after = fcntl(p[0], F_GETFL, 0);
+    TIMUI_CHECK(after == orig);
+
+    timui_close(ui);
+    close(p[0]);
+    close(p[1]);
+}
+
 TIMUI_TEST(test_open_restores_previous_signal_handler){
     int master = posix_openpt(O_RDWR | O_NOCTTY);
     int slave, nullfd;
@@ -198,4 +227,39 @@ TIMUI_TEST(test_open_fails_when_raw_mode_fails){
     close(nullfd);
     close(slave);
     close(master);
+}
+
+TIMUI_TEST(test_open_rejects_invalid_fds){
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+    TimuiResult r;
+    int p[2];
+    int ok;
+
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = -1;
+    cfg.output_fd = 1;
+    r = timui_open(&cfg, &ui);
+    TIMUI_CHECK(r == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(ui == NULL);
+    if(ui){ timui_close(ui); ui = NULL; }
+
+    cfg.input_fd = 0;
+    cfg.output_fd = -1;
+    r = timui_open(&cfg, &ui);
+    TIMUI_CHECK(r == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(ui == NULL);
+    if(ui){ timui_close(ui); ui = NULL; }
+
+    ok = pipe(p);
+    TIMUI_CHECK(ok == 0);
+    if(ok != 0) return;
+    close(p[0]);
+    cfg.input_fd = p[0];
+    cfg.output_fd = p[1];
+    r = timui_open(&cfg, &ui);
+    TIMUI_CHECK(r == TIMUI_ERR_OS);
+    TIMUI_CHECK(ui == NULL);
+    if(ui){ timui_close(ui); ui = NULL; }
+    close(p[1]);
 }

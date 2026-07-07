@@ -44,6 +44,7 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix develop -c make www
       - run: git diff --exit-code -- www/timui.h
+      - run: git diff --exit-code -- www/LICENSE
       - name: Compile llms.txt skeleton
         run: |
           mkdir -p build

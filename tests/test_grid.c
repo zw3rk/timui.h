@@ -128,6 +128,22 @@ static void test_fit_cell(void)
     CHECK_FIT("", 0, 0, 0, "");
     /* adversarial: NULL string -> empty, no ellipsis */
     CHECK_FIT(NULL, 5, 0, 0, "");
+
+    /* adversarial: tiny output buffers must remain NUL-terminated in bounds.
+     * In the truncating path, cap<4 used to underflow the ellipsis-room check
+     * and write the terminator past out[0]. */
+    { char out[2] = { 'X', 'G' }; int e = 0;
+      int c = timui_fit_cell("abcdef", 2, out, 1, &e);
+      CHECK(c == 1);
+      CHECK(e == 1);
+      CHECK(out[0] == '\0');
+      CHECK(out[1] == 'G'); }
+    { char out[3] = { 'X', 'Y', 'G' }; int e = 0;
+      int c = timui_fit_cell("abcdef", 2, out, 2, &e);
+      CHECK(c == 1);
+      CHECK(e == 1);
+      CHECK(out[0] == '\0' && out[1] == 'Y');
+      CHECK(out[2] == 'G'); }
 }
 
 /* ----------------------------------------------------------------------- */

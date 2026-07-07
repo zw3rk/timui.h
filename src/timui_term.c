@@ -31,7 +31,7 @@ static void fake_close(TimuiTransport *t){
 }
 
 TIMUI_API TimuiResult timui_fake_init(TimuiFakeTransport *f, const TimuiAllocator *alloc){
-    if(!f || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!f || !timui_allocator_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
     f->alloc = *alloc;
     f->out = NULL; f->out_cap = 0; f->out_len = 0;
     f->in = NULL;  f->in_len = 0;  f->in_pos = 0;
@@ -110,6 +110,7 @@ TIMUI_API void timui_screen_enter(TimuiTransport *t, TimuiScreenMode *m, uint32_
      * renderer from the terminal. This is standard for cell-based TUIs. */
     TIMUI_EMIT(t, "\x1b[?7l");
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049h");
+    if(flags & TIMUI_FLAG_KITTY_KEYBOARD)  TIMUI_EMIT(t, "\x1b[>1u");
     if(flags & TIMUI_FLAG_HIDE_CURSOR)     TIMUI_EMIT(t, "\x1b[?25l");
     if(flags & TIMUI_FLAG_MOUSE){          TIMUI_EMIT(t, "\x1b[?1000h"); TIMUI_EMIT(t, "\x1b[?1006h"); }
     if(flags & TIMUI_FLAG_BRACKETED_PASTE) TIMUI_EMIT(t, "\x1b[?2004h");
@@ -120,6 +121,7 @@ TIMUI_API void timui_screen_exit(TimuiTransport *t, TimuiScreenMode *m){
     if(flags & TIMUI_FLAG_FOCUS_EVENTS)    TIMUI_EMIT(t, "\x1b[?1004l");
     if(flags & TIMUI_FLAG_BRACKETED_PASTE) TIMUI_EMIT(t, "\x1b[?2004l");
     if(flags & TIMUI_FLAG_MOUSE){          TIMUI_EMIT(t, "\x1b[?1006l"); TIMUI_EMIT(t, "\x1b[?1000l"); }
+    if(flags & TIMUI_FLAG_KITTY_KEYBOARD)  TIMUI_EMIT(t, "\x1b[<u");
     TIMUI_EMIT(t, "\x1b[?25h");
     if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_EMIT(t, "\x1b[?1049l");
     TIMUI_EMIT(t, "\x1b[?7h");             /* restore auto-wrap on exit */

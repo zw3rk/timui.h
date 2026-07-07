@@ -2,6 +2,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <termios.h>

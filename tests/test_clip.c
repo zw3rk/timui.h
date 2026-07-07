@@ -6,6 +6,8 @@
 #include "test.h"
 #include "timui.h"
 
+#include <limits.h>
+
 TIMUI_TEST(test_clip_restricts_drawing){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
@@ -49,6 +51,49 @@ TIMUI_TEST(test_clip_nested_intersect){
     timui_pop_clip(f);
     TIMUI_CHECK(timui_cells_get(buf, 5, 5)->codepoint != 0);   /* in intersection */
     TIMUI_CHECK(timui_cells_get(buf, 3, 3)->codepoint == 0);   /* in outer only -> clipped */
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_clip_wide_glyph_requires_full_width){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL; TimuiCellBuffer *buf;
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 4, 1, &al);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+
+    timui_push_clip(f, TIMUI_RECT(0, 0, 1, 1));
+    timui_draw_text(buf, 0, 0, TIMUI_STR_LIT("\xE4\xB8\xAD"),
+                    timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
+    timui_pop_clip(f);
+
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == 0);
+    TIMUI_CHECK(timui_cells_get(buf, 1, 0)->codepoint == 0);
+
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_clip_extreme_rect_does_not_overflow){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL; TimuiCellBuffer *buf;
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 4, 1, &al);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+
+    timui_push_clip(f, TIMUI_RECT(INT_MAX, 0, INT_MAX, 1));
+    timui_draw_fill(buf, TIMUI_RECT(0, 0, 4, 1), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
+    timui_pop_clip(f);
+
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == 0);
+    TIMUI_CHECK(timui_cells_get(buf, 3, 0)->codepoint == 0);
+
     timui_end(f);
     timui_close(ui);
 }

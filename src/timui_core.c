@@ -17,6 +17,10 @@ TIMUI_API const char *timui_error_string(TimuiResult result){
     return "unknown";
 }
 
+static int timui_allocator_valid_(const TimuiAllocator *alloc){
+    return alloc && alloc->alloc && alloc->realloc && alloc->free;
+}
+
 /* ---- lifecycle + frame ------------------------------------------------ */
 /* TIMUI_TRACE: append a human-readable line of raw input bytes to the trace fd
  * (ESC -> \e, printable as-is, else \xNN). For diagnosing drag-drop / paste. */
@@ -130,7 +134,7 @@ static TimuiResult timui_setup(Timui *ui, int w, int h){
 TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transport, int w, int h, const TimuiAllocator *alloc){
     Timui *ui;
     TimuiResult r;
-    if(!out_ui || w <= 0 || h <= 0 || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!out_ui || w <= 0 || h <= 0 || !timui_allocator_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
     ui = (Timui *)alloc->alloc(alloc->userdata, sizeof(Timui));
     if(!ui) return TIMUI_ERR_OUT_OF_MEMORY;
@@ -159,15 +163,45 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
  * requirement (a bricked terminal is the failure mode). Single-instance
  * assumption: one controlling terminal per process.
  *
- * Async-signal-safety: the handler calls only write (screen_exit) and
- * tcsetattr (termios_restore), both async-signal-safe; the process is about
- * to die, so interleaving with in-flight I/O is acceptable. */
+ * The handler uses a bounded best-effort path: restore input fd flags and
+ * termios first, then write teardown escapes directly with single write() calls
+ * (no transport abstraction, no poll/retry loop that can hang in a handler). */
 static Timui *g_sig_restore_ui = NULL;
+
+static void timui_restore_input_flags(Timui *ui){
+    if(!ui || !ui->input_flags_saved) return;
+    (void)fcntl(ui->fd.read_fd, F_SETFL, ui->input_flags);
+    ui->input_flags_saved = 0;
+}
 
 TIMUI_API void timui_restore_terminal(Timui *ui){
     if(!ui) return;
-    if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
+    timui_restore_input_flags(ui);
     if(ui->termios_active) timui_termios_restore(&ui->termios);
+    if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
+}
+static void timui_signal_write_(int fd, const char *s, size_t n){
+    if(fd >= 0) (void)write(fd, s, n);
+}
+#define TIMUI_SIG_EMIT(ui, lit) timui_signal_write_((ui)->fd.write_fd, (lit), sizeof(lit) - 1)
+static void timui_signal_screen_exit_(Timui *ui){
+    uint32_t flags;
+    if(!ui || !ui->screen_active) return;
+    flags = ui->screen.flags;
+    if(flags & TIMUI_FLAG_FOCUS_EVENTS)    TIMUI_SIG_EMIT(ui, "\x1b[?1004l");
+    if(flags & TIMUI_FLAG_BRACKETED_PASTE) TIMUI_SIG_EMIT(ui, "\x1b[?2004l");
+    if(flags & TIMUI_FLAG_MOUSE){          TIMUI_SIG_EMIT(ui, "\x1b[?1006l"); TIMUI_SIG_EMIT(ui, "\x1b[?1000l"); }
+    if(flags & TIMUI_FLAG_KITTY_KEYBOARD)  TIMUI_SIG_EMIT(ui, "\x1b[<u");
+    TIMUI_SIG_EMIT(ui, "\x1b[?25h");
+    if(flags & TIMUI_FLAG_ALT_SCREEN)      TIMUI_SIG_EMIT(ui, "\x1b[?1049l");
+    TIMUI_SIG_EMIT(ui, "\x1b[?7h");
+}
+#undef TIMUI_SIG_EMIT
+static void timui_signal_restore_terminal_(Timui *ui){
+    if(!ui) return;
+    timui_restore_input_flags(ui);
+    if(ui->termios_active) (void)timui_termios_restore(&ui->termios);
+    timui_signal_screen_exit_(ui);
 }
 static void timui_restore_previous_signal(Timui *ui, int sig){
     if(!ui){ signal(sig, SIG_DFL); return; }
@@ -184,7 +218,7 @@ static void timui_restore_previous_signal(Timui *ui, int sig){
 }
 static void timui_sig_restore(int sig){
     Timui *ui = g_sig_restore_ui;
-    timui_restore_terminal(ui);
+    timui_signal_restore_terminal_(ui);
     if(g_sig_restore_ui == ui) g_sig_restore_ui = NULL;
     timui_restore_previous_signal(ui, sig);
     raise(sig);
@@ -210,27 +244,31 @@ static void timui_remove_sig_handlers(Timui *ui){
     if(ui->prev_sighup_saved){  sigaction(SIGHUP,  &ui->prev_sighup,  NULL); ui->prev_sighup_saved = 0; }
     if(ui->prev_sigquit_saved){ sigaction(SIGQUIT, &ui->prev_sigquit, NULL); ui->prev_sigquit_saved = 0; }
 }
-static void timui_restore_input_flags(Timui *ui){
-    if(!ui || !ui->input_flags_saved) return;
-    (void)fcntl(ui->fd.read_fd, F_SETFL, ui->input_flags);
-    ui->input_flags_saved = 0;
-}
 static void timui_open_cleanup_failed(Timui *ui){
     if(!ui) return;
-    if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
-    if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); ui->termios_active = 0; }
-    timui_restore_input_flags(ui);
+    timui_restore_terminal(ui);
+    if(ui->termios_active){ timui_termios_destroy(&ui->termios); ui->termios_active = 0; }
     if(ui->trace_fd >= 0){ close(ui->trace_fd); ui->trace_fd = -1; }
 }
 
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     Timui *ui;
     TimuiAllocator al;
+    int input_flags;
     int w = 80, h = 24;
     TimuiResult r;
     if(!cfg || !out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
-    al = cfg->allocator.alloc ? cfg->allocator : timui_default_allocator();
+    if(cfg->input_fd < 0 || cfg->output_fd < 0) return TIMUI_ERR_INVALID_ARGUMENT;
+    input_flags = fcntl(cfg->input_fd, F_GETFL, 0);
+    if(input_flags < 0) return TIMUI_ERR_OS;
+    if(fcntl(cfg->output_fd, F_GETFL, 0) < 0) return TIMUI_ERR_OS;
+    if(cfg->allocator.alloc || cfg->allocator.realloc || cfg->allocator.free){
+        if(!timui_allocator_valid_(&cfg->allocator)) return TIMUI_ERR_INVALID_ARGUMENT;
+        al = cfg->allocator;
+    }else{
+        al = timui_default_allocator();
+    }
     ui = (Timui *)al.alloc(al.userdata, sizeof(Timui));
     if(!ui) return TIMUI_ERR_OUT_OF_MEMORY;
     memset(ui, 0, sizeof *ui);
@@ -251,14 +289,9 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     ui->have_transport  = 1;
     timui_caps_detect(&ui->caps, getenv("TERM"), getenv("TERM_PROGRAM"), getenv("COLORTERM"));
     if(timui_term_size(cfg->output_fd, &w, &h) != TIMUI_OK){ w = 80; h = 24; }
-    {
-        int flags = fcntl(cfg->input_fd, F_GETFL, 0);
-        if(flags >= 0){
-            ui->input_flags = flags;
-            ui->input_flags_saved = 1;
-            (void)fcntl(cfg->input_fd, F_SETFL, flags | O_NONBLOCK);
-        }
-    }
+    ui->input_flags = input_flags;
+    ui->input_flags_saved = 1;
+    (void)fcntl(cfg->input_fd, F_SETFL, input_flags | O_NONBLOCK);
     if(isatty(cfg->input_fd)){
         r = timui_termios_enter(&ui->termios, cfg->input_fd);
         if(r != TIMUI_OK){
@@ -283,10 +316,9 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
 TIMUI_API void timui_close(Timui *ui){
     TimuiAllocator al;
     if(!ui) return;
-    timui_remove_sig_handlers(ui);    /* W6: stop intercepting (close restores itself) */
-    if(ui->screen_active) timui_screen_exit(&ui->transport, &ui->screen);
-    if(ui->termios_active){ timui_termios_restore(&ui->termios); timui_termios_destroy(&ui->termios); }
-    timui_restore_input_flags(ui);
+    timui_restore_terminal(ui);
+    timui_remove_sig_handlers(ui);    /* W6: stop intercepting after the terminal is restored */
+    if(ui->termios_active) timui_termios_destroy(&ui->termios);
     if(ui->have_buffers){ timui_cells_destroy(&ui->curr); timui_cells_destroy(&ui->prev); }
     if(ui->have_postq) timui_mpsc_destroy(&ui->postq);
     timui_interact_destroy(&ui->ia);   /* V24: free the dynamic tab_order */
@@ -598,7 +630,7 @@ static TimuiId id_compose(TimuiId parent, TimuiId child){
     return h;
 }
 TIMUI_API TimuiResult timui_id_stack_init(TimuiIdStack *s, const TimuiAllocator *alloc, size_t cap){
-    if(!s || !alloc || cap == 0) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!s || !timui_allocator_valid_(alloc) || cap == 0) return TIMUI_ERR_INVALID_ARGUMENT;
     memset(s, 0, sizeof *s);
     if(cap > SIZE_MAX / sizeof(TimuiId)) return TIMUI_ERR_OUT_OF_MEMORY;
     s->alloc = *alloc;
@@ -686,7 +718,7 @@ TIMUI_API int timui_str_eq_cstr(TimuiStr a, const char *b){
  * full — no overwrite); recv dequeues FIFO, copies up to *inout_size bytes
  * and reports the real payload size, reclaiming the slab once drained. */
 TIMUI_API TimuiResult timui_msgq_init(TimuiMsgQueue *q, const TimuiAllocator *alloc, size_t cap){
-    if(!q || !alloc || cap == 0) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!q || !timui_allocator_valid_(alloc) || cap == 0) return TIMUI_ERR_INVALID_ARGUMENT;
     q->alloc = *alloc;
     q->cap   = cap;
     q->head  = 0;
@@ -757,7 +789,7 @@ TIMUI_API int timui_msgq_empty(const TimuiMsgQueue *q){
 #define TIMUI_MPSC_UNLOCK(q) ((void)0)
 #endif
 TIMUI_API TimuiResult timui_mpsc_init(TimuiMpsc *q, const TimuiAllocator *alloc){
-    if(!q || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!q || !timui_allocator_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
     q->alloc = *alloc;
     q->head = NULL; q->tail = NULL; q->pending = 0;
 #ifndef TIMUI_NO_THREADS
@@ -854,7 +886,7 @@ TIMUI_API TimuiAllocator timui_default_allocator(void){
     return a;
 }
 TIMUI_API TimuiResult timui_arena_init(TimuiArena *a, const TimuiAllocator *alloc, size_t cap){
-    if(!a || !alloc || cap == 0) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!a || !timui_allocator_valid_(alloc) || cap == 0) return TIMUI_ERR_INVALID_ARGUMENT;
     a->alloc = alloc;
     a->cap   = cap;
     a->off   = 0;

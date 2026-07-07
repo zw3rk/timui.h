@@ -3,7 +3,7 @@ TIMUI_API TimuiResult timui_cells_init(TimuiCellBuffer *buf, int w, int h, const
     size_t n;
     if(!buf) return TIMUI_ERR_INVALID_ARGUMENT;
     memset(buf, 0, sizeof *buf);
-    if(w <= 0 || h <= 0 || !alloc) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(w <= 0 || h <= 0 || !timui_allocator_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
     if((size_t)w > SIZE_MAX / (size_t)h) return TIMUI_ERR_OUT_OF_MEMORY;     /* w*h overflow */
     n = (size_t)w * (size_t)h;
     if(n > SIZE_MAX / sizeof(TimuiCell)) return TIMUI_ERR_OUT_OF_MEMORY;     /* n*sizeof overflow */
@@ -32,7 +32,10 @@ TIMUI_API TimuiResult timui_cells_resize(TimuiCellBuffer *buf, int w, int h, con
     size_t n, oldn;
     TimuiCell *nc;
     if(!buf || w <= 0 || h <= 0) return TIMUI_ERR_INVALID_ARGUMENT;
-    if(!buf->cells && alloc) buf->alloc = *alloc;
+    if(!buf->cells){
+        if(!timui_allocator_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
+        buf->alloc = *alloc;
+    }
     if((size_t)w > SIZE_MAX / (size_t)h) return TIMUI_ERR_OUT_OF_MEMORY;     /* w*h overflow */
     n = (size_t)w * (size_t)h;
     if(n > SIZE_MAX / sizeof(TimuiCell)) return TIMUI_ERR_OUT_OF_MEMORY;     /* n*sizeof overflow */
@@ -97,6 +100,7 @@ TIMUI_API int timui_utf8_decode(const char *s, size_t len, uint32_t *out_cp){
 }
 TIMUI_API int timui_utf8_width(uint32_t cp){
     if(cp < 0x20 || cp == 0x7F) return 0;                       /* control */
+    if(cp >= 0x80 && cp <= 0x9F) return 0;                       /* C1 control */
     if(cp == 0xFFFD) return 1;
     if((cp >= 0x0300 && cp <= 0x036F) || (cp >= 0x1AB0 && cp <= 0x1AFF) ||
        (cp >= 0x1DC0 && cp <= 0x1DFF) || (cp >= 0x20D0 && cp <= 0x20FF) ||
@@ -122,6 +126,8 @@ static void put_glyph_link(TimuiCellBuffer *buf, int x, int y, uint32_t cp, Timu
        x >= buf->clip.x + buf->clip.w || y >= buf->clip.y + buf->clip.h)) return;
     memset(&c, 0, sizeof c);
     w = timui_utf8_width(cp);
+    if(w > 1 && (x + 1 >= buf->w ||
+       (buf->has_clip && (x + 1 < buf->clip.x || x + 1 >= buf->clip.x + buf->clip.w)))) return;
     c.codepoint = cp;
     c.fg = st.fg;
     c.bg = st.bg;
@@ -130,7 +136,7 @@ static void put_glyph_link(TimuiCellBuffer *buf, int x, int y, uint32_t cp, Timu
     c.hyperlink_id = link;
     timui_cells_put(buf, x, y, &c);
     /* wide glyph: blank the continuation cell so stale content isn't left behind */
-    if(w > 1 && !(buf->has_clip && (x + 1 < buf->clip.x || x + 1 >= buf->clip.x + buf->clip.w))){
+    if(w > 1){
         memset(&c, 0, sizeof c);
         c.fg = TIMUI_COLOR_DEFAULT;   /* ADR 0001: blanked = default, not black */
         c.bg = TIMUI_COLOR_DEFAULT;
@@ -270,6 +276,25 @@ static int fmt_uint(char *buf, unsigned v){
 }
 static void r_emit(TimuiTransport *t, const char *s, size_t n){ if(t && t->write) (void)t->write(t, s, n); }
 #define R_EMIT(t, lit) r_emit((t), (lit), sizeof(lit) - 1)
+static void emit_osc_string_sanitized(TimuiTransport *t, const char *s){
+    size_t i = 0, len;
+    if(!s) return;
+    len = strlen(s);
+    while(i < len){
+        uint32_t cp = 0;
+        int adv = timui_utf8_decode(s + i, len - i, &cp);
+        char out[4];
+        int n;
+        if(adv <= 0){ cp = 0xFFFDu; adv = 1; }
+        if(cp < 0x20u || cp == 0x7Fu || (cp >= 0x80u && cp <= 0x9Fu)){
+            i += (size_t)adv;
+            continue;
+        }
+        n = timui_utf8_encode_(cp, out);
+        if(n > 0) r_emit(t, out, (size_t)n);
+        i += (size_t)adv;
+    }
+}
 static void emit_truecolor(TimuiTransport *t, int bg, uint32_t rgb){
     char buf[40];
     int n = 0;
@@ -307,7 +332,7 @@ static void emit_sgr(TimuiTransport *t, TimuiRenderer *r, const TimuiCell *c){
 /* OSC 8 hyperlink: ESC]8;;<uri>ESC\\ to open, ESC]8;;ESC\\ to close. */
 static void emit_osc8(TimuiTransport *t, const char *uri){
     R_EMIT(t, "\x1b]8;;");
-    if(uri) r_emit(t, uri, strlen(uri));
+    if(uri) emit_osc_string_sanitized(t, uri);
     R_EMIT(t, "\x1b\\");
 }
 TIMUI_API void timui_renderer_reset(TimuiRenderer *r){
@@ -328,6 +353,12 @@ static int uri_eq(const char *a, const char *b){
     if(a == b) return 1;
     if(!a || !b) return 0;
     return strcmp(a, b) == 0;
+}
+static uint32_t render_safe_cp(uint32_t cp){
+    if(cp == 0) return ' ';
+    if(cp < 0x20u || cp == 0x7Fu || (cp >= 0x80u && cp <= 0x9Fu)) return ' ';
+    if(cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) return 0xFFFDu;
+    return cp;
 }
 TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
                                  const TimuiCellBuffer *curr, TimuiRenderer *r){
@@ -370,7 +401,7 @@ TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
                     }else r->last_link_uri[0] = '\0';
                 }
             }
-            gn = timui_utf8_encode_(cc->codepoint ? cc->codepoint : ' ', gb);
+            gn = timui_utf8_encode_(render_safe_cp(cc->codepoint), gb);
             r_emit(t, gb, (size_t)gn);
             r->last_x = x + (cc->width >= 2 ? 2 : 1);   /* wide glyph advances cursor by 2 */
             r->last_y = y;
