@@ -184,6 +184,7 @@ int main(void){
         test_paste_preserves_text_order,
         test_input_field_paste_enter_order,
         test_input_field_text_burst,
+        test_input_field_kitty_csi_u_printable,
         test_input_field_emacs,
         test_input_field_styled,
         test_mouse_click_hyperlink,

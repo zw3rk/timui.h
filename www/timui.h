@@ -2014,6 +2014,17 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 else if(ev.as.key.key == TIMUI_KEY_DELETE) ui->key_in |= TIMUI_KEYIN_DELETE;
                 else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
                 else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
+                else if(ev.as.key.key == TIMUI_KEY_UNKNOWN && ev.as.key.mods == TIMUI_MOD_NONE){
+                    uint32_t cp = ev.as.key.codepoint;
+                    if(cp >= 0x20 && cp != 0x7f && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff)){
+                        char enc[4];
+                        int enclen = timui_utf8_encode_(cp, enc);
+                        if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
+                            int ei;
+                            for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
+                        }
+                    }
+                }
                 else if(ev.as.key.key == TIMUI_KEY_UNKNOWN && (ev.as.key.mods & TIMUI_MOD_CTRL)){
                     /* emacs / readline line editing (ubiquitous on macOS). Ctrl-H
                      * (backspace) already arrives as KEY_BACKSPACE from the parser. */

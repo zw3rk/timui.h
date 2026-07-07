@@ -414,6 +414,28 @@ TIMUI_TEST(test_input_field_text_burst){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_field_kitty_csi_u_printable){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    char text[16] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 1);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+#define KCF() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); KCF();
+    SETIN(&fake, "\x1b[<0;2;1m"); KCF();
+    SETIN(&fake, "\x1b[97u"); KCF();
+    TIMUI_CHECK(strcmp(text, "a") == 0 && is.cursor == 1);
+#undef KCF
+    timui_close(ui);
+}
+
 /* emacs / readline line-editing keys (ubiquitous on macOS): Ctrl-A/E move to
  * start/end, Ctrl-B/F back/forward, Ctrl-D delete, Ctrl-K/U kill to end/start,
  * Ctrl-W kill the previous word. */
