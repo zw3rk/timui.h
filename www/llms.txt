@@ -10,9 +10,6 @@ Canonical website URLs:
 - Agent notes: https://timui.dev/llms.txt
 - Source repository: https://github.com/zw3rk/timui.h
 
-The source repository is opening shortly, cleanup in progress; use the
-downloadable header from this site for now.
-
 ## How to build with timui.h
 
 1. Download `timui.h` into your project.
