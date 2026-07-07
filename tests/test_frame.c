@@ -86,3 +86,24 @@ TIMUI_TEST(test_events_dropped){
     timui_end(f);
     timui_close(ui);
 }
+
+TIMUI_TEST(test_begin_preserves_focus_events){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiEvent ev;
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_fake_set_input(&fake, "\x1b[I", sizeof("\x1b[I") - 1);
+    timui_begin(ui, &f);
+
+    TIMUI_CHECK(timui_poll_event(ui, &ev));
+    TIMUI_CHECK(ev.kind == TIMUI_EVENT_FOCUS && ev.as.focus.focused);
+
+    timui_end(f);
+    timui_close(ui);
+}

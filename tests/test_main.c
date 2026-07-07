@@ -142,6 +142,7 @@ int main(void){
         test_frame_lifecycle,
         test_frame_quit_flag,
         test_events_dropped,
+        test_begin_preserves_focus_events,
         test_interact_click,
         test_interact_hover_only,
         test_interact_extreme_rect_hit_test,

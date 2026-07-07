@@ -1991,6 +1991,8 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->mouse_clicked = 0;
     {
         TimuiEvent ev;
+        TimuiEvent focus_events[sizeof(ui->events) / sizeof(ui->events[0])];
+        int focus_count = 0;
         int saw_mouse_press = 0, saw_mouse_release = 0;
         int press_x = 0, press_y = 0;
         while(timui_poll_event(ui, &ev)){
@@ -2073,7 +2075,15 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                     if((pc >= 0x20 && pc != 0x7f) || pc == '\n' || pc == '\r' || pc == '\t')
                         ui->text_in[ui->text_in_len++] = (char)pc;
                 }
+            } else if(ev.kind == TIMUI_EVENT_FOCUS){
+                if(focus_count < (int)(sizeof(focus_events) / sizeof(focus_events[0])))
+                    focus_events[focus_count++] = ev;
             }
+        }
+        if(focus_count > 0){
+            int fi;
+            ui->event_count = 0;
+            for(fi = 0; fi < focus_count; fi++) ui->events[ui->event_count++] = focus_events[fi];
         }
         if(saw_mouse_press && saw_mouse_release)
             timui_interact_set_mouse(&ui->ia, press_x, press_y, ui->ia.mouse_down);
