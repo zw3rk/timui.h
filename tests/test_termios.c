@@ -6,14 +6,50 @@
 #include "test.h"
 #include "timui.h"
 
+#include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 
 static void test_sigterm_handler(int sig){ (void)sig; }
+
+static int termios_contains(const char *haystack, size_t haystack_len, const char *needle){
+    size_t needle_len = strlen(needle);
+    size_t i;
+    if(needle_len == 0) return 1;
+    if(haystack_len < needle_len) return 0;
+    for(i = 0; i <= haystack_len - needle_len; i++){
+        if(memcmp(haystack + i, needle, needle_len) == 0) return 1;
+    }
+    return 0;
+}
+
+static int pty_output_contains(int fd, const char *needle){
+    char buf[512];
+    size_t used = 0;
+    int flags;
+    int read_errno = 0;
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    if(poll(&pfd, 1, 250) <= 0) return 0;
+    flags = fcntl(fd, F_GETFL, 0);
+    if(flags >= 0) (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    while(used < sizeof buf){
+        ssize_t n = read(fd, buf + used, sizeof buf - used);
+        if(n <= 0){ if(n < 0) read_errno = errno; break; }
+        used += (size_t)n;
+    }
+    if(flags >= 0) (void)fcntl(fd, F_SETFL, flags);
+    if(read_errno != 0 && read_errno != EAGAIN && read_errno != EWOULDBLOCK) return 0;
+    return termios_contains(buf, used, needle);
+}
 
 /* Exercises the real termios path through a posix_openpt pty pair (no -lutil
  * needed): raw mode clears ICANON/ECHO; restore reproduces the original c_lflag. */
@@ -188,6 +224,42 @@ TIMUI_TEST(test_open_restores_previous_signal_handler){
 
     (void)sigaction(SIGTERM, &orig, NULL);
     close(nullfd);
+    close(slave);
+    close(master);
+}
+
+TIMUI_TEST(test_open_enters_screen_when_only_output_is_tty){
+    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int slave, input;
+    char *name;
+    TimuiConfig cfg;
+    Timui *ui = NULL;
+    struct winsize ws;
+
+    TIMUI_CHECK(master >= 0);
+    if(master < 0) return;
+    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
+    name = ptsname(master);
+    if(!name){ close(master); TIMUI_CHECK(0); return; }
+    slave = open(name, O_RDWR);
+    if(slave < 0){ close(master); TIMUI_CHECK(0); return; }
+    input = open("/dev/null", O_RDONLY);
+    if(input < 0){ close(slave); close(master); TIMUI_CHECK(0); return; }
+    memset(&ws, 0, sizeof ws);
+    ws.ws_col = 80;
+    ws.ws_row = 24;
+    TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
+
+    memset(&cfg, 0, sizeof cfg);
+    cfg.input_fd = input;
+    cfg.output_fd = slave;
+    cfg.flags = TIMUI_FLAG_ALT_SCREEN;
+
+    TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);
+    TIMUI_CHECK(pty_output_contains(master, "\x1b[?1049h"));
+
+    timui_close(ui);
+    close(input);
     close(slave);
     close(master);
 }

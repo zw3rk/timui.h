@@ -85,6 +85,7 @@ int main(void){
         test_open_restores_input_fd_flags,
         test_restore_terminal_restores_input_fd_flags,
         test_open_restores_previous_signal_handler,
+        test_open_enters_screen_when_only_output_is_tty,
         test_open_fails_when_raw_mode_fails,
         test_open_rejects_invalid_fds,
         test_term_size_query,

@@ -1836,6 +1836,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     Timui *ui;
     TimuiAllocator al;
     int input_flags;
+    int input_is_tty, output_is_tty;
     int w = 80, h = 24;
     int px_w = 0, px_h = 0;
     TimuiResult r;
@@ -1845,6 +1846,8 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     input_flags = fcntl(cfg->input_fd, F_GETFL, 0);
     if(input_flags < 0) return TIMUI_ERR_OS;
     if(fcntl(cfg->output_fd, F_GETFL, 0) < 0) return TIMUI_ERR_OS;
+    input_is_tty = isatty(cfg->input_fd);
+    output_is_tty = isatty(cfg->output_fd);
     if(cfg->allocator.alloc || cfg->allocator.realloc || cfg->allocator.free){
         if(!timui_allocator_valid_(&cfg->allocator)) return TIMUI_ERR_INVALID_ARGUMENT;
         al = cfg->allocator;
@@ -1876,7 +1879,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     ui->input_flags = input_flags;
     ui->input_flags_saved = 1;
     (void)fcntl(cfg->input_fd, F_SETFL, input_flags | O_NONBLOCK);
-    if(isatty(cfg->input_fd)){
+    if(input_is_tty){
         r = timui_termios_enter(&ui->termios, cfg->input_fd);
         if(r != TIMUI_OK){
             timui_open_cleanup_failed(ui);
@@ -1884,6 +1887,8 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
             return r;
         }
         ui->termios_active = 1;
+    }
+    if(output_is_tty){
         timui_screen_enter(&ui->transport, &ui->screen, cfg->flags, timui_str_from_cstr(cfg->title));
         ui->screen_active = 1;
     }
