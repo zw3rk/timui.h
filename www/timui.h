@@ -4017,6 +4017,8 @@ static void emit_mouse(TimuiEventFn cb, void *ctx, const int *mp, unsigned char 
          * dropped the delta for any modifier-tagged scroll. */
         int btn = code & 0x03;
         ev.as.mouse.wheel_y = (btn == 0) ? 1 : (btn == 1 ? -1 : 0);
+        ev.as.mouse.pressed = 0;
+        ev.as.mouse.released = 0;
     } else {
         ev.as.mouse.button = code & 0x03;
         ev.as.mouse.motion = (code & 0x20) ? 1 : 0;

@@ -41,12 +41,37 @@ TIMUI_TEST(test_mouse_wheel_and_motion){
     timui_input_init(&p);
     FEED(&p, "\x1b[<64;5;6M");
     TIMUI_CHECK(s.n == 1 && s.ev[0].as.mouse.wheel_y == 1);
+    TIMUI_CHECK(!s.ev[0].as.mouse.pressed && !s.ev[0].as.mouse.released);
+    TIMUI_CHECK(s.ev[0].as.mouse.button == -1);
     s.n = 0;
     FEED(&p, "\x1b[<65;5;6M");
     TIMUI_CHECK(s.ev[0].as.mouse.wheel_y == -1);
+    TIMUI_CHECK(!s.ev[0].as.mouse.pressed && !s.ev[0].as.mouse.released);
+    TIMUI_CHECK(s.ev[0].as.mouse.button == -1);
     s.n = 0;
     FEED(&p, "\x1b[<32;7;8M");
     TIMUI_CHECK(s.ev[0].as.mouse.motion);
+}
+
+TIMUI_TEST(test_mouse_wheel_not_clicked){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    int x = -1, y = -1;
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+
+    timui_fake_set_input(&fake, "\x1b[<64;5;3M", sizeof("\x1b[<64;5;3M") - 1);
+    timui_begin(ui, &f);
+    TIMUI_CHECK(timui_mouse_wheel(f) == 1);
+    TIMUI_CHECK(!timui_mouse_clicked(f, &x, &y));
+    timui_end(f);
+
+    timui_close(ui);
 }
 
 TIMUI_TEST(test_focus_events){
