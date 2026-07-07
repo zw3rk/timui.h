@@ -173,7 +173,9 @@ static void timui_install_sig_handlers(Timui *ui){
     memset(&sa, 0, sizeof sa);
     sa.sa_handler = timui_sig_restore;
     sigemptyset(&sa.sa_mask);
+#ifdef SA_RESTART
     sa.sa_flags = SA_RESTART;
+#endif
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGHUP,  &sa, NULL);
     sigaction(SIGQUIT, &sa, NULL);
@@ -905,4 +907,3 @@ TIMUI_API void timui_split_rows(TimuiRect r, float ratio, TimuiRect *a, TimuiRec
 #undef TIMUI_ID_ROOT
 #undef TIMUI_MPSC_LOCK
 #undef TIMUI_MPSC_UNLOCK
-
