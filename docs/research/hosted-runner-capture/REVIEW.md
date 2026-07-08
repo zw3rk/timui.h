@@ -23,6 +23,8 @@ usable as timui.h terminal visual evidence?
   <https://github.com/actions/runner-images/issues/8951>
 - Apple Terminal automation:
   <https://support.apple.com/guide/terminal/automate-tasks-using-applescript-and-terminal-trml1003/mac>
+- Apple PPPC / ScreenCapture privacy controls:
+  <https://support.apple.com/guide/deployment/privacy-preferences-policy-control-payload-dep38df53c2a/web>
 - Windows Terminal command line:
   <https://learn.microsoft.com/en-us/windows/terminal/command-line-arguments>
 - Windows self-hosted GUI runner caveat:
@@ -40,16 +42,24 @@ usable as timui.h terminal visual evidence?
   Terminal.app. Prefer opening an executable `.command` file with
   `open -a Terminal`, then capture with `screencapture`.
 - Hosted iTerm2 is weaker than Terminal.app. iTerm2 is not part of the standard
-  macOS image, and a just-installed copy does not inherit the same confidence as
-  Terminal.app. Count iTerm2 only when the screenshot visibly shows the live
-  timui iTerm2 payload.
-- Hosted Windows can run screen-capture code, but it is not a reliable required
-  acceptance gate for visible desktop UI. Service/session isolation, absent or
-  non-foreground windows, black desktops, and Windows Terminal packaging all
-  remain likely failure modes.
-- Windows Terminal Sixel visual proof is better handled on a self-hosted Windows
-  runner launched in an autologon interactive session. Hosted Windows remains
-  useful for deterministic ConPTY/protocol-byte tests and diagnostic artifacts.
+  macOS image, and a just-installed copy does not inherit Terminal.app's seeded
+  TCC grants. On `macos-15`, iTerm2 capture attempts produced a privacy prompt
+  attributed to `bash` requesting direct screen/audio access. Apple PPPC/TCC
+  does not provide a supported silent allow path for this on GitHub-hosted
+  macOS; use Terminal.app for hosted screenshots and keep iTerm2-specific
+  evidence to deterministic protocol output or a separately approved Mac.
+- Hosted Windows can run screen-capture code and can render Windows Terminal UI
+  in the active `runneradmin` console session. Run `28982641529` proved
+  Windows Terminal Sixel rendering on hosted Windows Server 2025:
+  `windows-terminal-direct-sixel-12s.png` visibly rendered a 180x72 direct
+  Sixel control, and `windows-terminal-sixel-12s.png` visibly rendered all
+  three timui image-smoke Sixel tiles.
+- The earlier hosted Windows Sixel failure was not a Windows Terminal renderer
+  failure. RCA run `28982372688` showed the direct 180x72 Sixel control rendered
+  correctly while timui emitted three `4x4` Sixel rasters. The root cause was
+  the smoke harness's tiny 4x4 source fixture combined with MSYS/Windows
+  Terminal reporting no cell pixel geometry; the fixed smoke harness now emits
+  visible 64x24 source-pixel rasters when cell pixels are unavailable.
 - Raw terminal streams, DCS/OSC marker counts, asciinema/ttyrec captures, and
   launch logs are diagnostics. Accepted evidence needs either deterministic
   replay/predicate checks or a manually inspected screenshot/video that visibly
@@ -63,13 +73,14 @@ usable as timui.h terminal visual evidence?
   - Windows: `cmd-sanity.png` must show `TIMUI_HOSTED_SCREENSHOT_SANITY`.
 - macOS protocol evidence:
   - use `macos-15`;
-  - record TCC/WindowServer diagnostics;
-  - count only an `iterm2-screen-*.png` that visibly shows the iTerm2 live smoke.
+  - prefer Terminal.app for hosted GUI screenshots;
+  - treat hosted iTerm2 as rejected unless a future run shows no TCC prompt and
+    visibly shows the live iTerm2 payload.
 - Windows hosted evidence:
   - record `query user`, `qwinsta`, process lists, and full virtual-screen PNGs;
-  - treat Windows Terminal screenshots as supplemental diagnostics unless they
-    visibly show the live payload and the session diagnostics support an
-    interactive desktop.
+  - count Windows Terminal Sixel evidence when the screenshot visibly shows the
+    live payload, the session diagnostics show an active console, and raw DCS
+    metrics confirm non-trivial image rasters.
 - Required CI acceptance should stay deterministic:
   - cell-buffer/golden tests;
   - libvterm replay where applicable;
@@ -79,7 +90,8 @@ usable as timui.h terminal visual evidence?
 
 ## Open work
 
-- Add a self-hosted Windows visual runbook if Windows Terminal pixel evidence
-  becomes a release blocker.
 - Add protocol-level Sixel decode predicates so hosted Windows can still prove
   Sixel payload correctness without depending on visible desktop capture.
+- Hosted iTerm2 remains blocked by macOS privacy/TCC. Use Terminal.app hosted
+  screenshots or a persistent Mac with pre-approved permissions if iTerm2 pixel
+  evidence becomes a release requirement.

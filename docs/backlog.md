@@ -83,7 +83,8 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
             Windows ConPTY (`nix develop -c make smoke-conpty-win32`);
             compile/headless harness checks are wired, but live evidence is
             still pending. Use `docs/runbooks/phase1-5-live-evidence.md`.
-      - [ ] Sixel terminal evidence.
+      - [x] Sixel terminal evidence via hosted Windows Terminal run
+            `28982641529`.
       - [ ] iTerm2 terminal evidence.
 
 ## Phase 2 backlog - architecture and applications

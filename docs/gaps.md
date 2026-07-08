@@ -53,12 +53,14 @@ These are known limitations promoted into the next planned follow-up. See
   operator evidence, but do not claim Windows support until a real Windows
   Terminal smoke run is green and recorded per
   `docs/runbooks/phase1-5-live-evidence.md`.
-- **Image protocol emitters** still need terminal evidence.
+- **Image protocol emitters** still need iTerm2 terminal evidence.
   Kitty graphics, iTerm2 inline PNG images, raw-RGBA Sixel, PNG+RGBA sidecar
-  Sixel, and built-in bounded plain-PNG-to-Sixel decode are in tree. Remaining
-  image gaps: real iTerm2/Sixel terminal captures via `nix develop -c make
-  smoke-image-live PROTO=sixel|iterm2 FRAMES=N`, recorded per
-  `docs/runbooks/phase1-5-live-evidence.md`. Multiplexer image passthrough is
+  Sixel, and built-in bounded plain-PNG-to-Sixel decode are in tree. Hosted
+  Windows Terminal Sixel evidence is accepted in run `28982641529` and recorded
+  per `docs/runbooks/phase1-5-live-evidence.md`. Remaining image gap: real
+  iTerm2 terminal capture via `nix develop -c make smoke-image-live
+  PROTO=iterm2 FRAMES=N`, or deterministic iTerm2 protocol evidence if hosted
+  macOS TCC keeps blocking GUI capture. Multiplexer image passthrough is
   deliberately conservative for Phase 1.5: image caps are stripped under
   tmux/screen/zellij unless a later pass designs and tests a narrower
   passthrough contract.

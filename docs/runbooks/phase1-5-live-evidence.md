@@ -24,11 +24,11 @@ as evidence, what does not, and the artifact text to record afterward.
   `terminal-sanity.png` or `cmd-sanity.png` prove capture mechanics only; they
   are not image-protocol evidence. Raw escape streams, DCS/OSC marker counts,
   process lists, session diagnostics, and launch logs are diagnostics only.
-- Hosted Windows GUI screenshots are not a required acceptance gate. Treat them
-  as diagnostic unless the artifact clearly shows the expected terminal payload
-  and records an interactive session. For required Windows pixel evidence, use a
-  self-hosted Windows runner launched from an autologon interactive session, not
-  a runner service.
+- Hosted Windows GUI screenshots count when the artifact clearly shows the
+  expected terminal payload and records an active interactive session. Run
+  `28982641529` is accepted Sixel evidence. If a future Windows GUI predicate
+  cannot be satisfied on hosted runners, use a self-hosted Windows runner
+  launched from an autologon interactive session, not a runner service.
 - The hosted Windows job uses native MSYS2 `make` rather than `nix develop`
   because the flake currently declares Linux and Darwin systems only. That is a
   documented CI exception for this evidence probe, not a project-wide toolchain
@@ -151,9 +151,13 @@ Hosted runner probe:
   the same commit.
 - `windows-terminal-sixel-*.png` is supplemental Sixel evidence only if it
   visibly shows the Windows Terminal live smoke with image tiles and the
-  session diagnostics show an interactive desktop. Treat `sixel.typescript`,
-  `sixel-dcs-count.txt`, process lists, and the cmd sanity screenshot as
-  diagnostics, not terminal evidence.
+  session diagnostics show an interactive desktop. Run `28982641529` is the
+  first accepted hosted Windows example: the direct Sixel control rendered,
+  `timui-sixel-dcs-metrics.txt` reported three `64x24` rasters, and
+  `windows-terminal-sixel-12s.png` visibly showed all three timui image tiles.
+  Treat `sixel.typescript`, DCS counts/metrics, process lists, and the cmd
+  sanity screenshot as diagnostics that support, but do not replace, visual
+  terminal evidence.
 
 ## Evidence Template
 
