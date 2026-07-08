@@ -623,6 +623,12 @@ check-image-smoke: $(BLDDIR)/image_smoke $(BLDDIR)/pty_drive $(BLDDIR)/vt_render
 	 echo "$$out" | grep -q 'image protocol smoke' && echo "$$out" | grep -q 'plain png' && echo "$$out" | grep -Fq '[img]' \
 	  && printf "$(C_GREEN)✓ image_smoke$(C_RESET) headless harness rendered placeholders\n" \
 	  || { printf "$(C_YELL)✗ image_smoke$(C_RESET) smoke: expected title/plain png/[img]\n"; echo "$$out"; exit 1; }
+	@./$(BLDDIR)/pty_drive --cols 96 --rows 28 --run-ms 1000 --settle-ms 200 \
+	   --out "$(RECDIR)/image-smoke-sixel.raw" -- ./$(BLDDIR)/image_smoke --frames 1 --protocol sixel < /dev/null
+	@grep -Fq '"1;1;64;24' "$(RECDIR)/image-smoke-sixel.raw" \
+	  && ! grep -Fq '"1;1;4;4' "$(RECDIR)/image-smoke-sixel.raw" \
+	  && printf "$(C_GREEN)✓ image_smoke$(C_RESET) forced Sixel emits visible source-pixel rasters\n" \
+	  || { printf "$(C_YELL)✗ image_smoke$(C_RESET) forced Sixel used tiny fixture rasters\n"; exit 1; }
 
 # Headless IRC smoke: run the client's OFFLINE --demo path (canned transcript,
 # NO network) through a pty and assert the model+render pipeline works: the

@@ -12,23 +12,33 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-static const unsigned char smoke_png[] = {
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x04,
-    0x08, 0x06, 0x00, 0x00, 0x00, 0xa9, 0xf1, 0x9e, 0x7e, 0x00, 0x00, 0x00,
-    0x25, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x88, 0x7c, 0x67, 0xff,
-    0x9f, 0x95, 0x9d, 0xe3, 0x3f, 0x08, 0x84, 0x6d, 0x3b, 0xf4, 0x9f, 0x01,
-    0x99, 0x03, 0x92, 0x64, 0x40, 0xe6, 0x80, 0x24, 0x19, 0x90, 0x39, 0x20,
-    0x00, 0x00, 0x77, 0xa5, 0x29, 0x85, 0xb5, 0x28, 0x31, 0x1a, 0x00, 0x00,
-    0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-};
+#define STBI_WRITE_NO_STDIO
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../tools/vendor/stb_image_write.h"
 
-static const unsigned char smoke_rgba[4 * 4 * 4] = {
-    0x59,0xee,0x3f,0xff, 0x05,0x07,0x08,0xff, 0xff,0xff,0xff,0xff, 0x56,0xb6,0xc2,0xff,
-    0x05,0x07,0x08,0xff, 0xff,0xff,0xff,0xff, 0x56,0xb6,0xc2,0xff, 0x59,0xee,0x3f,0xff,
-    0xff,0xff,0xff,0xff, 0x56,0xb6,0xc2,0xff, 0x59,0xee,0x3f,0xff, 0x05,0x07,0x08,0xff,
-    0x56,0xb6,0xc2,0xff, 0x59,0xee,0x3f,0xff, 0x05,0x07,0x08,0xff, 0xff,0xff,0xff,0xff,
-};
+enum { SMOKE_W = 64, SMOKE_H = 24 };
+
+static void make_smoke_rgba(unsigned char *rgba, int w, int h){
+    static const unsigned char colors[][3] = {
+        { 0x59, 0xee, 0x3f },
+        { 0x56, 0xb6, 0xc2 },
+        { 0xff, 0xff, 0xff },
+        { 0x05, 0x07, 0x08 }
+    };
+    int x, y;
+    if(!rgba || w <= 0 || h <= 0) return;
+    for(y = 0; y < h; y++){
+        for(x = 0; x < w; x++){
+            int band = ((x / 8) + (y / 6)) & 3;
+            unsigned char *p = rgba + ((size_t)y * (size_t)w + (size_t)x) * 4u;
+            if(x == 0 || y == 0 || x == w - 1 || y == h - 1) band = 0;
+            p[0] = colors[band][0];
+            p[1] = colors[band][1];
+            p[2] = colors[band][2];
+            p[3] = 0xff;
+        }
+    }
+}
 
 static TimuiImageProtocol parse_protocol(const char *s, int *forced){
     if(forced) *forced = 1;
@@ -74,6 +84,9 @@ int main(int argc, char **argv){
     Timui *ui = NULL;
     TimuiImage *png = NULL, *rgba = NULL, *both = NULL;
     TimuiImageProtocol want = TIMUI_IMAGE_PROTOCOL_NONE;
+    unsigned char smoke_rgba[SMOKE_W * SMOKE_H * 4];
+    unsigned char *smoke_png = NULL;
+    int smoke_png_len = 0;
     int forced = 0, frames = -1, frame = 0, i;
     int rc = 1;
 
@@ -97,10 +110,14 @@ int main(int argc, char **argv){
     if(timui_open(&cfg, &ui) != TIMUI_OK) return 1;
     if(forced > 0) timui_force_image_protocol(ui, want);
 
-    png = timui_image_from_png(ui, smoke_png, sizeof smoke_png);
-    rgba = timui_image_from_rgba(ui, smoke_rgba, 4, 4, 4 * 4);
-    both = timui_image_from_png_rgba(ui, smoke_png, sizeof smoke_png,
-                                     smoke_rgba, 4, 4, 4 * 4);
+    make_smoke_rgba(smoke_rgba, SMOKE_W, SMOKE_H);
+    smoke_png = stbi_write_png_to_mem(smoke_rgba, SMOKE_W * 4,
+                                      SMOKE_W, SMOKE_H, 4, &smoke_png_len);
+    if(!smoke_png || smoke_png_len <= 0) goto done;
+    png = timui_image_from_png(ui, smoke_png, (size_t)smoke_png_len);
+    rgba = timui_image_from_rgba(ui, smoke_rgba, SMOKE_W, SMOKE_H, SMOKE_W * 4);
+    both = timui_image_from_png_rgba(ui, smoke_png, (size_t)smoke_png_len,
+                                     smoke_rgba, SMOKE_W, SMOKE_H, SMOKE_W * 4);
     if(!png || !rgba || !both) goto done;
 
     while(!timui_should_quit(ui)){
@@ -143,6 +160,7 @@ done:
     timui_image_free(ui, png);
     timui_image_free(ui, rgba);
     timui_image_free(ui, both);
+    free(smoke_png);
     timui_close(ui);
     return rc;
 }
