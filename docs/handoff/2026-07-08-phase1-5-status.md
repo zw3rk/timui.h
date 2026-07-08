@@ -87,6 +87,8 @@ date: 2026-07-08
   evidence yet. Use `make smoke-image-live PROTO=sixel` and `make
   smoke-image-live PROTO=iterm2` outside tmux/screen/zellij, then record the
   terminal, command, terminal version, and outcome before claiming evidence.
+  Add `FRAMES=N` for bounded capture runs; omit it for an Escape-driven
+  operator session.
 - Plain PNG images forced to Sixel now use a bounded PNG-only `stb_image`
   decoder and the existing RGBA Sixel encoder. Caller-supplied PNG+RGBA sidecars
   still cover apps that already have decoded pixels and want to avoid lazy
@@ -123,6 +125,15 @@ date: 2026-07-08
   system-clang substitution after the evidence-copy update; produced no output
   for roughly 90 seconds and was interrupted. This is diagnostic only, not
   accepted ASAN evidence.
+- `/usr/bin/perl -e 'alarm shift; exec @ARGV' 3 nix develop -c make
+  smoke-image-live-none FRAMES=1` - intentionally timed out before the live
+  smoke target passed `FRAMES` through to `examples/image_smoke.c`.
+- `/usr/bin/perl -e 'alarm shift; exec @ARGV' 20 nix develop -c make
+  smoke-image-live-none FRAMES=1` - passed after wiring `FRAMES=N` into the
+  target. Redirected-output checks for `smoke-image-live-sixel FRAMES=1` and
+  `smoke-image-live-iterm2 FRAMES=1` also exited cleanly; the captured Sixel
+  stream contained DCS starts and the captured iTerm2 stream contained OSC 1337
+  markers. These are bounded target diagnostics, not live terminal evidence.
 - `nix develop -c make test` - intentionally failed before the built-in
   PNG-to-Sixel decode slice: `test_sixel_plain_png_decodes_to_dcs` and
   `test_sixel_clipped_png_decodes_and_crops` rendered the placeholder instead
@@ -223,8 +234,8 @@ date: 2026-07-08
 Use a Windows-capable worktree or CI worker to run a live Windows Terminal smoke
 with `make smoke-conpty-win32` and record the command, Windows build, Windows
 Terminal version, and output. Separately, run and record `make smoke-image-live
-PROTO=sixel` and `make smoke-image-live PROTO=iterm2` in real terminals before
-promoting image protocol support from fake-transport wire evidence to terminal
-evidence. The plain-PNG Sixel decoder dependency decision is implemented and
-documented; remaining image work is evidence, not local wire-format
-implementation.
+PROTO=sixel FRAMES=N` and `make smoke-image-live PROTO=iterm2 FRAMES=N` in
+real terminals before promoting image protocol support from fake-transport wire
+evidence to terminal evidence. The plain-PNG Sixel decoder dependency decision
+is implemented and documented; remaining image work is evidence, not local
+wire-format implementation.

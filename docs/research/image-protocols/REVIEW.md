@@ -109,8 +109,9 @@ library use. Real-terminal capture evidence remains open.
 
 Operator smoke state: `examples/image_smoke.c` is a small live-terminal harness
 with a valid embedded PNG, matching RGBA pixels, and PNG+RGBA sidecar. Run
-`make smoke-image-live PROTO=auto|kitty|sixel|iterm2|none` (or the convenience
-aliases) outside multiplexers to collect visual evidence. `make
+`make smoke-image-live PROTO=auto|kitty|sixel|iterm2|none FRAMES=N` (or the
+convenience aliases) outside multiplexers to collect bounded visual evidence;
+omit `FRAMES` for an Escape-driven operator session. `make
 check-image-smoke` only proves the harness renders the placeholder path through
 a headless pty; it is not terminal image protocol evidence.
 

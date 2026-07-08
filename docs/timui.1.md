@@ -130,12 +130,14 @@ Windows Terminal.
 : Headless sanity check for the image smoke harness. It forces protocol `none`,
   drives `image_smoke` through a pty, and asserts the placeholder path renders.
 
-**smoke-image-live** \[*PROTO=auto|kitty|sixel|iterm2|none*]
+**smoke-image-live** \[*PROTO=auto|kitty|sixel|iterm2|none*] \[*FRAMES=N*]
 : Run `examples/image_smoke.c` in the current terminal. It draws a plain PNG,
   raw RGBA image, and PNG+RGBA sidecar so an operator can verify the selected
-  terminal image protocol. Convenience aliases are **smoke-image-live-auto**,
-  **smoke-image-live-kitty**, **smoke-image-live-sixel**,
-  **smoke-image-live-iterm2**, and **smoke-image-live-none**.
+  terminal image protocol. `FRAMES=N` exits after N drawn frames for bounded
+  capture runs; without it, Escape exits. Convenience aliases are
+  **smoke-image-live-auto**, **smoke-image-live-kitty**,
+  **smoke-image-live-sixel**, **smoke-image-live-iterm2**, and
+  **smoke-image-live-none**.
 
 **check-conpty-win32-smoke-compile**
 : Cross-compile the Win32 ConPTY smoke runner when MinGW is available. This is

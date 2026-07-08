@@ -641,8 +641,8 @@ smoke-irc: $(BLDDIR)/irc $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless IRC
 # 7. OPERATOR SMOKE — live terminal / Windows evidence
 # ============================================================================
 
-smoke-image-live: $(BLDDIR)/image_smoke ## Live terminal image smoke (PROTO=auto|kitty|sixel|iterm2|none)
-	@./$(BLDDIR)/image_smoke --protocol $(or $(PROTO),$(PROTOCOL),auto)
+smoke-image-live: $(BLDDIR)/image_smoke ## Live terminal image smoke (PROTO=...; optional FRAMES=N)
+	@./$(BLDDIR)/image_smoke --protocol $(or $(PROTO),$(PROTOCOL),auto) $(if $(FRAMES),--frames $(FRAMES),)
 
 smoke-image-live-auto: PROTO=auto
 smoke-image-live-auto: smoke-image-live ## Live image smoke with detected protocol
