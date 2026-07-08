@@ -140,6 +140,13 @@ capabilities, and grapheme-aware editing.
 - [ ] **Full generated UAX #29 grapheme tables** - the Phase 1.5 foundation
       covers the terminal clusters timui currently needs; full Unicode table
       generation remains useful parity work.
+- [ ] **OpenTUI inspiration sweep** - review OpenTUI
+      (`opentui.com`, `github.com/anomalyco/opentui`) for ideas worth grafting
+      into timui.h without importing its runtime shape. Likely candidates:
+      focus/input ergonomics, scroll/code/diff widget polish, animation/timeline
+      hooks, inspector/devtools affordances, and renderer clipping/alpha
+      lessons. Non-goals: React/Solid bindings, TypeScript-first APIs, and a
+      wholesale component-framework replacement for the C immediate-mode core.
 
 ## Tooling
 

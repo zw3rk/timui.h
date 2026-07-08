@@ -20,8 +20,15 @@ as evidence, what does not, and the artifact text to record afterward.
 - The manual GitHub Actions workflow
   `.github/workflows/hosted-visual-probe.yml` may be used as a best-effort
   hosted runner probe. Its screenshots count only after manual inspection shows
-  the expected visible terminal result. Its raw escape streams, DCS/OSC marker
-  counts, and launch logs are diagnostics only.
+  the expected visible terminal result. Screenshot-sanity artifacts such as
+  `terminal-sanity.png` or `cmd-sanity.png` prove capture mechanics only; they
+  are not image-protocol evidence. Raw escape streams, DCS/OSC marker counts,
+  process lists, session diagnostics, and launch logs are diagnostics only.
+- Hosted Windows GUI screenshots are not a required acceptance gate. Treat them
+  as diagnostic unless the artifact clearly shows the expected terminal payload
+  and records an interactive session. For required Windows pixel evidence, use a
+  self-hosted Windows runner launched from an autologon interactive session, not
+  a runner service.
 - The hosted Windows job uses native MSYS2 `make` rather than `nix develop`
   because the flake currently declares Linux and Darwin systems only. That is a
   documented CI exception for this evidence probe, not a project-wide toolchain
@@ -89,9 +96,13 @@ Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
 - Download the `hosted-visual-macos-iterm2` artifact.
-- Accept only if `iterm2-screen.png` visibly shows the iTerm2 live smoke with
-  PNG-backed image tiles. Treat `iterm2.typescript` and `osc1337-count.txt` as
-  diagnostics, not terminal evidence.
+- First inspect `terminal-sanity.png`. It should show the
+  `TIMUI_HOSTED_SCREENSHOT_SANITY` Terminal.app window; if it does not, the
+  hosted macOS screenshot path is inconclusive before iTerm2 is considered.
+- Accept only if an `iterm2-screen-*.png` visibly shows the iTerm2 live smoke
+  with PNG-backed image tiles. Treat `iterm2.typescript`,
+  `osc1337-count.txt`, and the Terminal.app sanity screenshot as diagnostics,
+  not iTerm2 protocol evidence.
 
 ## Windows ConPTY
 
@@ -132,12 +143,17 @@ Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
 - Download the `hosted-visual-windows-terminal` artifact.
+- First inspect `cmd-sanity.png`. It should show the
+  `TIMUI_HOSTED_SCREENSHOT_SANITY` console window; if it does not, the hosted
+  Windows screenshot path is inconclusive before Windows Terminal is considered.
 - `conpty-smoke.stdout` may count for the ConPTY smoke if it contains
   `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE` and `evidence.md` records
   the same commit.
-- `windows-terminal-sixel.png` counts for Sixel only if it visibly shows the
-  Windows Terminal live smoke with image tiles. Treat `sixel.typescript` and
-  `sixel-dcs-count.txt` as diagnostics, not terminal evidence.
+- `windows-terminal-sixel-*.png` is supplemental Sixel evidence only if it
+  visibly shows the Windows Terminal live smoke with image tiles and the
+  session diagnostics show an interactive desktop. Treat `sixel.typescript`,
+  `sixel-dcs-count.txt`, process lists, and the cmd sanity screenshot as
+  diagnostics, not terminal evidence.
 
 ## Evidence Template
 

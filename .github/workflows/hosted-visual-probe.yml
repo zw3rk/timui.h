@@ -25,7 +25,7 @@ env:
 jobs:
   macos-iterm2:
     name: macOS iTerm2 screenshot probe
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4

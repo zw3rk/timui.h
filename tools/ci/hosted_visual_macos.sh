@@ -59,6 +59,16 @@ note ""
   ls -ld /Applications/iTerm.app /Applications/iTerm2.app 2>/dev/null || true
   printf '\nbrew:\n'
   command -v brew || true
+  printf '\nopen:\n'
+  command -v open || true
+  printf '\nscreencapture:\n'
+  command -v screencapture || true
+  printf '\ngui bootstrap:\n'
+  launchctl print "gui/$(id -u)" >/dev/null && printf 'yes\n' || printf 'no\n'
+  printf '\ntcc screen capture grants:\n'
+  sudo -n sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+    "SELECT service,client,client_type,auth_value,auth_reason FROM access WHERE service='kTCCServiceScreenCapture';" \
+    || true
 } > "${out}/metadata.txt" 2>&1
 
 note "## Build and stream diagnostics"
@@ -96,6 +106,47 @@ if [ -f "${out}/iterm2.typescript" ]; then
 fi
 
 note ""
+note "## macOS screenshot sanity"
+terminal_runner="${out}/run-terminal-sanity.command"
+cat > "${terminal_runner}" <<'EOF'
+#!/usr/bin/env bash
+printf '\033[8;24;100t'
+clear
+printf '\nTIMUI_HOSTED_SCREENSHOT_SANITY\n\n'
+i=0
+while [ "${i}" -lt 14 ]; do
+  printf 'visible terminal capture sanity line %02d\n' "${i}"
+  i=$((i + 1))
+done
+sleep 45
+EOF
+chmod +x "${terminal_runner}"
+
+if command -v open >/dev/null 2>&1; then
+  open -na Terminal "${terminal_runner}" \
+    > "${out}/open-terminal-sanity.stdout" \
+    2> "${out}/open-terminal-sanity.stderr"
+  status=$?
+  printf '%s\n' "${status}" > "${out}/open-terminal-sanity.status"
+  note "- Terminal.app launch sanity: exit ${status}"
+  sleep 8
+  if [ -x /usr/sbin/screencapture ]; then
+    /usr/sbin/screencapture -x -D 1 "${out}/terminal-sanity.png" \
+      > "${out}/terminal-sanity-screencapture.stdout" \
+      2> "${out}/terminal-sanity-screencapture.stderr"
+    status=$?
+    printf '%s\n' "${status}" > "${out}/terminal-sanity-screencapture.status"
+    note "- Terminal.app screenshot sanity: exit ${status}"
+    if [ -f "${out}/terminal-sanity.png" ]; then
+      sips -g pixelWidth -g pixelHeight "${out}/terminal-sanity.png" \
+        > "${out}/terminal-sanity.info" 2>&1 || true
+    fi
+  fi
+else
+  note "- Terminal.app launch sanity: skipped, open(1) unavailable"
+fi
+
+note ""
 note "## iTerm2 GUI attempt"
 iterm_app="/Applications/iTerm.app"
 if [ ! -d "${iterm_app}" ] && [ -d "/Applications/iTerm2.app" ]; then
@@ -128,12 +179,10 @@ EOF
   cat > "${applescript}" <<'EOF'
 on run argv
   set scriptPath to item 1 of argv
-  tell application "iTerm"
+  set launchCommand to "/bin/bash " & quoted form of scriptPath
+  tell application id "com.googlecode.iterm2"
     activate
-    set timuiWindow to (create window with default profile)
-    tell first session of first tab of timuiWindow
-      write text "/bin/bash " & quoted form of scriptPath
-    end tell
+    set timuiWindow to (create window with default profile command launchCommand)
   end tell
 end run
 EOF
@@ -147,15 +196,27 @@ EOF
 
   sleep 12
   if [ -x /usr/sbin/screencapture ]; then
-    /usr/sbin/screencapture -x "${out}/iterm2-screen.png" \
-      > "${out}/screencapture.stdout" \
-      2> "${out}/screencapture.stderr"
+    /usr/sbin/screencapture -x -D 1 "${out}/iterm2-screen-12s.png" \
+      > "${out}/screencapture-12s.stdout" \
+      2> "${out}/screencapture-12s.stderr"
     status=$?
-    printf '%s\n' "${status}" > "${out}/screencapture.status"
-    note "- screencapture: exit ${status}"
-    if [ -f "${out}/iterm2-screen.png" ]; then
-      sips -g pixelWidth -g pixelHeight "${out}/iterm2-screen.png" \
-        > "${out}/iterm2-screen.info" 2>&1 || true
+    printf '%s\n' "${status}" > "${out}/screencapture-12s.status"
+    note "- screencapture after 12s: exit ${status}"
+    if [ -f "${out}/iterm2-screen-12s.png" ]; then
+      sips -g pixelWidth -g pixelHeight "${out}/iterm2-screen-12s.png" \
+        > "${out}/iterm2-screen-12s.info" 2>&1 || true
+    fi
+
+    sleep 12
+    /usr/sbin/screencapture -x -D 1 "${out}/iterm2-screen-24s.png" \
+      > "${out}/screencapture-24s.stdout" \
+      2> "${out}/screencapture-24s.stderr"
+    status=$?
+    printf '%s\n' "${status}" > "${out}/screencapture-24s.status"
+    note "- screencapture after 24s: exit ${status}"
+    if [ -f "${out}/iterm2-screen-24s.png" ]; then
+      sips -g pixelWidth -g pixelHeight "${out}/iterm2-screen-24s.png" \
+        > "${out}/iterm2-screen-24s.info" 2>&1 || true
     fi
   else
     note "- screencapture: skipped, /usr/sbin/screencapture unavailable"
@@ -167,7 +228,8 @@ fi
 note ""
 note "## Outcome"
 note "- Accepted: manual inspection required."
-note "- Count this as iTerm2 live visual evidence only if iterm2-screen.png visibly shows the timui image smoke with PNG-backed image tiles, not placeholders."
+note "- terminal-sanity.png only proves hosted macOS screenshot mechanics. It is not image-protocol evidence."
+note "- Count this as iTerm2 live visual evidence only if an iterm2-screen-*.png visibly shows the timui image smoke with PNG-backed image tiles, not placeholders."
 note "- The typescript and OSC 1337 count are diagnostics only; they do not replace a visual screenshot or recording."
 
 exit 0

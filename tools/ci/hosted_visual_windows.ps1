@@ -62,6 +62,36 @@ function Count-EscP {
   Set-Content -Path (Join-Path $Out "sixel-dcs-count.txt") -Value $count -Encoding ascii
 }
 
+function Save-ScreenCapture {
+  param([string]$FileName)
+
+  $screenshot = Join-Path $Out $FileName
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    "bounds=$($bounds.Width)x$($bounds.Height)+$($bounds.X)+$($bounds.Y)" |
+      Set-Content -Path (Join-Path $Out "${FileName}.bounds.txt") -Encoding ascii
+    if ($bounds.Width -gt 0 -and $bounds.Height -gt 0) {
+      $bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+      $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+      $graphics.CopyFromScreen($bounds.X, $bounds.Y, 0, 0, $bitmap.Size)
+      $bitmap.Save($screenshot, [System.Drawing.Imaging.ImageFormat]::Png)
+      $graphics.Dispose()
+      $bitmap.Dispose()
+      Set-Content -Path (Join-Path $Out "${FileName}.status") -Value 0 -Encoding ascii
+      Add-Evidence "- screen capture ${FileName}: wrote PNG"
+    } else {
+      Set-Content -Path (Join-Path $Out "${FileName}.status") -Value 2 -Encoding ascii
+      Add-Evidence "- screen capture ${FileName}: skipped, virtual screen bounds were empty"
+    }
+  } catch {
+    $_ | Out-File -FilePath (Join-Path $Out "${FileName}.stderr") -Encoding utf8
+    Set-Content -Path (Join-Path $Out "${FileName}.status") -Value 1 -Encoding ascii
+    Add-Evidence "- screen capture ${FileName}: failed"
+  }
+}
+
 Add-Evidence ""
 Add-Evidence "## Metadata"
 $commit = (& git rev-parse HEAD 2>$null)
@@ -81,6 +111,8 @@ Add-Evidence "- ConPTY compiler: UCRT64 /ucrt64/bin/gcc for native Win32 APIs."
 Add-Evidence ""
 
 cmd.exe /c ver > (Join-Path $Out "windows-version.txt") 2>&1
+cmd.exe /c "query user || ver" > (Join-Path $Out "query-user.txt") 2>&1
+cmd.exe /c "qwinsta || ver" > (Join-Path $Out "qwinsta.txt") 2>&1
 Get-Command wt.exe -ErrorAction SilentlyContinue |
   Format-List * > (Join-Path $Out "wt-command.txt") 2>&1
 
@@ -127,10 +159,34 @@ function Invoke-Msys {
 }
 
 Add-Evidence "## Build and stream diagnostics"
-Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && PATH=/usr/bin:`$PATH make build/image_smoke CC=gcc"
-Invoke-Msys "conpty-smoke" "cd '$MsysRoot' && OS=Windows_NT PATH=/ucrt64/bin:/usr/bin:`$PATH make smoke-conpty-win32 CONPTY_WIN_CC=gcc"
-Invoke-Msys "sixel-diagnostic" "cd '$MsysRoot' && mkdir -p '$MsysOut' && if command -v script >/dev/null 2>&1; then script -q -c './build/image_smoke --protocol sixel --frames 1' '$MsysOut/sixel.typescript'; else echo script-not-available > '$MsysOut/sixel-diagnostic.skip'; fi"
+Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && PATH=/usr/bin:/bin:`$PATH make build/image_smoke CC=/usr/bin/gcc"
+Invoke-Msys "conpty-smoke" "cd '$MsysRoot' && OS=Windows_NT PATH=/ucrt64/bin:/usr/bin:/bin:`$PATH make smoke-conpty-win32 CONPTY_WIN_CC=/ucrt64/bin/gcc"
+Invoke-Msys "sixel-diagnostic" "cd '$MsysRoot' && mkdir -p '$MsysOut' && if [ -x ./build/image_smoke ] && command -v script >/dev/null 2>&1; then script -q -c './build/image_smoke --protocol sixel --frames 1' '$MsysOut/sixel.typescript'; elif [ ! -x ./build/image_smoke ]; then echo image-smoke-missing > '$MsysOut/sixel-diagnostic.skip'; else echo script-not-available > '$MsysOut/sixel-diagnostic.skip'; fi"
 Count-EscP (Join-Path $Out "sixel.typescript")
+
+Add-Evidence ""
+Add-Evidence "## Windows screenshot sanity"
+$SanityCmd = Join-Path $Out "capture-sanity.cmd"
+$SanityLines = @(
+  "@echo off",
+  "title timui-hosted-capture-sanity",
+  "mode con: cols=100 lines=30",
+  "cls",
+  "echo TIMUI_HOSTED_SCREENSHOT_SANITY",
+  "echo.",
+  "for /L %%I in (0,1,13) do echo visible console capture sanity line %%I",
+  "timeout /t 45 /nobreak >nul"
+)
+[System.IO.File]::WriteAllText($SanityCmd, ($SanityLines -join "`r`n") + "`r`n", [System.Text.Encoding]::ASCII)
+try {
+  Start-Process -FilePath "cmd.exe" -ArgumentList @("/k", "`"$SanityCmd`"") -WindowStyle Normal
+  Add-Evidence "- cmd.exe launch sanity: started"
+} catch {
+  $_ | Out-File -FilePath (Join-Path $Out "cmd-sanity-launch.stderr") -Encoding utf8
+  Add-Evidence "- cmd.exe launch sanity: failed"
+}
+Start-Sleep -Seconds 8
+Save-ScreenCapture "cmd-sanity.png"
 
 Add-Evidence ""
 Add-Evidence "## Windows Terminal GUI attempt"
@@ -141,30 +197,33 @@ if ($Wt) {
   Get-Item $Wt.Source | Format-List * | Out-File -FilePath $wtVersion -Append -Encoding utf8
   Set-Content -Path (Join-Path $Out "wt-version.status") -Value 0 -Encoding ascii
   Add-Evidence "- wt-version: captured file metadata"
-  $RunScript = Join-Path $Out "run-sixel-smoke.sh"
+  $RunCmd = Join-Path $Out "run-sixel-smoke.cmd"
   $RunLines = @(
-    "#!/usr/bin/env bash",
-    "cd '$MsysRoot' || exit 1",
-    "export TERM=xterm-256color",
-    "printf '\033[8;30;100t'",
-    "./build/image_smoke --protocol sixel --frames $GuiFrames",
-    "sleep 8"
+    "@echo off",
+    "title timui-sixel-smoke",
+    "mode con: cols=120 lines=40",
+    "set MSYSTEM=UCRT64",
+    "set CHERE_INVOKING=1",
+    "set PATH=C:\msys64\usr\bin;C:\msys64\ucrt64\bin;%PATH%",
+    "`"$Bash`" --noprofile --norc -lc `"cd '$MsysRoot' && export TERM=xterm-256color && printf '\033[8;30;100t' && ./build/image_smoke --protocol sixel --frames $GuiFrames; sleep 8`"",
+    "timeout /t 10 /nobreak >nul"
   )
-  [System.IO.File]::WriteAllText($RunScript, ($RunLines -join "`n") + "`n", [System.Text.Encoding]::ASCII)
-  $MsysRunScript = Invoke-BashLastLine "cygpath -u '$RunScript'"
+  [System.IO.File]::WriteAllText($RunCmd, ($RunLines -join "`r`n") + "`r`n", [System.Text.Encoding]::ASCII)
 
   try {
     $wtArgs = @(
+      "--window",
+      "new",
+      "--size",
+      "120,40",
       "new-tab",
       "--title",
       "timui-sixel-smoke",
-      $Bash,
-      "--noprofile",
-      "--norc",
-      "-lc",
-      "`"bash '$MsysRunScript'`""
+      "cmd.exe",
+      "/k",
+      $RunCmd
     )
-    Start-Process -FilePath $Wt.Source -ArgumentList $wtArgs
+    Start-Process -FilePath $Wt.Source -ArgumentList $wtArgs -WindowStyle Normal
     Add-Evidence "- Windows Terminal launch: started"
   } catch {
     $_ | Out-File -FilePath (Join-Path $Out "wt-launch.stderr") -Encoding utf8
@@ -172,28 +231,13 @@ if ($Wt) {
   }
 
   Start-Sleep -Seconds 12
-  $Screenshot = Join-Path $Out "windows-terminal-sixel.png"
-  try {
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    "bounds=$($bounds.Width)x$($bounds.Height)+$($bounds.X)+$($bounds.Y)" |
-      Set-Content -Path (Join-Path $Out "screen-bounds.txt") -Encoding ascii
-    if ($bounds.Width -gt 0 -and $bounds.Height -gt 0) {
-      $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-      $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-      $graphics.CopyFromScreen($bounds.X, $bounds.Y, 0, 0, $bounds.Size)
-      $bitmap.Save($Screenshot, [System.Drawing.Imaging.ImageFormat]::Png)
-      $graphics.Dispose()
-      $bitmap.Dispose()
-      Add-Evidence "- screen capture: wrote windows-terminal-sixel.png"
-    } else {
-      Add-Evidence "- screen capture: skipped, primary screen bounds were empty"
-    }
-  } catch {
-    $_ | Out-File -FilePath (Join-Path $Out "screen-capture.stderr") -Encoding utf8
-    Add-Evidence "- screen capture: failed"
-  }
+  Get-Process WindowsTerminal,OpenConsole,cmd,bash -ErrorAction SilentlyContinue |
+    Format-List * > (Join-Path $Out "terminal-processes-12s.txt") 2>&1
+  Save-ScreenCapture "windows-terminal-sixel-12s.png"
+  Start-Sleep -Seconds 12
+  Get-Process WindowsTerminal,OpenConsole,cmd,bash -ErrorAction SilentlyContinue |
+    Format-List * > (Join-Path $Out "terminal-processes-24s.txt") 2>&1
+  Save-ScreenCapture "windows-terminal-sixel-24s.png"
 } else {
   Add-Evidence "- Windows Terminal: wt.exe unavailable"
 }
@@ -201,7 +245,8 @@ if ($Wt) {
 Add-Evidence ""
 Add-Evidence "## Outcome"
 Add-Evidence "- ConPTY smoke counts only if conpty-smoke.stdout contains PASS conpty smoke: observed TIMUI_CONPTY_SMOKE."
-Add-Evidence "- Sixel visual evidence counts only if windows-terminal-sixel.png visibly shows the live image smoke in Windows Terminal with visible image tiles, not placeholders."
+Add-Evidence "- cmd-sanity.png only proves hosted Windows screenshot mechanics. It is not image-protocol evidence."
+Add-Evidence "- Sixel visual evidence counts only if a windows-terminal-sixel-*.png visibly shows the live image smoke in Windows Terminal with visible image tiles, not placeholders."
 Add-Evidence "- The sixel typescript and DCS count are diagnostics only; they do not replace a visual screenshot or recording."
 
 exit 0
