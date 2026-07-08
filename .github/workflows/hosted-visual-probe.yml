@@ -59,6 +59,7 @@ jobs:
           update: true
           install: >-
             base-devel
+            gcc
             util-linux
             mingw-w64-ucrt-x86_64-gcc
       - name: Run hosted Windows probe

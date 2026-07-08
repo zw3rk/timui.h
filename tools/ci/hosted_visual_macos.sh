@@ -128,10 +128,10 @@ EOF
   cat > "${applescript}" <<'EOF'
 on run argv
   set scriptPath to item 1 of argv
-  tell application "iTerm2"
+  tell application "iTerm"
     activate
-    create window with default profile
-    tell current session of current window
+    set timuiWindow to (create window with default profile)
+    tell first session of first tab of timuiWindow
       write text "/bin/bash " & quoted form of scriptPath
     end tell
   end tell
