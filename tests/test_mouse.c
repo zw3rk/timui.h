@@ -34,6 +34,19 @@ TIMUI_TEST(test_mouse_press_release){
     TIMUI_CHECK(s.ev[0].as.mouse.x == 3 && s.ev[0].as.mouse.y == 4);
 }
 
+TIMUI_TEST(test_mouse_sgr_cb3_is_release){
+    TimuiInputParser p;
+    Sink s;
+    s.n = 0;
+    timui_input_init(&p);
+
+    FEED(&p, "\x1b[<3;5;6m");
+    TIMUI_CHECK(s.n == 1 && s.ev[0].kind == TIMUI_EVENT_MOUSE);
+    TIMUI_CHECK(s.ev[0].as.mouse.x == 5 && s.ev[0].as.mouse.y == 6);
+    TIMUI_CHECK(s.ev[0].as.mouse.button == -1);
+    TIMUI_CHECK(!s.ev[0].as.mouse.pressed && s.ev[0].as.mouse.released);
+}
+
 TIMUI_TEST(test_mouse_wheel_and_motion){
     TimuiInputParser p;
     Sink s;

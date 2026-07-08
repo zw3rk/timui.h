@@ -58,9 +58,11 @@ static void emit_mouse(TimuiEventFn cb, void *ctx, const int *mp, unsigned char 
         int btn = code & 0x03;
         ev.as.mouse.motion = (code & 0x20) ? 1 : 0;
         ev.as.mouse.button = (btn == 3) ? -1 : btn;
-        if(ev.as.mouse.motion || btn == 3){
+        if(ev.as.mouse.motion){
             ev.as.mouse.pressed = 0;
             ev.as.mouse.released = 0;
+        } else if(btn == 3){
+            ev.as.mouse.pressed = 0;
         }
     }
     if(code & 0x04) ev.as.mouse.mods |= TIMUI_MOD_SHIFT;
