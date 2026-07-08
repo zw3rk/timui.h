@@ -124,6 +124,7 @@ int main(void){
         test_utf8_decode_above_max,
         test_grapheme_next_prev,
         test_grapheme_width,
+        test_utf8_decode_impossible_leads,
         test_draw_text,
         test_draw_text_truncated_utf8_replacement,
         test_draw_fill,

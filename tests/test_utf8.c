@@ -78,3 +78,12 @@ TIMUI_TEST(test_grapheme_width){
     TIMUI_CHECK(timui_grapheme_width(family, sizeof family - 1) == 2);
     TIMUI_CHECK(timui_grapheme_width(crlf, sizeof crlf - 1) == 0);
 }
+
+TIMUI_TEST(test_utf8_decode_impossible_leads){
+    uint32_t cp = 0;
+    static const unsigned char bad_two[] = { 0xC0 };
+    static const unsigned char bad_four[] = { 0xF5 };
+
+    TIMUI_CHECK(timui_utf8_decode((const char *)bad_two, sizeof bad_two, &cp) == 1 && cp == 0xFFFD);
+    TIMUI_CHECK(timui_utf8_decode((const char *)bad_four, sizeof bad_four, &cp) == 1 && cp == 0xFFFD);
+}

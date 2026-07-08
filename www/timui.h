@@ -2798,9 +2798,9 @@ TIMUI_API int timui_utf8_decode(const char *s, size_t len, uint32_t *out_cp){
     int need = 0, i;
     if(!s || len == 0){ if(out_cp) *out_cp = 0; return 0; }
     if(p[0] < 0x80){ if(out_cp) *out_cp = p[0]; return 1; }
-    if((p[0] & 0xE0) == 0xC0){ cp = (uint32_t)(p[0] & 0x1F); need = 1; }
+    if(p[0] >= 0xC2 && (p[0] & 0xE0) == 0xC0){ cp = (uint32_t)(p[0] & 0x1F); need = 1; }
     else if((p[0] & 0xF0) == 0xE0){ cp = (uint32_t)(p[0] & 0x0F); need = 2; }
-    else if((p[0] & 0xF8) == 0xF0){ cp = (uint32_t)(p[0] & 0x07); need = 3; }
+    else if(p[0] <= 0xF4 && (p[0] & 0xF8) == 0xF0){ cp = (uint32_t)(p[0] & 0x07); need = 3; }
     else { if(out_cp) *out_cp = 0xFFFD; return 1; }            /* invalid lead */
     if((int)len < 1 + need){ return 0; }                       /* incomplete */
     for(i = 1; i <= need; i++){
