@@ -15,6 +15,7 @@ int main(void){
         test_rect_cuts,
         test_rect_cut_null_safe,
         test_rect_cut_extreme_origin_safe,
+        test_rect_cut_mutated_origin_safe,
         test_rect_split,
         test_rect_split_extreme_origin_safe,
         test_rect_inset_clamp,

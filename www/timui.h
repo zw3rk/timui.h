@@ -2658,7 +2658,8 @@ TIMUI_API TimuiRect timui_cut_top(TimuiRect *r, int h){
     if(h < 0) h = 0;
     if(h > r->h) h = r->h;
     out.x = r->x; out.y = r->y; out.w = r->w; out.h = h;
-    r->y += h; r->h -= h;
+    r->y = timui_clamp_i64_to_int_((int64_t)r->y + (int64_t)h);
+    r->h -= h;
     return out;
 }
 TIMUI_API TimuiRect timui_cut_bottom(TimuiRect *r, int h){
@@ -2679,7 +2680,8 @@ TIMUI_API TimuiRect timui_cut_left(TimuiRect *r, int w){
     if(w < 0) w = 0;
     if(w > r->w) w = r->w;
     out.x = r->x; out.y = r->y; out.w = w; out.h = r->h;
-    r->x += w; r->w -= w;
+    r->x = timui_clamp_i64_to_int_((int64_t)r->x + (int64_t)w);
+    r->w -= w;
     return out;
 }
 TIMUI_API TimuiRect timui_cut_right(TimuiRect *r, int w){

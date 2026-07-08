@@ -48,6 +48,21 @@ TIMUI_TEST(test_rect_cut_extreme_origin_safe){
     TIMUI_CHECK(r.y == INT_MAX - 2 && r.h == 5);
 }
 
+TIMUI_TEST(test_rect_cut_mutated_origin_safe){
+    TimuiRect r;
+    TimuiRect out;
+
+    r = TIMUI_RECT(INT_MAX - 2, 0, 10, 1);
+    out = timui_cut_left(&r, 5);
+    TIMUI_CHECK(out.x == INT_MAX - 2 && out.w == 5);
+    TIMUI_CHECK(r.x == INT_MAX && r.w == 5);
+
+    r = TIMUI_RECT(0, INT_MAX - 2, 1, 10);
+    out = timui_cut_top(&r, 5);
+    TIMUI_CHECK(out.y == INT_MAX - 2 && out.h == 5);
+    TIMUI_CHECK(r.y == INT_MAX && r.h == 5);
+}
+
 TIMUI_TEST(test_rect_split){
     TimuiRect a, b;
     timui_split_cols(TIMUI_RECT(0, 0, 100, 10), 0.25f, &a, &b);
