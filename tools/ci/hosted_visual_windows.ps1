@@ -171,7 +171,7 @@ function Invoke-Msys {
 }
 
 Add-Evidence "## Build and stream diagnostics"
-Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && PATH=/usr/bin:/bin:`$PATH make build/image_smoke CC=/usr/bin/gcc"
+Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && PATH=/usr/bin:/bin:`$PATH make build/image_smoke CC=/usr/bin/gcc POSIX_CFLAGS='-D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700'"
 Invoke-Msys "conpty-smoke" "cd '$MsysRoot' && OS=Windows_NT PATH=/ucrt64/bin:/usr/bin:/bin:`$PATH make smoke-conpty-win32 CONPTY_WIN_CC=/ucrt64/bin/gcc"
 Invoke-Msys "sixel-diagnostic" "cd '$MsysRoot' && mkdir -p '$MsysOut' && if [ -x ./build/image_smoke ] && command -v script >/dev/null 2>&1; then script -q -c './build/image_smoke --protocol sixel --frames 1' '$MsysOut/sixel.typescript'; elif [ ! -x ./build/image_smoke ]; then echo image-smoke-missing > '$MsysOut/sixel-diagnostic.skip'; else echo script-not-available > '$MsysOut/sixel-diagnostic.skip'; fi"
 Count-EscP (Join-Path $Out "sixel.typescript")
