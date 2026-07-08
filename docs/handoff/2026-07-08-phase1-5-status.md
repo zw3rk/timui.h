@@ -9,12 +9,12 @@ date: 2026-07-08
 ## Landing State
 
 - Branch: `phase1-5-impl`
-- Local master checkpoint before this slice: `e61124d` (`images: quantize raw rgba sixel palettes`)
+- Local master checkpoint before this slice: `3a28af1` (`images: scale raw rgba sixel output`)
 - Merge status: `phase1-5-impl` fast-forwarded into local
   `/Users/angerman/Projects/zw3rk/timui.h-master`
 - Push status: not pushed
 - Remote state before this slice: local `master` is ahead of `github/master` by
-  18 commits
+  19 commits
 
 ## Read First
 
@@ -32,6 +32,8 @@ date: 2026-07-08
   resizable split panes, stylesheet parser/application, and grapheme-aware text
   editing/truncation are implemented and tested.
 - Image protocol selection is protocol-neutral at the public draw site.
+- Image implementation source is now the protocol-neutral `src/timui_images.c`
+  module; Kitty-specific names remain only for Kitty protocol helpers/tests.
 - Kitty graphics remain the rich PNG path, including clipped image draws.
 - iTerm2 inline images emit OSC 1337 for unclipped PNG draws.
 - Sixel emits DCS graphics for raw RGBA images with up to 16 opaque exact
@@ -83,6 +85,12 @@ date: 2026-07-08
   smoke-gallery check-irc smoke-irc` - passed.
 - `nix develop -c make vt-test` - passed after the raw-RGBA Sixel scaling
   change, 303 tests, existing pty Esc sandbox skip.
+- `nix develop -c make test` - passed after the protocol-neutral image source
+  rename, 295 tests, existing pty Esc sandbox skip.
+- `nix develop -c make release-check` - passed after the protocol-neutral image
+  source rename.
+- `nix develop -c make check` - passed after the protocol-neutral image source
+  rename, including build, 295 tests, and the MinGW ConPTY compile seam.
 
 ## Next Safe Move
 

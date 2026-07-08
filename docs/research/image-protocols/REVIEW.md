@@ -10,7 +10,7 @@ date: 2026-07-08
 
 - `docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt`
 - `docs/TERMINAL_PROTOCOLS.md`
-- `src/timui_kitty.c`
+- `src/timui_images.c`
 - `tools/vendor/NOTICE`
 
 ## Sources
@@ -73,7 +73,7 @@ dev-tooling-only, not part of the distributed `timui.h` library.
 Implement iTerm2 first as the direct-PNG emitter. It requires no public API
 change and no new dependency.
 
-Implemented state: `src/timui_kitty.c` now emits iTerm2 inline images for
+Implemented state: `src/timui_images.c` now emits iTerm2 inline images for
 unclipped PNG draws via OSC 1337. It clears stale Kitty placements when
 switching from Kitty to iTerm2, does not emit Kitty delete escapes after an
 iTerm2 frame, rejects oversized base64 expansions before writing partial

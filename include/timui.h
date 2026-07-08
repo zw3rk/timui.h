@@ -1377,7 +1377,7 @@ TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int l
 #include "../src/timui_snapshot.c"
 #include "../src/timui_textarea.c"
 #include "../src/timui_conpty.c"
-#include "../src/timui_kitty.c"
+#include "../src/timui_images.c"
 #include "../src/timui_menus.c"
 #include "../src/timui_layout.c"
 #include "../src/timui_box.c"

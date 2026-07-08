@@ -112,9 +112,9 @@ WORKSTREAM D - Grapheme clustering:
   explicit cluster-width invariant.
 
 WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
-- Refactor `src/timui_kitty.c` into a protocol-neutral image layer while keeping
-  the public `timui_image_*` API stable unless a breaking change is explicitly
-  justified pre-1.0.
+- DONE: Refactor `src/timui_kitty.c` into the protocol-neutral
+  `src/timui_images.c` layer while keeping the public `timui_image_*` API
+  stable.
 - DONE: public `TimuiImageProtocol`, `timui_caps_image_protocol`,
   `timui_image_protocol`, and `timui_force_image_protocol` are in place. Kitty
   behavior is preserved, non-Kitty image protocols deliberately draw the

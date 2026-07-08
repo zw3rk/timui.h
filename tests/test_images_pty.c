@@ -1,5 +1,5 @@
 /*
- * test_kitty_pty.c — Kitty graphics + pty integration (v0.2, last items).
+ * test_images_pty.c -- terminal image protocols + pty integration.
  *
  * SPDX-License-Identifier: Apache-2.0
  */

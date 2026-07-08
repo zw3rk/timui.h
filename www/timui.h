@@ -1459,7 +1459,7 @@ struct Timui {
 };
 
 /* Emit any images recorded this frame, on top of the cell diff. Defined in
- * timui_kitty.c; called by timui_end in timui_core.c. */
+ * timui_images.c; called by timui_end in timui_core.c. */
 void timui_images_flush_(Timui *ui);
 
 /* Z6: the single shared UTF-8 encoder. Encodes an already-validated codepoint
