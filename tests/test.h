@@ -75,6 +75,7 @@ void test_input_tilde_edit_keys(void);
 void test_input_control_chars(void);
 void test_input_text_and_alt(void);
 void test_input_partial_then_complete(void);
+void test_input_timeout_before_new_bytes(void);
 void test_input_utf8(void);
 void test_input_invalid_safe(void);
 void test_mouse_press_release(void);

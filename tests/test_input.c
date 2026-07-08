@@ -83,6 +83,32 @@ TIMUI_TEST(test_input_partial_then_complete){
     TIMUI_CHECK(s.n == 1 && s.ev[0].as.key.key == TIMUI_KEY_UP);
 }
 
+TIMUI_TEST(test_input_timeout_before_new_bytes){
+    TimuiInputParser p;
+    Sink s;
+
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_set_now(&p, 0);
+    timui_input_feed(&p, "\x1b", 1, sink_cb, &s);
+    TIMUI_CHECK(s.n == 0);
+
+    timui_input_set_now(&p, 100);
+    timui_input_feed(&p, "a", 1, sink_cb, &s);
+    TIMUI_CHECK(s.n == 2);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_KEY && s.ev[0].as.key.key == TIMUI_KEY_ESCAPE);
+    TIMUI_CHECK(s.ev[1].kind == TIMUI_EVENT_TEXT && s.ev[1].as.text.codepoint == 'a');
+
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_set_now(&p, 0);
+    timui_input_feed(&p, "\x1b[", 2, sink_cb, &s);
+    timui_input_set_now(&p, 100);
+    timui_input_feed(&p, "A", 1, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == 'A');
+}
+
 TIMUI_TEST(test_input_utf8){
     TimuiInputParser p;
     Sink s;

@@ -4206,11 +4206,15 @@ TIMUI_API void timui_input_init(TimuiInputParser *p){
 TIMUI_API void timui_input_set_now(TimuiInputParser *p, uint64_t now_ms){
     if(p) p->now_ms = now_ms;
 }
-TIMUI_API void timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx){
-    if(!p) return;
+static int timui_input_flush_esc_(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx){
+    int emitted = 0;
+    if(!p) return 0;
     if((p->state == 1 || p->state == 2 || p->state == 3) &&
        now_ms - p->esc_since_ms >= TIMUI_ESC_TIMEOUT_MS){
-        if(p->state == 1) emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0);
+        if(p->state == 1){
+            emit_key(cb, ctx, TIMUI_KEY_ESCAPE, 0, 0);
+            emitted = 1;
+        }
         p->state = 0;
         p->param = 0; p->nparams = 0;
         p->mod_param = 0; p->has_mod = 0; p->sub_param = 0;
@@ -4218,12 +4222,17 @@ TIMUI_API void timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, Timui
         p->mparam[0] = p->mparam[1] = p->mparam[2] = 0;
         p->esc_since_ms = 0;
     }
+    return emitted;
+}
+TIMUI_API void timui_input_flush_esc(TimuiInputParser *p, uint64_t now_ms, TimuiEventFn cb, void *ctx){
+    (void)timui_input_flush_esc_(p, now_ms, cb, ctx);
 }
 TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t len,
                                   TimuiEventFn cb, void *ctx){
     const unsigned char *b = (const unsigned char *)data;
     size_t i, count = 0;
     if(!p || !b) return 0;
+    count += (size_t)timui_input_flush_esc_(p, p->now_ms, cb, ctx);
     if(p->state == 4) p->utf8_ptr = NULL;   /* crossed a feed boundary: no stable byte view */
     /* Handle deferred partial paste terminator from the previous feed */
     if(p->pasting && p->paste_tail_len > 0){

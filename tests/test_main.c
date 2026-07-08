@@ -64,6 +64,7 @@ int main(void){
         test_input_control_chars,
         test_input_text_and_alt,
         test_input_partial_then_complete,
+        test_input_timeout_before_new_bytes,
         test_input_utf8,
         test_input_invalid_safe,
         test_mouse_press_release,
