@@ -9,14 +9,14 @@ date: 2026-07-08
 ## Landing State
 
 - Branch: `phase1-5-impl`
-- Latest implementation checkpoint: `1614016` (`images: honor no-images builds`)
-- Previous local master checkpoint before the `TIMUI_NO_IMAGES` slice:
-  `d471470` (`images: use protocol-neutral source module`)
+- Latest implementation checkpoint: `838d57e` (`images: add png rgba sidecar`)
+- Previous local master checkpoint before the PNG+RGBA sidecar slice:
+  `2a5b10a` (`docs: update phase 1.5 handoff`)
 - Merge status: ready to fast-forward local
   `/Users/angerman/Projects/zw3rk/timui.h-master` after this handoff update
 - Push status: not pushed
 - Remote state before this slice: local `master` was ahead of `github/master`
-  by 20 commits
+  by 22 commits
 
 ## Read First
 
@@ -40,11 +40,15 @@ date: 2026-07-08
 - iTerm2 inline images emit OSC 1337 for unclipped PNG draws.
 - Sixel emits DCS graphics for raw RGBA images with up to 16 opaque exact
   colours and deterministic 16-colour quantization beyond that cap; alpha below
-  128 is transparent/background-preserving. Clipped raw-RGBA Sixel draws crop
-  source pixels, and raw-RGBA Sixel draws scale to the requested cell rectangle
-  when terminal cell-pixel geometry is known.
-- PNG images forced to Sixel, PNG/non-raw clipped Sixel draws, and clipped
-  iTerm2 draws intentionally render `[img]`.
+  128 is transparent/background-preserving. Clipped Sixel draws crop source
+  pixels, and Sixel draws scale to the requested cell rectangle when terminal
+  cell-pixel geometry is known.
+- `timui_image_from_png_rgba` copies original PNG bytes plus caller-supplied
+  decoded RGBA rows. Kitty/iTerm2 transmit the PNG bytes; Sixel uses the RGBA
+  sidecar for emission and clipping. The sidecar dimensions are expected to
+  match the PNG and drive source cropping.
+- Plain PNG images forced to Sixel, clipped iTerm2 draws, and unsupported
+  protocol/data pairs intentionally render `[img]`.
 - `TIMUI_NO_IMAGES` is now active as an API-preserving no-terminal-image mode:
   image constructors/free/draw APIs still compile, image caps are stripped even
   when forced on, protocol selectors return `TIMUI_IMAGE_PROTOCOL_NONE`, and
@@ -66,8 +70,9 @@ date: 2026-07-08
   captured and recorded.
 - iTerm2 and Sixel have fake-transport wire tests, but no live terminal capture
   evidence yet. Do not claim terminal evidence until captured.
-- Sixel parity remains open: PNG-to-Sixel decode and non-raw clipped Sixel
-  draws.
+- Sixel parity remains open for built-in PNG-to-Sixel decode of plain PNG
+  images. Caller-supplied PNG+RGBA sidecars cover PNG-backed Sixel emission and
+  clipping without adding a PNG decoder to the release header.
 - AddressSanitizer did not complete locally: `nix develop -c make test-san
   SAN=address` hung in macOS ASAN runtime initialization before entering the
   test harness. A `sample` of the process showed `__asan::AsanInitInternal` /
@@ -75,6 +80,22 @@ date: 2026-07-08
 
 ## Verification Already Run
 
+- `nix develop -c make test` - intentionally failed before the sidecar bounds
+  fix: `test_sixel_rejects_short_strided_sidecar` emitted Sixel instead of the
+  placeholder for a crafted short reported `rgba_len` with a large stride.
+- `nix develop -c make test` - passed after the PNG+RGBA sidecar slice, 304
+  tests, existing pty Esc sandbox skip.
+- `nix develop -c make www` - passed after the PNG+RGBA sidecar slice,
+  refreshing `www/timui.h` and `www/LICENSE`.
+- `nix develop -c make release-check` - passed after the PNG+RGBA sidecar
+  slice; the release header compiles standalone.
+- `nix develop -c make check` - passed after the PNG+RGBA sidecar slice:
+  build, 304 tests, `check-no-images` (26 checks), and the MinGW ConPTY compile
+  seam.
+- `nix develop -c make check-vt-gif-all` - passed after the PNG+RGBA sidecar
+  slice; Pillow emitted a deprecation warning in `tools/vtg_probe.py`.
+- `nix develop -c make test-san SAN=undefined` - passed after the PNG+RGBA
+  sidecar slice, 304 tests, existing pty Esc sandbox skip.
 - `nix develop -c make test` - passed, 295 tests, existing pty Esc sandbox skip.
 - `nix develop -c make check-conpty` - passed, including POSIX fallback/helper
   tests and the isolated MinGW Win32 ConPTY compile seam.
@@ -122,6 +143,7 @@ Use a Windows-capable worktree or CI worker to run a live Windows Terminal smoke
 against `timui_conpty_open`, transport read/write, resize, and close. Separately,
 capture live iTerm2 and Sixel terminal evidence before promoting image protocol
 support from fake-transport wire evidence to terminal evidence. For Sixel parity,
-PNG-to-Sixel remains blocked on a public-library PNG decode dependency decision;
-`tools/vendor` currently contains dev-tooling-only `stb` use, not a release
-header dependency.
+built-in plain-PNG Sixel remains blocked on a public-library PNG decode
+dependency decision; `tools/vendor` currently contains dev-tooling-only `stb`
+use, not a release header dependency. PNG+RGBA sidecars are the current
+dependency-free path for applications that already have decoded pixels.
