@@ -185,6 +185,7 @@ int main(void){
         test_input_field_edit,
         test_input_field_grapheme_edit,
         test_input_field_cursor_clamped_to_text,
+        test_input_field_clamps_unterminated,
         test_input_field_multi_submit,
         test_input_field_paste,
         test_input_field_paste_split,

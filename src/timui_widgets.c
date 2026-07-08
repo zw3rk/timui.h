@@ -354,7 +354,7 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
     if(!f || !f->ui || !st || !st->text || st->cap == 0) return false;
     ui = f->ui;
     { size_t text_len = text_len_bounded_(st->text, st->cap);
-      if(text_len >= st->cap) text_len = st->cap - 1;
+      if(text_len >= st->cap){ text_len = st->cap - 1; st->text[text_len] = '\0'; }
       if(st->cursor > text_len) st->cursor = text_len; }   /* Y1-style: distrust caller cursor */
     {
         ir = timui_interact_button(&ui->ia, id, r);

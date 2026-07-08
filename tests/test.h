@@ -196,6 +196,7 @@ void test_input_line_buf_clamps_unterminated(void);
 void test_input_field_edit(void);
 void test_input_field_grapheme_edit(void);
 void test_input_field_cursor_clamped_to_text(void);
+void test_input_field_clamps_unterminated(void);
 void test_input_field_multi_submit(void);
 void test_input_field_paste(void);
 void test_input_field_paste_split(void);
