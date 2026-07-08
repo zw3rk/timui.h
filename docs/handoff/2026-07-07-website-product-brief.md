@@ -15,9 +15,9 @@ Primary artifact: `docs/website-product-brief.md`.
 
 - `docs/website-product-brief.md` - website positioning, copy bank, proof
   points, demo plan, and limitations.
-- `README.md` - current public overview, but the test count is stale.
-- `USAGE.md` - demo/media commands; one vt_gif paragraph has stale follow-up
-  wording.
+- `README.md` - current public overview.
+- `USAGE.md` - demo/media commands for the current bundled vt_gif font and
+  emoji pipeline.
 - `include/timui.h` - canonical public API and caveats.
 - `Makefile` - demo, media, test, release, and visual-rendering targets.
 

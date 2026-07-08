@@ -366,13 +366,10 @@ Evidence: `include/timui.h:12-17`, `include/timui.h:843-863`,
   site should provide static/video fallback assets and make the demo reproducible
   through Makefile targets.
 - The docs are not all equally fresh. `docs/backlog.md` still lists table/tree
-  as gaps, while the header and examples show them implemented. `USAGE.md`
-  still says bundled Twemoji/Unifont are a follow-up in one paragraph even
-  though current Makefile checks exercise bundled emoji/CJK. Treat
+  as gaps, while the header and examples show them implemented. Treat
   `include/timui.h`, `CHANGELOG.md`, `Makefile`, tests, and current command
   output as stronger evidence than backlog notes.
-- The README test count is stale. Fix it or avoid hardcoding a number in public
-  copy.
+- Avoid hardcoding a test count in public copy; the suite is still growing.
 - `.PHONY` coverage in the Makefile is partial. Low product risk, but a cleanup
   pass before a public launch would be cheap.
 - There is no dedicated `tests/regression/` namespace despite regression-style
@@ -386,8 +383,7 @@ Evidence: `include/timui.h:12-17`, `include/timui.h:843-863`,
 2. Generate at least three static screenshots:
    `chat`, `file_manager`, `procmon` or `todo`.
 3. Update public docs before launch:
-   README test count, stale `USAGE.md` vt_gif note, stale backlog table/tree
-   items.
+   stale backlog table/tree items.
 4. Add a website Makefile target once the site stack is chosen.
 5. Keep the first page asset-led: real terminal media, code snippet, examples,
    proof section, honest limitations.

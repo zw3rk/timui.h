@@ -153,7 +153,7 @@ images — as a PNG (final frame) or an animated GIF.
 |---|---|
 | `make gif-chat-demo` | autoplay `chat --demo` → `recordings/chat-demo.gif` (headless, no screen recorder) |
 | `make webp-chat-demo` | also `recordings/chat-demo.{mp4,webp}` (H.264 + gif2webp, far smaller than the GIF) |
-| `make check-vt-gif-all` | all renderer checks (smoke · glyphs · CJK · emoji · output) |
+| `make check-vt-gif-all` | all renderer checks (smoke · glyphs · style · CJK · emoji · output · golden PNG) |
 | `make check-chat-text` | chat word-wrap + bidi + fenced-block layout unit tests |
 | `make check-chat-highlight` | chat syntax-highlighter unit tests |
 | `make gen-font-ttf`  | regenerate the subset TTF face (`tools/vendor/vt_font_ttf.h`, fonttools via nix) |
@@ -165,12 +165,12 @@ The `chat` example renders **multi-line messages** (word-wrapped to the pane),
 protocol is active, e.g. Ghostty; plain Enter sends). In `--demo` scripts, `\n` in a
 `msg`/`say` line becomes a real newline, so a script can post a code block on one line.
 
-`vt_gif` renders text with `stb_truetype` (bundled DejaVu subset → any glyph it
-has, antialiased). Flags: `--cell-h N` / `--scale F` (size), `--system-fonts`
-(chain the OS CJK fonts — macOS Hiragino/AppleSDGothicNeo), `--system-emoji`
-(Apple Color Emoji), `--width N` (downscale), `--bit-depth N`, `--frames-dir DIR`
-(PNG sequence → ffmpeg MP4/WebP). *(Bundled Twemoji/Unifont for flag-free CJK/emoji
-are a follow-up — see `docs/research/vt-gif-v2-plan.md`.)*
+`vt_gif` renders text with a bundled fallback chain: DejaVu Sans Mono subset for
+Latin/symbols, GNU Unifont bitmap coverage for CJK/BMP, and a curated Twemoji
+atlas for colour emoji. Flags: `--cell-h N` / `--scale F` (size),
+`--system-fonts` (prefer OS CJK fonts — macOS Hiragino/AppleSDGothicNeo),
+`--system-emoji` (prefer Apple Color Emoji), `--width N` (downscale),
+`--bit-depth N`, `--frames-dir DIR` (PNG sequence → ffmpeg MP4/WebP).
 
     # manual pipeline for any timui app (needs a --timing sidecar for frame pacing)
     ./build/pty_drive --cols 90 --rows 22 --run-ms 30000 \
