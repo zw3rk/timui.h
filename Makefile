@@ -134,7 +134,9 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www check-www amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www check-www check-www-assets amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: accept check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden gen-golden-vtgif check-vt-gif-style check-vt-gif-all
+.PHONY: run-chat-demo rec-chat-demo gif-chat-demo webp-chat-demo gen-font-ttf gen-emoji gen-cjk
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n"
@@ -739,9 +741,10 @@ www: amalgamate ## Refresh static website assets under www/
 	@mkdir -p $(WWWDIR)
 	@install -m 0644 $(RELDIR)/timui.h $(WWW_HEADER)
 	@install -m 0644 LICENSE $(WWW_LICENSE)
+	@$(MAKE) check-www-assets
 	@printf "$(C_GREEN)✓ refreshed $(WWW_HEADER) and $(WWW_LICENSE)$(C_RESET)\n"
 
-check-www: ## Verify static website license and agent links
+check-www: check-www-assets ## Verify static website license, agent links, and assets
 	@grep -q '<h2>LICENSE</h2>' $(WWWDIR)/index.html
 	@grep -q 'href="LICENSE"' $(WWWDIR)/index.html
 	@grep -q 'Apache-2.0' $(WWWDIR)/index.html
@@ -750,6 +753,26 @@ check-www: ## Verify static website license and agent links
 	@grep -q 'SPDX-License-Identifier: Apache-2.0' $(WWW_HEADER)
 	@cmp -s LICENSE $(WWW_LICENSE)
 	@printf "$(C_GREEN)✓ website license links$(C_RESET)\n"
+
+check-www-assets: ## Verify local assets referenced by www/index.html exist
+	@mkdir -p $(BLDDIR)
+	@missing=0; refs="$(BLDDIR)/www-assets.refs"; \
+	  sed -nE 's/.*(href|src)="([^"]+)".*/\2/p' $(WWWDIR)/index.html | sort -u > "$$refs"; \
+	  while IFS= read -r ref; do \
+	    case "$$ref" in ""|\#*|*:*|/*) continue;; esac; \
+	    path=$${ref%%\#*}; path=$${path%%\?*}; \
+	    test -z "$$path" && continue; \
+	    if test ! -e "$(WWWDIR)/$$path"; then \
+	      printf "$(C_YELL)✗ www$(C_RESET) missing local asset %s\n" "$$path"; \
+	      missing=1; \
+	    fi; \
+	  done < "$$refs"; \
+	  rm -f "$$refs"; \
+	  if test "$$missing" -eq 0; then \
+	    printf "$(C_GREEN)✓ www$(C_RESET) local asset links resolve\n"; \
+	  else \
+	    exit 1; \
+	  fi
 
 $(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
 	@mkdir -p $(@D)
