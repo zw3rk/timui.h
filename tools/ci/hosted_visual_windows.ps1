@@ -47,19 +47,48 @@ function Invoke-Captured {
   return $status
 }
 
-function Count-EscP {
-  param([string]$Path)
+function Write-DcsMetrics {
+  param(
+    [string]$Path,
+    [string]$Name
+  )
   if (-not (Test-Path $Path)) {
     return
   }
   $bytes = [System.IO.File]::ReadAllBytes($Path)
   $count = 0
+  $metrics = New-Object System.Collections.Generic.List[string]
   for ($i = 0; $i -lt ($bytes.Length - 1); $i++) {
     if ($bytes[$i] -eq 27 -and $bytes[$i + 1] -eq 80) {
       $count++
+      $start = $i + 2
+      $end = $start
+      while ($end -lt ($bytes.Length - 1)) {
+        if ($bytes[$end] -eq 27 -and $bytes[$end + 1] -eq 92) {
+          break
+        }
+        $end++
+      }
+      $len = $end - $start
+      if ($len -gt 0) {
+        $take = [Math]::Min($len, 4096)
+        $ascii = [System.Text.Encoding]::ASCII.GetString($bytes, $start, $take)
+        $m = [regex]::Match($ascii, '"1;1;([0-9]+);([0-9]+)')
+        if ($m.Success) {
+          $metrics.Add("dcs[$count] raster=$($m.Groups[1].Value)x$($m.Groups[2].Value) bytes=$len")
+        } else {
+          $metrics.Add("dcs[$count] raster=not-found bytes=$len")
+        }
+      }
     }
   }
-  Set-Content -Path (Join-Path $Out "sixel-dcs-count.txt") -Value $count -Encoding ascii
+  Set-Content -Path (Join-Path $Out "${Name}-dcs-count.txt") -Value $count -Encoding ascii
+  if ($Name -eq "timui-sixel") {
+    Set-Content -Path (Join-Path $Out "sixel-dcs-count.txt") -Value $count -Encoding ascii
+  }
+  if ($metrics.Count -gt 0) {
+    Set-Content -Path (Join-Path $Out "${Name}-dcs-metrics.txt") -Value $metrics -Encoding ascii
+  }
 }
 
 function Save-ScreenCapture {
@@ -115,6 +144,10 @@ cmd.exe /c "query user || ver" > (Join-Path $Out "query-user.txt") 2>&1
 cmd.exe /c "qwinsta || ver" > (Join-Path $Out "qwinsta.txt") 2>&1
 Get-Command wt.exe -ErrorAction SilentlyContinue |
   Format-List * > (Join-Path $Out "wt-command.txt") 2>&1
+Get-AppxPackage -Name Microsoft.WindowsTerminal* |
+  Format-List * > (Join-Path $Out "wt-appx-package.txt") 2>&1
+Get-ChildItem -Path "$env:LOCALAPPDATA\Packages" -Filter "Microsoft.WindowsTerminal*" -ErrorAction SilentlyContinue |
+  Format-List * > (Join-Path $Out "wt-package-dirs.txt") 2>&1
 
 $Msys2Location = $env:TIMUI_MSYS2_LOCATION
 if (-not $Msys2Location) {
@@ -174,7 +207,29 @@ Add-Evidence "## Build and stream diagnostics"
 Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && PATH=/usr/bin:/bin:`$PATH make build/image_smoke CC=/usr/bin/gcc POSIX_CFLAGS='-D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700'"
 Invoke-Msys "conpty-smoke" "cd '$MsysRoot' && OS=Windows_NT PATH=/ucrt64/bin:/usr/bin:/bin:`$PATH make smoke-conpty-win32 CONPTY_WIN_CC=/ucrt64/bin/gcc"
 Invoke-Msys "sixel-diagnostic" "cd '$MsysRoot' && mkdir -p '$MsysOut' && if [ -x ./build/image_smoke ] && command -v script >/dev/null 2>&1; then script -q -c './build/image_smoke --protocol sixel --frames 1' '$MsysOut/sixel.typescript'; elif [ ! -x ./build/image_smoke ]; then echo image-smoke-missing > '$MsysOut/sixel-diagnostic.skip'; else echo script-not-available > '$MsysOut/sixel-diagnostic.skip'; fi"
-Count-EscP (Join-Path $Out "sixel.typescript")
+Write-DcsMetrics (Join-Path $Out "sixel.typescript") "timui-sixel"
+
+$DirectFixture = Join-Path $Out "direct-sixel-fixture.sh"
+$DirectFixtureLines = @(
+  '#!/usr/bin/env bash',
+  'set -euo pipefail',
+  'sleep_s="${1:-0}"',
+  "printf '\033[2J\033[H'",
+  "printf 'TIMUI_DIRECT_SIXEL_FIXTURE\n\n'",
+  "printf 'If Windows Terminal renders Sixel, a red block should appear below.\n'",
+  "printf 'This fixture bypasses timui and writes one known-good Sixel DCS.\n'",
+  "printf '\033[7;5H'",
+  "printf '\033P0;1;0q`"1;1;180;72#1;2;100;0;0#1'",
+  'for b in $(seq 1 12); do',
+  "  printf '!180~'",
+  '  if [ "$b" -lt 12 ]; then printf "-"; fi',
+  'done',
+  "printf '\033\\'",
+  'if [ "$sleep_s" -gt 0 ]; then sleep "$sleep_s"; fi'
+)
+[System.IO.File]::WriteAllText($DirectFixture, ($DirectFixtureLines -join "`n") + "`n", [System.Text.Encoding]::ASCII)
+Invoke-Msys "direct-sixel-diagnostic" "bash '$MsysOut/direct-sixel-fixture.sh' 0 > '$MsysOut/direct.sixel'"
+Write-DcsMetrics (Join-Path $Out "direct.sixel") "direct-sixel"
 
 Add-Evidence ""
 Add-Evidence "## Windows screenshot sanity"
@@ -209,6 +264,51 @@ if ($Wt) {
   Get-Item $Wt.Source | Format-List * | Out-File -FilePath $wtVersion -Append -Encoding utf8
   Set-Content -Path (Join-Path $Out "wt-version.status") -Value 0 -Encoding ascii
   Add-Evidence "- wt-version: captured file metadata"
+  Invoke-Captured "wt-version-command" { & $Wt.Source --version } | Out-Null
+
+  Add-Evidence ""
+  Add-Evidence "### Direct Sixel control"
+  $DirectCmd = Join-Path $Out "run-direct-sixel.cmd"
+  $DirectLines = @(
+    "@echo off",
+    "title timui-direct-sixel-fixture",
+    "mode con: cols=120 lines=40",
+    "set MSYSTEM=UCRT64",
+    "set CHERE_INVOKING=1",
+    "set PATH=$MsysUsrBin;$MsysUcrtBin;%PATH%",
+    "`"$Bash`" --noprofile --norc -lc `"bash '$MsysOut/direct-sixel-fixture.sh' 45`"",
+    "%SystemRoot%\System32\timeout.exe /t 10 /nobreak >nul"
+  )
+  [System.IO.File]::WriteAllText($DirectCmd, ($DirectLines -join "`r`n") + "`r`n", [System.Text.Encoding]::ASCII)
+
+  try {
+    $directWtArgs = @(
+      "--window",
+      "new",
+      "--size",
+      "120,40",
+      "new-tab",
+      "--title",
+      "timui-direct-sixel-fixture",
+      "cmd.exe",
+      "/k",
+      $DirectCmd
+    )
+    Start-Process -FilePath $Wt.Source -ArgumentList $directWtArgs -WindowStyle Normal
+    Add-Evidence "- Direct Sixel Windows Terminal launch: started"
+  } catch {
+    $_ | Out-File -FilePath (Join-Path $Out "wt-direct-launch.stderr") -Encoding utf8
+    Add-Evidence "- Direct Sixel Windows Terminal launch: failed"
+  }
+  Start-Sleep -Seconds 12
+  Get-Process WindowsTerminal,OpenConsole,cmd,bash -ErrorAction SilentlyContinue |
+    Format-List * > (Join-Path $Out "terminal-processes-direct-12s.txt") 2>&1
+  Save-ScreenCapture "windows-terminal-direct-sixel-12s.png"
+  Stop-Process -Name WindowsTerminal,OpenConsole,cmd,bash -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 3
+
+  Add-Evidence ""
+  Add-Evidence "### timui Sixel smoke"
   $RunCmd = Join-Path $Out "run-sixel-smoke.cmd"
   $RunLines = @(
     "@echo off",
@@ -258,7 +358,8 @@ Add-Evidence ""
 Add-Evidence "## Outcome"
 Add-Evidence "- ConPTY smoke counts only if conpty-smoke.stdout contains PASS conpty smoke: observed TIMUI_CONPTY_SMOKE."
 Add-Evidence "- cmd-sanity.png only proves hosted Windows screenshot mechanics. It is not image-protocol evidence."
+Add-Evidence "- windows-terminal-direct-sixel-12s.png is a control: it proves whether hosted Windows Terminal renders Sixel at all, independent of timui."
 Add-Evidence "- Sixel visual evidence counts only if a windows-terminal-sixel-*.png visibly shows the live image smoke in Windows Terminal with visible image tiles, not placeholders."
-Add-Evidence "- The sixel typescript and DCS count are diagnostics only; they do not replace a visual screenshot or recording."
+Add-Evidence "- The sixel typescript, direct.sixel, DCS counts, and DCS raster metrics are diagnostics only; they do not replace a visual screenshot or recording."
 
 exit 0
