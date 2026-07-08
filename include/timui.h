@@ -624,6 +624,73 @@ typedef struct {
 TIMUI_API TimuiTheme timui_theme_builtin(TimuiBuiltinTheme t);
 TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot);
 
+/* ---- Stylesheets (small TCSS-like parser/resolver) -------------------- */
+typedef enum {
+    TIMUI_WIDGET_ANY = 0,
+    TIMUI_WIDGET_LABEL,
+    TIMUI_WIDGET_PANEL,
+    TIMUI_WIDGET_BUTTON,
+    TIMUI_WIDGET_INPUT,
+    TIMUI_WIDGET_TEXT_AREA,
+    TIMUI_WIDGET_LISTBOX,
+    TIMUI_WIDGET_TABLE,
+    TIMUI_WIDGET_TREE,
+    TIMUI_WIDGET_MENU,
+    TIMUI_WIDGET_TOAST,
+    TIMUI_WIDGET_SPLIT
+} TimuiWidgetKind;
+
+typedef enum {
+    TIMUI_STYLE_STATE_FOCUSED  = 1u << 0,
+    TIMUI_STYLE_STATE_HOVERED  = 1u << 1,
+    TIMUI_STYLE_STATE_ACTIVE   = 1u << 2,
+    TIMUI_STYLE_STATE_DISABLED = 1u << 3,
+    TIMUI_STYLE_STATE_SELECTED = 1u << 4
+} TimuiStyleState;
+
+typedef enum {
+    TIMUI_STYLE_PROP_FG          = 1u << 0,
+    TIMUI_STYLE_PROP_BG          = 1u << 1,
+    TIMUI_STYLE_PROP_ATTRS       = 1u << 2,
+    TIMUI_STYLE_PROP_BORDER      = 1u << 3,
+    TIMUI_STYLE_PROP_PADDING     = 1u << 4,
+    TIMUI_STYLE_PROP_GAP         = 1u << 5,
+    TIMUI_STYLE_PROP_GRADIENT_LO = 1u << 6,
+    TIMUI_STYLE_PROP_GRADIENT_HI = 1u << 7
+} TimuiStyleProp;
+
+typedef struct TimuiStyleRule TimuiStyleRule;
+typedef struct {
+    TimuiStyleRule *rules;
+    int count;
+    int cap;
+    TimuiAllocator alloc;
+} TimuiStylesheet;
+
+typedef struct {
+    TimuiWidgetKind kind;
+    const char *id;
+    const char *classes;       /* whitespace-separated class names */
+    uint32_t states;
+    TimuiStyle base;
+} TimuiStyleQuery;
+
+typedef struct {
+    TimuiStyle style;
+    uint32_t mask;
+    uint32_t border;
+    int padding;
+    int gap;
+    uint32_t gradient_lo;
+    uint32_t gradient_hi;
+} TimuiResolvedStyle;
+
+TIMUI_API TimuiResult timui_stylesheet_parse(TimuiStylesheet *out, const char *src,
+                                             size_t len, const TimuiAllocator *alloc);
+TIMUI_API void timui_stylesheet_free(TimuiStylesheet *ss);
+TIMUI_API TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *ss,
+                                                      TimuiStyleQuery query);
+
 /* ---- Terminal transport (backend abstraction) ------------------------- *
  * A vtable of read/write/flush/close over an opaque ctx. Real backends wrap
  * file descriptors; the fake backend captures output and replays injected
@@ -1177,6 +1244,7 @@ TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int l
 #include "../src/timui_int.h"
 #include "../src/timui_core.c"
 #include "../src/timui_render.c"
+#include "../src/timui_stylesheet.c"
 #include "../src/timui_grapheme.c"
 #include "../src/timui_term.c"
 #include "../src/timui_input.c"

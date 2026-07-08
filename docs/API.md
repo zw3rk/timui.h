@@ -110,7 +110,19 @@ text rather than treated as submits.
 TimuiStyle timui_style_make(uint32_t fg, uint32_t bg, uint32_t attrs);
 TimuiTheme timui_theme_builtin(TimuiBuiltinTheme);   /* DOS_BLUE/GRAY, MODERN_DARK, MONO */
 TimuiStyle timui_theme_style(const TimuiTheme *, TimuiStyleSlot);
+TimuiResult timui_stylesheet_parse(TimuiStylesheet *, const char *src, size_t len,
+                                   const TimuiAllocator *);
+TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *, TimuiStyleQuery);
+void timui_stylesheet_free(TimuiStylesheet *);
 ```
+
+The stylesheet parser is a small TCSS-inspired layer over existing styles. The
+first grammar supports one selector per rule with widget kind, `#id`, `.class`,
+and `:focused` / `:hovered` / `:active` / `:disabled` / `:selected` states.
+Declarations cover `fg`, `bg`, `bold`, `dim`, `reverse`, `border`, `padding`,
+`gap`, `gradient-lo`, and `gradient-hi`. Resolution is deterministic:
+id-specific rules beat class/state rules, class/state beat kind, and source
+order breaks ties per property.
 
 ## UTF-8, Widths & Graphemes
 

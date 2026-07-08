@@ -55,8 +55,9 @@ These are known limitations promoted into the next planned follow-up. See
   compile checks and a real Windows smoke run are green.
 - **Medium widgets** still missing: autocomplete/combobox, toast/notification,
   and split/resizable panes.
-- **Declarative styling** is missing. The layout solver, borders, themes, and
-  gradients exist, but there is no CSS/TCSS-like parser and cascade/resolver.
+- **Stylesheet widget application** is missing. A TCSS-like parser/resolver now
+  exists, but built-in widgets still draw from themes and explicit style
+  overrides rather than resolved stylesheet queries.
 - **Grapheme clustering** remains incomplete. Width and bidi coverage are useful,
   but editing/truncation/rendering can still split ZWJ emoji, skin-tone emoji,
   flags/regional indicators, combining marks, variation selectors, and related

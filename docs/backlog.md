@@ -44,9 +44,13 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
 - [ ] **Split / resizable panes** - build on `timui_split`/`timui_split_ex` with
       caller-owned split state and a local divider-drag interaction. Full global
       drag/hover architecture remains Phase 2.
-- [ ] **CSS-like stylesheet** - a small Textual-TCSS-inspired parser/resolver
+- [x] **CSS-like stylesheet parser/resolver foundation** - a small
+      Textual-TCSS-inspired parser/resolver
       over existing styles: widget/id/class/state selectors, simple specificity,
       source order, and properties for fg/bg/attrs/border/padding/gap/gradient.
+- [ ] **Stylesheet widget application** - thread resolved stylesheet values into
+      visible widgets without removing existing theme APIs or explicit style
+      override paths.
 - [ ] **Grapheme clustering** - generated Unicode grapheme data and helpers for
       next/prev/width, integrated into editing, truncation, and rendering so ZWJ
       emoji, skin tones, regional indicators, combining marks, VS16, and CRLF
