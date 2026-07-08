@@ -33,6 +33,20 @@ static int smoke_contains(const char *buf, size_t len, const char *needle){
     return 0;
 }
 
+static void smoke_append(char *dst, size_t *dst_len, size_t dst_cap,
+                         const char *src, size_t src_len){
+    size_t copy;
+    if(!dst || !dst_len || dst_cap == 0) return;
+    if(*dst_len >= dst_cap - 1) return;
+    copy = src_len;
+    if(copy > dst_cap - 1 - *dst_len) copy = dst_cap - 1 - *dst_len;
+    if(copy > 0){
+        memcpy(dst + *dst_len, src, copy);
+        *dst_len += copy;
+        dst[*dst_len] = '\0';
+    }
+}
+
 static const char *smoke_result_name(TimuiResult r){
     switch(r){
         case TIMUI_OK: return "TIMUI_OK";
@@ -80,6 +94,20 @@ int main(void){
         timui_conpty_close(&t, pid);
         return 1;
     }
+
+    deadline = smoke_now_ms() + 2000;
+    while(smoke_now_ms() < deadline){
+        char tmp[512];
+        int n = t.read(&t, tmp, sizeof tmp);
+        if(n > 0){
+            smoke_append(seen, &seen_len, sizeof seen, tmp, (size_t)n);
+            if(memchr(tmp, '>', (size_t)n) || memchr(tmp, '$', (size_t)n))
+                break;
+        } else {
+            smoke_sleep_short();
+        }
+    }
+
     if(!t.write || !t.read || t.write(&t, script, sizeof script - 1) <= 0){
         fprintf(stderr, "conpty smoke: write failed\n");
         timui_conpty_close(&t, pid);
@@ -91,13 +119,7 @@ int main(void){
         char tmp[512];
         int n = t.read(&t, tmp, sizeof tmp);
         if(n > 0){
-            size_t copy = (size_t)n;
-            if(copy > sizeof seen - 1 - seen_len) copy = sizeof seen - 1 - seen_len;
-            if(copy > 0){
-                memcpy(seen + seen_len, tmp, copy);
-                seen_len += copy;
-                seen[seen_len] = '\0';
-            }
+            smoke_append(seen, &seen_len, sizeof seen, tmp, (size_t)n);
             if(smoke_contains(seen, seen_len, TOKEN)){
                 ok = 1;
                 break;

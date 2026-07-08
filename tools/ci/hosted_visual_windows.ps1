@@ -76,6 +76,8 @@ Add-Evidence "- GUI frames: $GuiFrames"
 Add-Evidence "- OS env: $($env:OS)"
 Add-Evidence "- Shell: PowerShell $($PSVersionTable.PSVersion)"
 Add-Evidence "- Windows build path: MSYS2 make is used here because the flake has Linux/Darwin systems only."
+Add-Evidence "- Image smoke compiler: MSYS /usr/bin/gcc for POSIX headers."
+Add-Evidence "- ConPTY compiler: UCRT64 /ucrt64/bin/gcc for native Win32 APIs."
 Add-Evidence ""
 
 cmd.exe /c ver > (Join-Path $Out "windows-version.txt") 2>&1
@@ -125,8 +127,8 @@ function Invoke-Msys {
 }
 
 Add-Evidence "## Build and stream diagnostics"
-Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && make build/image_smoke CC=gcc"
-Invoke-Msys "conpty-smoke" "cd '$MsysRoot' && OS=Windows_NT make smoke-conpty-win32 CONPTY_WIN_CC=gcc"
+Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && make build/image_smoke CC=/usr/bin/gcc"
+Invoke-Msys "conpty-smoke" "cd '$MsysRoot' && OS=Windows_NT make smoke-conpty-win32 CONPTY_WIN_CC=/ucrt64/bin/gcc"
 Invoke-Msys "sixel-diagnostic" "cd '$MsysRoot' && mkdir -p '$MsysOut' && if command -v script >/dev/null 2>&1; then script -q -c './build/image_smoke --protocol sixel --frames 1' '$MsysOut/sixel.typescript'; else echo script-not-available > '$MsysOut/sixel-diagnostic.skip'; fi"
 Count-EscP (Join-Path $Out "sixel.typescript")
 
@@ -134,7 +136,11 @@ Add-Evidence ""
 Add-Evidence "## Windows Terminal GUI attempt"
 $Wt = Get-Command wt.exe -ErrorAction SilentlyContinue
 if ($Wt) {
-  Invoke-Captured "wt-version" { & $Wt.Source --version } | Out-Null
+  $wtVersion = Join-Path $Out "wt-version.stdout"
+  $Wt.Source | Set-Content -Path $wtVersion -Encoding utf8
+  Get-Item $Wt.Source | Format-List * | Out-File -FilePath $wtVersion -Append -Encoding utf8
+  Set-Content -Path (Join-Path $Out "wt-version.status") -Value 0 -Encoding ascii
+  Add-Evidence "- wt-version: captured file metadata"
   $RunScript = Join-Path $Out "run-sixel-smoke.sh"
   $RunLines = @(
     "#!/usr/bin/env bash",
