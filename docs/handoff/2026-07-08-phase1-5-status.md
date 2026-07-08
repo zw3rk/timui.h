@@ -11,8 +11,8 @@ date: 2026-07-08
 - Branch: `phase1-5-kitty-transmit`
 - Latest implementation checkpoint: `61705f1`
   (`images: decode plain png for sixel`)
-- Latest integrated local master checkpoint: `ca74b88`
-  (`docs: update phase 1.5 png decode handoff`)
+- Latest integrated local master checkpoint before this ASAN follow-up:
+  `3ab8944` (`docs: align phase 1.5 evidence copy`)
 - Previous local master checkpoint before this slice:
   `5392c72` (`smoke: add phase 1.5 operator harnesses`)
 - Merge status: fast-forwarded into local
@@ -96,7 +96,10 @@ date: 2026-07-08
   test harness. A `sample` of the process showed `__asan::AsanInitInternal` /
   `__sanitizer::MemoryRangeIsAvailable`; the run was interrupted. A follow-up
   run on `ca74b88` was still silent after roughly 90 seconds and was also
-  interrupted, so ASAN remains weak evidence rather than accepted.
+  interrupted. A substituted system-clang attempt,
+  `nix develop -c make test-san SAN=address CC=/usr/bin/clang`, also stayed
+  silent for roughly 90 seconds and was interrupted, so ASAN remains weak
+  evidence rather than accepted.
 
 ## Verification Already Run
 
@@ -116,6 +119,10 @@ date: 2026-07-08
 - `nix develop -c make www check-www test-san SAN=undefined` - passed after the
   website evidence-copy update; refreshed `www/timui.h` and `www/LICENSE`,
   verified website license links, and passed UBSAN with 307 tests.
+- `nix develop -c make test-san SAN=address CC=/usr/bin/clang` - tried as a
+  system-clang substitution after the evidence-copy update; produced no output
+  for roughly 90 seconds and was interrupted. This is diagnostic only, not
+  accepted ASAN evidence.
 - `nix develop -c make test` - intentionally failed before the built-in
   PNG-to-Sixel decode slice: `test_sixel_plain_png_decodes_to_dcs` and
   `test_sixel_clipped_png_decodes_and_crops` rendered the placeholder instead
