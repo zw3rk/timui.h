@@ -116,14 +116,22 @@ cmd.exe /c "qwinsta || ver" > (Join-Path $Out "qwinsta.txt") 2>&1
 Get-Command wt.exe -ErrorAction SilentlyContinue |
   Format-List * > (Join-Path $Out "wt-command.txt") 2>&1
 
+$Msys2Location = $env:TIMUI_MSYS2_LOCATION
+if (-not $Msys2Location) {
+  $Msys2Location = "C:\msys64"
+}
+$MsysUsrBin = Join-Path $Msys2Location "usr\bin"
+$MsysUcrtBin = Join-Path $Msys2Location "ucrt64\bin"
+
 $env:MSYSTEM = "UCRT64"
 $env:CHERE_INVOKING = "1"
-$env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
+$env:PATH = "$MsysUcrtBin;$MsysUsrBin;$env:PATH"
 
 $Bash = @(
+  (Join-Path $MsysUsrBin "bash.exe"),
+  (Join-Path $MsysUcrtBin "bash.exe"),
   "C:\msys64\usr\bin\bash.exe",
-  "C:\msys64\ucrt64\bin\bash.exe",
-  "C:\msys64\mingw64\bin\bash.exe"
+  "C:\msys64\ucrt64\bin\bash.exe"
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if (-not $Bash) {
@@ -146,9 +154,13 @@ function Invoke-BashLastLine {
 
 $MsysRoot = Invoke-BashLastLine "cygpath -u '$Root'"
 $MsysOut = Invoke-BashLastLine "cygpath -u '$Out'"
+Add-Evidence "- MSYS2 location: $Msys2Location"
 Add-Evidence "- MSYS2 bash: $Bash"
 Add-Evidence "- MSYS2 root: $MsysRoot"
 Add-Evidence ""
+
+& $Bash --noprofile --norc -lc "command -v gcc; command -v /ucrt64/bin/gcc; ls -l /usr/bin/gcc /ucrt64/bin/gcc 2>/dev/null || true" `
+  > (Join-Path $Out "msys2-toolchain.txt") 2>&1
 
 function Invoke-Msys {
   param(
@@ -175,7 +187,7 @@ $SanityLines = @(
   "echo TIMUI_HOSTED_SCREENSHOT_SANITY",
   "echo.",
   "for /L %%I in (0,1,13) do echo visible console capture sanity line %%I",
-  "timeout /t 45 /nobreak >nul"
+  "%SystemRoot%\System32\timeout.exe /t 45 /nobreak >nul"
 )
 [System.IO.File]::WriteAllText($SanityCmd, ($SanityLines -join "`r`n") + "`r`n", [System.Text.Encoding]::ASCII)
 try {
@@ -204,9 +216,9 @@ if ($Wt) {
     "mode con: cols=120 lines=40",
     "set MSYSTEM=UCRT64",
     "set CHERE_INVOKING=1",
-    "set PATH=C:\msys64\usr\bin;C:\msys64\ucrt64\bin;%PATH%",
+    "set PATH=$MsysUsrBin;$MsysUcrtBin;%PATH%",
     "`"$Bash`" --noprofile --norc -lc `"cd '$MsysRoot' && export TERM=xterm-256color && printf '\033[8;30;100t' && ./build/image_smoke --protocol sixel --frames $GuiFrames; sleep 8`"",
-    "timeout /t 10 /nobreak >nul"
+    "%SystemRoot%\System32\timeout.exe /t 10 /nobreak >nul"
   )
   [System.IO.File]::WriteAllText($RunCmd, ($RunLines -join "`r`n") + "`r`n", [System.Text.Encoding]::ASCII)
 
