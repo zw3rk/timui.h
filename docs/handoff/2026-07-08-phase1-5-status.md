@@ -8,15 +8,16 @@ date: 2026-07-08
 
 ## Landing State
 
-- Branch: `phase1-5-impl`
-- Latest implementation checkpoint: `838d57e` (`images: add png rgba sidecar`)
-- Previous local master checkpoint before the PNG+RGBA sidecar slice:
-  `2a5b10a` (`docs: update phase 1.5 handoff`)
+- Branch: `phase1-5-kitty-transmit`
+- Latest implementation checkpoint: `61705f1`
+  (`images: decode plain png for sixel`)
+- Previous local master checkpoint before this slice:
+  `5392c72` (`smoke: add phase 1.5 operator harnesses`)
 - Merge status: ready to fast-forward local
-  `/Users/angerman/Projects/zw3rk/timui.h-master` after this handoff update
+  `/Users/angerman/Projects/zw3rk/timui.h-master` after this checkpoint
 - Push status: not pushed
 - Remote state before this slice: local `master` was ahead of `github/master`
-  by 22 commits
+  by 25 commits
 
 ## Read First
 
