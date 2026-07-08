@@ -1042,6 +1042,34 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
 TIMUI_API TimuiCmdPaletteResult timui_command_palette_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *commands, int count, TimuiCmdPaletteState *state);
 
+/* Field-attached autocomplete/combobox. `query` is caller-owned storage; the
+ * widget edits it in place, filters `options`, and when an option is activated
+ * copies that option back into `query` (bounded by `cap`). `selected`/`scroll`
+ * are positions in the filtered list; result `selected`/`activated` are original
+ * option indices, or -1 when no option matches / activates. */
+typedef struct {
+    char *query;
+    size_t cap;
+    size_t cursor;
+    int scroll_x;
+    int open;
+    int selected;
+    int scroll;
+} TimuiComboboxState;
+typedef struct {
+    TimuiComboboxState state;
+    int state_changed;
+    int query_changed;
+    int activated;
+    int selected;
+    int match_count;
+    int focused;
+} TimuiComboboxResult;
+TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *options, int count, TimuiComboboxState state);
+TIMUI_API TimuiComboboxResult timui_combobox_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *options, int count, TimuiComboboxState *state);
+
 /* ---- Tab bar (W2) ------------------------------------------------------ *
  * A single-row bar of labeled tabs. timui_tabs highlights *selected as a boxed,
  * radio.c-style active tab, moves the selection on Left/Right (when focused) and
@@ -1257,6 +1285,7 @@ TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int l
 #include "../src/timui_table.c"
 #include "../src/timui_tree.c"
 #include "../src/timui_cmdpal.c"
+#include "../src/timui_combobox.c"
 #include "../src/timui_snapshot.c"
 #include "../src/timui_textarea.c"
 #include "../src/timui_conpty.c"

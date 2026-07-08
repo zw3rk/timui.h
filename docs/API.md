@@ -72,6 +72,8 @@ bool              timui_input_field(..., TimuiInputState *st);        /* in-line
 TimuiTextAreaResult timui_text_area_ex(..., TimuiTextAreaState state, uint32_t flags);
 TimuiTextAreaResult timui_text_area_mut(..., TimuiTextAreaState *st, uint32_t flags);
 void              timui_text_area(..., TimuiTextAreaState *st);       /* compatibility wrapper */
+TimuiComboboxResult timui_combobox(..., const TimuiStr *options, int count, TimuiComboboxState state);
+TimuiComboboxResult timui_combobox_mut(..., const TimuiStr *options, int count, TimuiComboboxState *state);
 TimuiListResult   timui_listbox(...);    TimuiListResult timui_listbox_mut(..., TimuiListState *);
 TimuiTreeResult   timui_tree(...);       TimuiTreeResult timui_tree_mut(..., int *selected);
 TimuiTableResult  timui_table(...);      TimuiTableResult timui_table_mut(..., TimuiTableState *);
@@ -85,6 +87,11 @@ appropriate. Persistent widget state (list selection, edit cursor) is
 caller-owned: `TimuiListState`, `TimuiTreeResult.selected`, `TimuiTableState`,
 and — for text editing — `TimuiInputState { char *text; size_t cap; size_t
 cursor; int scroll_x; }` / `TimuiTextAreaState`.
+
+`timui_combobox` is a one-focus autocomplete field. The first row edits the
+caller-owned query buffer; remaining rows show the filtered popup while open.
+Results report `activated` and `selected` as original option indices, with
+`match_count` for empty/no-match handling.
 
 ### Text editing
 

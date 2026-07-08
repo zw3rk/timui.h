@@ -4,8 +4,8 @@
  * Lays out (via the constraint solver timui_split) a set of bordered panels,
  * each demonstrating one library widget on canned data: the tab bar, the virtual
  * multi-column table, the scrollable tree, the spectrum bar chart, the
- * gauge/meter/progress indicators + spinner, and the syntax-highlighted code
- * viewer. Everything is static/animated-by-tick so the screen is deterministic;
+ * gauge/meter/progress indicators + spinner, combobox autocomplete, and the
+ * syntax-highlighted code viewer. Everything is static/animated-by-tick so the screen is deterministic;
  * `--frames N` renders N frames and quits (for a headless smoke through a pty).
  *
  * Run:  nix develop -c make run-gallery      Smoke: make smoke-gallery
@@ -79,6 +79,8 @@ int main(int argc, char **argv){
     TimuiTableState tstate = {0, 0, 0};
     TimuiTreeState  trstate = {0, 0};
     TimuiBarState   bars = {{0}, 0};
+    char combo_query[32] = "ga";
+    TimuiComboboxState combo = { combo_query, sizeof combo_query, 2, 0, 1, 0, 0 };
 
     { int i; for(i = 1; i < argc; i++)
         if(!strcmp(argv[i], "--frames") && i + 1 < argc) max_frames = atoi(argv[++i]); }
@@ -105,6 +107,10 @@ int main(int argc, char **argv){
       };
       const TimuiStr headers[3] = {
           TIMUI_STR_LIT("pid"), TIMUI_STR_LIT("name"), TIMUI_STR_LIT("state")
+      };
+      const TimuiStr combo_opts[5] = {
+          TIMUI_STR_LIT("gauge"), TIMUI_STR_LIT("gallery"), TIMUI_STR_LIT("graph"),
+          TIMUI_STR_LIT("gradient"), TIMUI_STR_LIT("grid")
       };
 
       while(!timui_should_quit(ui)){
@@ -157,6 +163,11 @@ int main(int argc, char **argv){
                   timui_meter(f, TIMUI_RECT(in.x, in.y + 3, in.w, 1), p, 0.9f, g);
                   timui_spinner(f, in.x + in.w - 1, in.y, tick,
                                 timui_style_make(accent, bg, TIMUI_ATTR_BOLD));
+                  if(in.h >= 8){
+                      timui_label(f, in.x, in.y + 4, TIMUI_STR_LIT("combobox"), timui_style_make(dim, bg, 0));
+                      (void)timui_combobox_mut(f, TIMUI_ID("combo"), TIMUI_RECT(in.x, in.y + 5, in.w, in.h - 5),
+                                               combo_opts, 5, &combo);
+                  }
               } }
 
             /* right column: syntax-highlighted code viewer */

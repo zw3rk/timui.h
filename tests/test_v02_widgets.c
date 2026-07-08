@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define SETIN(fake, lit) timui_fake_set_input((fake), (lit), sizeof(lit) - 1)
+
 /* ---- table (#47) ---- */
 static const char *tbl_cell(void *ud, int row, int col){
     static char buf[2][8];
@@ -95,6 +97,167 @@ TIMUI_TEST(test_cmd_palette_filter){
     /* "Open" visible in the list at row 2 (inside the panel body) */
     TIMUI_CHECK(timui_cells_get(buf, 2, 2)->codepoint == 'O');
     timui_end(f);
+    timui_close(ui);
+}
+
+/* ---- combobox / autocomplete (Phase 1.5) ---- */
+TIMUI_TEST(test_combobox_filter_select_activate){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[3] = { TIMUI_STR_LIT("Apple"), TIMUI_STR_LIT("Apricot"), TIMUI_STR_LIT("Banana") };
+    char query[32] = {0};
+    TimuiComboboxState st = { query, sizeof query, 0, 0, 0, 0, 0 };
+    TimuiComboboxResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 4);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define CB_FRAME() do{ timui_begin(ui,&f); res = timui_combobox_mut(f, TIMUI_ID("cb"), r, opts, 3, &st); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); CB_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); CB_FRAME();
+    SETIN(&fake, "ap"); CB_FRAME();
+    TIMUI_CHECK(res.state_changed && st.open && strcmp(query, "ap") == 0 && st.selected == 0);
+    TIMUI_CHECK(res.match_count == 2 && res.selected == 0);
+    SETIN(&fake, "\x1b[B"); CB_FRAME();
+    TIMUI_CHECK(st.selected == 1 && res.selected == 1);
+    SETIN(&fake, "\r"); CB_FRAME();
+    TIMUI_CHECK(res.activated == 1 && !st.open);
+    TIMUI_CHECK(strcmp(query, "Apricot") == 0 && st.cursor == strlen(query));
+#undef CB_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_combobox_no_match_and_clamp){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[2] = { TIMUI_STR_LIT("Alpha"), TIMUI_STR_LIT("Beta") };
+    char query[8] = "zz";
+    TimuiComboboxState st = { query, sizeof query, 2, 0, 1, 7, 3 };
+    TimuiComboboxResult res;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("empty"));
+    res = timui_combobox_mut(f, TIMUI_ID("empty"), TIMUI_RECT(0, 0, 20, 4), opts, 2, &st);
+    timui_end(f);
+    TIMUI_CHECK(res.selected == -1 && res.activated == -1);
+    TIMUI_CHECK(res.state.selected == 0 && res.state.scroll == 0 && strcmp(query, "zz") == 0);
+    TIMUI_CHECK(st.selected == 7 && st.scroll == 3);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_combobox_mouse_accept_duplicate){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[3] = { TIMUI_STR_LIT("Cat"), TIMUI_STR_LIT("Cat"), TIMUI_STR_LIT("Car") };
+    char query[16] = "cat";
+    TimuiComboboxState st = { query, sizeof query, 3, 0, 1, 0, 0 };
+    TimuiComboboxResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 4);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define CM_FRAME() do{ timui_begin(ui,&f); res = timui_combobox_mut(f, TIMUI_ID("dup"), r, opts, 3, &st); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;3M"); CM_FRAME();   /* second popup row: 0-based y=2 */
+    SETIN(&fake, "\x1b[<0;2;3m"); CM_FRAME();
+    TIMUI_CHECK(res.activated == 1);
+    TIMUI_CHECK(strcmp(query, "Cat") == 0 && !st.open);
+#undef CM_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_combobox_query_cap_utf8_no_split){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[1] = { TIMUI_STR_LIT("ab") };
+    char query[4] = {0};
+    TimuiComboboxState st = { query, sizeof query, 0, 0, 0, 0, 0 };
+    TimuiComboboxResult res;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    SETIN(&fake, "ab\xC3\xA9");
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("utf8"));
+    res = timui_combobox_mut(f, TIMUI_ID("utf8"), TIMUI_RECT(0, 0, 20, 3), opts, 1, &st);
+    timui_end(f);
+    TIMUI_CHECK(res.query_changed && strcmp(query, "ab") == 0 && st.cursor == 2);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_combobox_escape_closes_without_clearing_query){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[2] = { TIMUI_STR_LIT("Alpha"), TIMUI_STR_LIT("Alpine") };
+    char query[16] = "al";
+    TimuiComboboxState st = { query, sizeof query, 2, 0, 1, 0, 0 };
+    TimuiComboboxResult res;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    SETIN(&fake, "\x1b[27u");
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("esc"));
+    res = timui_combobox_mut(f, TIMUI_ID("esc"), TIMUI_RECT(0, 0, 20, 3), opts, 2, &st);
+    timui_end(f);
+    TIMUI_CHECK(res.state_changed && !st.open && res.activated == -1);
+    TIMUI_CHECK(strcmp(query, "al") == 0);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_combobox_cursor_movement_updates_state){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[1] = { TIMUI_STR_LIT("abc") };
+    char query[8] = "abc";
+    TimuiComboboxState st = { query, sizeof query, 3, 0, 0, 0, 0 };
+    TimuiComboboxResult res;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    SETIN(&fake, "\x1b[D");
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("move"));
+    res = timui_combobox_mut(f, TIMUI_ID("move"), TIMUI_RECT(0, 0, 20, 3), opts, 1, &st);
+    timui_end(f);
+    TIMUI_CHECK(res.state_changed && !res.query_changed && st.cursor == 2);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_combobox_guards_empty_options){
+    TimuiComboboxState st;
+    TimuiComboboxResult res;
+    char query[8] = "x";
+    memset(&st, 0, sizeof st);
+    st.query = query;
+    st.cap = sizeof query;
+    res = timui_combobox_mut(NULL, TIMUI_ID("g"), TIMUI_RECT(0, 0, 10, 3), NULL, 0, &st);
+    TIMUI_CHECK(res.activated == -1 && res.selected == -1 && !res.state_changed);
+    res = timui_combobox(NULL, TIMUI_ID("g"), TIMUI_RECT(0, 0, 10, 3), NULL, -1, st);
+    TIMUI_CHECK(res.activated == -1 && res.selected == -1);
+    st.query = NULL;
+    res = timui_combobox(NULL, TIMUI_ID("g"), TIMUI_RECT(0, 0, 10, 3), NULL, 0, st);
+    TIMUI_CHECK(res.activated == -1 && res.selected == -1);
+}
+
+TIMUI_TEST(test_combobox_accept_cap_limited){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[1] = { TIMUI_STR_LIT("LongOption") };
+    char query[5] = {0};
+    TimuiComboboxState st = { query, sizeof query, 0, 0, 1, 0, 0 };
+    TimuiComboboxResult res;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    SETIN(&fake, "\r");
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("cap"));
+    res = timui_combobox_mut(f, TIMUI_ID("cap"), TIMUI_RECT(0, 0, 20, 3), opts, 1, &st);
+    timui_end(f);
+    TIMUI_CHECK(res.activated == 0);
+    TIMUI_CHECK(strcmp(query, "Long") == 0 && st.cursor == strlen(query));
     timui_close(ui);
 }
 

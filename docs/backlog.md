@@ -36,7 +36,7 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       controlled API plus `_mut` convenience wrapper, preserving the current
       void `timui_text_area` compatibility wrapper. Refactor `examples/chat.c`
       and `examples/irc.c` to use it instead of local composer workarounds.
-- [ ] **Autocomplete / combobox** - field-attached popup selection over
+- [x] **Autocomplete / combobox** - field-attached popup selection over
       caller-owned options/state, with keyboard, mouse, clipping, UTF-8 labels,
       empty-list behavior, and cap-limited query tests.
 - [ ] **Toast / notification** - immediate-mode renderer over caller-owned
