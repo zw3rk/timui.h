@@ -132,6 +132,9 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
 - DONE: raw-RGBA Sixel draws scale to the requested cell rectangle when terminal
   cell-pixel geometry is known from `TIOCGWINSZ`; otherwise they preserve source
   pixel dimensions.
+- DONE: `TIMUI_NO_IMAGES` is active as an API-preserving no-image-emission mode:
+  image caps/protocol forcing select `NONE`, and image draws render `[img]`
+  without terminal image escapes.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API has PNG and raw-RGBA constructors; Sixel does not imply PNG decode,
   or PNG/non-raw clipping parity yet.
@@ -139,9 +142,7 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   Sixel should be prioritized before iTerm2 because it is useful for Windows
   Terminal and classic terminal compatibility.
 - Research and record any encoder dependency and license before vendoring or
-  linking it. Do not casually add a large dependency. Decide whether the
-  currently reserved `TIMUI_NO_IMAGES` macro becomes active before adding
-  multiple protocol backends.
+  linking it. Do not casually add a large dependency.
 - Acceptance: protocol emission tests, fallback tests, clipping/placement tests,
   no regression in `make check-vt-gif-all`, and docs that state exactly which
   protocol is supported where.

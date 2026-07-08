@@ -41,8 +41,9 @@ What `timui.h` speaks on the wire, and where it falls back.
   images with exact palettes or bounded 16-colour quantization, including
   cropped raw-RGBA draws and scaling to known cell-pixel geometry. PNG images
   forced to Sixel, clipped iTerm2 draws, and unsupported paths deliberately fall
-  back to the same text
-  placeholder instead of emitting unsupported or lossy escapes.
+  back to the same text placeholder instead of emitting unsupported or lossy
+  escapes. Builds with `TIMUI_NO_IMAGES` keep the API but force this placeholder
+  path for every draw.
 
 ## Capability gating
 
@@ -52,7 +53,9 @@ multiplexers (**tmux / screen / zellij**) conservatively drop image protocols
 and, unless passthrough is known, kitty-keyboard / sync; unknown terminals fall
 back to a safe 16-colour, ASCII-friendly minimum. `force_on` / `force_off`
 masks override, and `timui_force_image_protocol` switches the active image cap
-set for tests or user overrides.
+set for tests or user overrides. With `TIMUI_NO_IMAGES`, image caps are stripped
+after detection and force masks; protocol selection always returns
+`TIMUI_IMAGE_PROTOCOL_NONE`.
 
 ## Planned
 

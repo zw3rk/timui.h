@@ -70,6 +70,8 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
             16 opaque colours and bounded quantization beyond that cap.
       - [x] Cropped Sixel emission for clipped raw-RGBA draws.
       - [x] Raw-RGBA Sixel scaling to known terminal cell-pixel geometry.
+      - [x] `TIMUI_NO_IMAGES` build mode keeps the image API available while
+            stripping image caps/escapes and rendering `[img]` placeholders.
       - [ ] Sixel terminal evidence plus PNG decode and non-raw clipped draw
             parity.
       - [ ] iTerm2 terminal evidence.

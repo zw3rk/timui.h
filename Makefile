@@ -133,7 +133,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-conpty check-conpty-posix check-conpty-win32-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-irc run-irc smoke-irc
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n"
@@ -289,7 +289,7 @@ rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
 # 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
 # ============================================================================
 
-check: build test check-conpty-win32-compile ## Build + test gate
+check: build test check-no-images check-conpty-win32-compile ## Build + test gate
 	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 test: $(TEST_BIN) ## Compile and run the unit tests
@@ -305,6 +305,14 @@ vt-test: build ## Compile + run unit tests WITH vterm round-trip tests (needs li
 	@$(MAKE) $(VT_BIN) WITH_VTERM=1
 	@printf "$(C_YELL)▶ running vt-tests$(C_RESET)\n"
 	@./$(VT_BIN)
+
+check-no-images: $(TSTDIR)/test_no_images.c $(HEADER) $(LIB_SECTIONS) ## Test TIMUI_NO_IMAGES keeps API but disables terminal image escapes
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) no-images test\n"
+	@$(CC) $(CFLAGS) -DTIMUI_NO_IMAGES -I$(INCDIR) $(TSTDIR)/test_no_images.c -o $(BLDDIR)/test_no_images
+	@./$(BLDDIR)/test_no_images \
+	  && printf "$(C_GREEN)✓ TIMUI_NO_IMAGES$(C_RESET) standalone tests passed\n" \
+	  || { printf "$(C_YELL)✗ TIMUI_NO_IMAGES$(C_RESET) tests failed\n"; exit 1; }
 
 check-conpty-posix: $(TEST_BIN) ## Run POSIX ConPTY fallback/helper coverage
 	@printf "$(C_YELL)▶ running ConPTY POSIX helper tests$(C_RESET)\n"
@@ -682,7 +690,9 @@ release-check: amalgamate ## Verify the amalgamated release header compiles stan
 	@tmp="$(BLDDIR)/release_selftest.d"; rm -rf "$$tmp"; mkdir -p "$$tmp"; \
 	  install -m 0644 $(RELDIR)/timui.h "$$tmp/timui.h"; \
 	  printf '#define TIMUI_IMPLEMENTATION\n#include "timui.h"\nint main(void){return 0;}\n' > "$$tmp/release_selftest.c"; \
-	  $(CC) $(CFLAGS) -I"$$tmp" "$$tmp/release_selftest.c" -o "$$tmp/release_selftest"
+	  $(CC) $(CFLAGS) -I"$$tmp" "$$tmp/release_selftest.c" -o "$$tmp/release_selftest"; \
+	  printf '#define TIMUI_NO_IMAGES\n#define TIMUI_IMPLEMENTATION\n#include "timui.h"\nint main(void){return 0;}\n' > "$$tmp/release_selftest_no_images.c"; \
+	  $(CC) $(CFLAGS) -I"$$tmp" "$$tmp/release_selftest_no_images.c" -o "$$tmp/release_selftest_no_images"
 	@printf "$(C_GREEN)✓ release header compiles standalone$(C_RESET)\n"
 
 # ---- man page ------------------------------------------------------------- #

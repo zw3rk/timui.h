@@ -209,6 +209,9 @@ static void caps_set_str(char *dst, size_t cap, const char *src){
     memcpy(dst, src, n);
     dst[n] = '\0';
 }
+
+#define TIMUI_IMAGE_CAP_MASK_ ((uint32_t)(TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES))
+
 TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *term_program, const char *colorterm){
     if(!c) return;
     memset(c, 0, sizeof(*c));
@@ -238,33 +241,51 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
      * terminal (TERM_PROGRAM, inherited into the session) is kitty-family;
      * otherwise stripped. timui_force_cap overrides either way (W12). */
     if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
-        c->flags &= ~(TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES);
+        c->flags &= ~TIMUI_IMAGE_CAP_MASK_;
         if(!caps_is_kitty_family(term_program))
             c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
         c->flags |= TIMUI_CAP_256_COLOR;
         if(c->colors < 256) c->colors = 256;
     }
+#ifdef TIMUI_NO_IMAGES
+    c->flags &= ~TIMUI_IMAGE_CAP_MASK_;
+#endif
 }
 TIMUI_API void timui_caps_apply_force(TimuiCaps *c, uint32_t force_on, uint32_t force_off){
     if(!c) return;
     c->flags |= force_on;
     c->flags &= ~force_off;
+#ifdef TIMUI_NO_IMAGES
+    c->flags &= ~TIMUI_IMAGE_CAP_MASK_;
+#endif
 }
 TIMUI_API int timui_caps_has(const TimuiCaps *c, TimuiCapFlags cap){
     return c && ((c->flags & (uint32_t)cap) != 0);
 }
 TIMUI_API void timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable){
+    uint32_t bits = (uint32_t)cap;
     if(!ui) return;
-    if(enable) ui->caps.flags |= (uint32_t)cap;
-    else       ui->caps.flags &= ~(uint32_t)cap;
+#ifdef TIMUI_NO_IMAGES
+    bits &= ~TIMUI_IMAGE_CAP_MASK_;
+    ui->caps.flags &= ~TIMUI_IMAGE_CAP_MASK_;
+    if(bits == 0) return;
+#endif
+    if(enable) ui->caps.flags |= bits;
+    else       ui->caps.flags &= ~bits;
 }
 TIMUI_API TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *c){
     if(!c) return TIMUI_IMAGE_PROTOCOL_NONE;
+#ifdef TIMUI_NO_IMAGES
+    (void)c;
+    return TIMUI_IMAGE_PROTOCOL_NONE;
+#else
     if(c->flags & TIMUI_CAP_KITTY_GRAPHICS) return TIMUI_IMAGE_PROTOCOL_KITTY;
     if(c->flags & TIMUI_CAP_SIXEL_GRAPHICS) return TIMUI_IMAGE_PROTOCOL_SIXEL;
     if(c->flags & TIMUI_CAP_ITERM2_IMAGES) return TIMUI_IMAGE_PROTOCOL_ITERM2;
     return TIMUI_IMAGE_PROTOCOL_NONE;
+#endif
 }
+#undef TIMUI_IMAGE_CAP_MASK_
 
 /* ---- synchronized output (DEC 2026) + cursor -------------------------- */
 TIMUI_API void timui_sync_begin(TimuiTransport *t){ TIMUI_EMIT(t, "\x1b[?2026h"); }

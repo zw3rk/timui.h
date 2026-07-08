@@ -40,11 +40,12 @@ extern "C" {
 /* ---- Feature macros ----------------------------------------------------- *
  * TIMUI_IMPLEMENTATION   include the implementation (exactly one TU)
  * TIMUI_NO_THREADS       disable the thread-safe post API (implemented)
+ * TIMUI_NO_IMAGES        keep the image API but disable terminal image escapes
  * TIMUI_API              override public symbol visibility
  * TIMUI_STATIC           reserved (future static-link mode)
  *
  * Reserved (recognized by name only; no #ifdef gates them yet — defining one
- * is a no-op): TIMUI_NO_STDIO, TIMUI_NO_IMAGES, TIMUI_NO_UTF8_TABLES
+ * is a no-op): TIMUI_NO_STDIO, TIMUI_NO_UTF8_TABLES
  */
 #ifndef TIMUI_API
 #  define TIMUI_API
@@ -836,8 +837,9 @@ TIMUI_API void timui_caps_detect(TimuiCaps *caps, const char *term, const char *
 TIMUI_API void timui_caps_apply_force(TimuiCaps *caps, uint32_t force_on, uint32_t force_off);
 TIMUI_API int  timui_caps_has(const TimuiCaps *caps, TimuiCapFlags cap);
 /* Select the preferred image protocol from explicit capability flags. Kitty is
- * preferred when present because it is the implemented and richest path in
- * this release; otherwise Sixel wins over iTerm2 for broader terminal utility. */
+ * preferred when present because it is the richest path in this release;
+ * otherwise Sixel wins over iTerm2 for broader terminal utility. Defining
+ * TIMUI_NO_IMAGES makes this return TIMUI_IMAGE_PROTOCOL_NONE. */
 TIMUI_API TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *caps);
 /* The capabilities detected for an open ui — so apps can, e.g., choose an inline
  * image vs a text fallback: timui_image_protocol(ui) != TIMUI_IMAGE_PROTOCOL_NONE. */
@@ -1210,7 +1212,9 @@ TIMUI_API int    timui_conpty_size_valid_for_test(int cols, int rows);
  * background and no text there). This release emits Kitty graphics and iTerm2
  * inline PNG images, plus Sixel for raw RGBA images with exact palettes or
  * bounded 16-colour quantization and raw-RGBA clipped draws. Unsupported
- * protocols and unsupported clipped draws render a "[img]" cell placeholder. */
+ * protocols and unsupported clipped draws render a "[img]" cell placeholder.
+ * With TIMUI_NO_IMAGES, the same API stays available but always uses that
+ * placeholder path and emits no terminal image escape sequences. */
 typedef enum {
     TIMUI_IMAGE_KIND_PNG = 0,
     TIMUI_IMAGE_KIND_RGBA
@@ -1232,7 +1236,8 @@ TIMUI_API void        timui_image_draw_clipped(TimuiFrame *f, TimuiImage *img,
 TIMUI_API TimuiImageProtocol timui_image_protocol(const Timui *ui);
 TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
 /* Override the active image cap set. Unknown protocol values clear all image
- * caps and therefore select TIMUI_IMAGE_PROTOCOL_NONE. */
+ * caps and therefore select TIMUI_IMAGE_PROTOCOL_NONE. With TIMUI_NO_IMAGES,
+ * every value selects NONE. */
 TIMUI_API void        timui_force_image_protocol(Timui *ui, TimuiImageProtocol protocol);
 
 /* ---- Chart / indicator widgets (W3) ----------------------------------- *

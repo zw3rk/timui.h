@@ -216,6 +216,8 @@ amalgamated release header.
 
 ## Feature macros
 
-Implemented knobs: `TIMUI_IMPLEMENTATION`, `TIMUI_NO_THREADS`, and `TIMUI_API`.
-Reserved compatibility no-ops: `TIMUI_NO_STDIO`, `TIMUI_NO_IMAGES`, and
-`TIMUI_NO_UTF8_TABLES`.
+Implemented knobs: `TIMUI_IMPLEMENTATION`, `TIMUI_NO_THREADS`,
+`TIMUI_NO_IMAGES`, and `TIMUI_API`. `TIMUI_NO_IMAGES` keeps the image API
+available but strips image protocol caps, ignores forced image protocols, and
+renders `[img]` placeholders instead of terminal image escapes. Reserved
+compatibility no-ops: `TIMUI_NO_STDIO` and `TIMUI_NO_UTF8_TABLES`.

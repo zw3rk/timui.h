@@ -604,7 +604,7 @@ Feature macros:
 #define TIMUI_IMPLEMENTATION      /* include implementation */
 #define TIMUI_NO_STDIO            /* avoid stdio helpers */
 #define TIMUI_NO_THREADS          /* disable thread-safe post/task API */
-#define TIMUI_NO_IMAGES           /* omit image protocol helpers */
+#define TIMUI_NO_IMAGES           /* keep image API; disable image protocol escapes */
 #define TIMUI_NO_UTF8_TABLES      /* ASCII-only/minimal Unicode build */
 #define TIMUI_STATIC              /* static function definitions if desired */
 #define TIMUI_API                 /* override symbol visibility */
@@ -3858,4 +3858,3 @@ These are useful references for implementation research and protocol details:
 - Notcurses repository: <https://github.com/dankamongmen/notcurses>
 - Modern Turbo Vision repository: <https://github.com/magiblot/tvision>
 - Midnight Commander developer documentation: <https://github.com/MidnightCommander/mc/blob/master/doc/HACKING>
-

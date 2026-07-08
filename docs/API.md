@@ -171,6 +171,11 @@ pixels. iTerm2 clipped draws and PNG images forced to Sixel fall back to
 `[img]`. `timui_force_image_protocol` is intended for tests and user overrides;
 unknown enum values clear image caps and select `NONE`.
 
+Defining `TIMUI_NO_IMAGES` keeps this API available but disables terminal image
+protocol emission. `timui_caps_image_protocol` / `timui_image_protocol` return
+`NONE`, image caps are stripped even when forced on, `timui_force_image_protocol`
+selects `NONE`, and image draws render the `[img]` placeholder.
+
 ### Text editing
 
 `timui_input_field` (single line) and `timui_text_area` (multi-line) support
@@ -255,10 +260,11 @@ bool timui_post(Timui *, uint32_t type, const void *data, size_t size);  /* any 
 
 ## Feature macros
 
-`TIMUI_IMPLEMENTATION`, `TIMUI_NO_THREADS`, and `TIMUI_API` are implemented.
-`TIMUI_NO_STDIO`, `TIMUI_NO_IMAGES`, and `TIMUI_NO_UTF8_TABLES` are reserved
-compatibility no-ops. Single-header users link `-pthread` (or define
-`TIMUI_NO_THREADS`).
+`TIMUI_IMPLEMENTATION`, `TIMUI_NO_THREADS`, `TIMUI_NO_IMAGES`, and `TIMUI_API`
+are implemented. `TIMUI_NO_IMAGES` preserves the public image API while
+disabling image protocol caps and escapes. `TIMUI_NO_STDIO` and
+`TIMUI_NO_UTF8_TABLES` are reserved compatibility no-ops. Single-header users
+link `-pthread` (or define `TIMUI_NO_THREADS`).
 
 ---
 This is a concise reference; see [DESIGN.md](DESIGN.md) for architecture and

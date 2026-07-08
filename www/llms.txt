@@ -113,6 +113,9 @@ int main(void) {
   the terminal.
 - Async UI messages: `timui_post` lets worker threads post messages while the
   UI thread owns the terminal.
+- Feature macros: `TIMUI_NO_THREADS` disables the thread-safe post API;
+  `TIMUI_NO_IMAGES` keeps the image API but strips image protocol caps and
+  renders `[img]` placeholders instead of image escape sequences.
 
 ## Limitations
 

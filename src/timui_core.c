@@ -596,6 +596,10 @@ TIMUI_API void timui_force_image_protocol(Timui *ui, TimuiImageProtocol protocol
                                     TIMUI_CAP_ITERM2_IMAGES);
     if(!ui) return;
     ui->caps.flags &= ~mask;
+#ifdef TIMUI_NO_IMAGES
+    (void)protocol;
+    return;
+#endif
     switch(protocol){
     case TIMUI_IMAGE_PROTOCOL_KITTY:
         ui->caps.flags |= TIMUI_CAP_KITTY_GRAPHICS;

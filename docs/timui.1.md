@@ -55,8 +55,10 @@ to be driven through the nix dev shell: `nix develop -c make <target>`. Running
 invoke the C toolchain directly outside `nix develop`.
 
 Feature macros recognised by the header include `TIMUI_IMPLEMENTATION`,
-`TIMUI_NO_THREADS`, and `TIMUI_API`. `TIMUI_NO_STDIO`, `TIMUI_NO_IMAGES`, and
-`TIMUI_NO_UTF8_TABLES` are currently reserved compatibility no-ops.
+`TIMUI_NO_THREADS`, `TIMUI_NO_IMAGES`, and `TIMUI_API`. `TIMUI_NO_IMAGES`
+keeps the image API but disables terminal image protocol caps and escapes.
+`TIMUI_NO_STDIO` and `TIMUI_NO_UTF8_TABLES` are currently reserved
+compatibility no-ops.
 
 # TARGETS
 
