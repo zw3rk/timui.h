@@ -29,6 +29,7 @@ date: 2026-07-08
 - `docs/gaps.md`
 - `docs/API.md`
 - `docs/TERMINAL_PROTOCOLS.md`
+- `docs/runbooks/phase1-5-live-evidence.md`
 - `docs/research/image-protocols/REVIEW.md`
 - `docs/research/conpty/REVIEW.md`
 
@@ -84,11 +85,10 @@ date: 2026-07-08
   claim supported Windows operation until a real Windows Terminal smoke run is
   captured and recorded.
 - iTerm2 and Sixel have fake-transport wire tests, but no live terminal capture
-  evidence yet. Use `make smoke-image-live PROTO=sixel` and `make
-  smoke-image-live PROTO=iterm2` outside tmux/screen/zellij, then record the
-  terminal, command, terminal version, and outcome before claiming evidence.
-  Add `FRAMES=N` for bounded capture runs; omit it for an Escape-driven
-  operator session.
+  evidence yet. Run the Sixel and iTerm2 live smokes outside
+  tmux/screen/zellij, then record the terminal, command, terminal version, and
+  outcome before claiming evidence. Use `FRAMES=N` for bounded capture runs;
+  omit it for an Escape-driven operator session.
 - Plain PNG images forced to Sixel now use a bounded PNG-only `stb_image`
   decoder and the existing RGBA Sixel encoder. Caller-supplied PNG+RGBA sidecars
   still cover apps that already have decoded pixels and want to avoid lazy
@@ -231,11 +231,18 @@ date: 2026-07-08
 
 ## Next Safe Move
 
-Use a Windows-capable worktree or CI worker to run a live Windows Terminal smoke
-with `make smoke-conpty-win32` and record the command, Windows build, Windows
-Terminal version, and output. Separately, run and record `make smoke-image-live
-PROTO=sixel FRAMES=N` and `make smoke-image-live PROTO=iterm2 FRAMES=N` in
-real terminals before promoting image protocol support from fake-transport wire
+Follow `docs/runbooks/phase1-5-live-evidence.md`: use a Windows-capable
+worktree or CI worker to run the Windows smoke and real terminals for the image
+smokes:
+
+```sh
+nix develop -c make smoke-conpty-win32
+nix develop -c make smoke-image-live PROTO=sixel FRAMES=N
+nix develop -c make smoke-image-live PROTO=iterm2 FRAMES=N
+```
+
+Record the required host, terminal, compiler, command, outcome, and artifact
+evidence before promoting image protocol support from fake-transport wire
 evidence to terminal evidence. The plain-PNG Sixel decoder dependency decision
 is implemented and documented; remaining image work is evidence, not local
 wire-format implementation.

@@ -51,14 +51,17 @@ These are known limitations promoted into the next planned follow-up. See
   ConPTY entry points, and covered by the MinGW compile seam in `make check`
   plus POSIX fallback/helper tests. `make smoke-conpty-win32` is available for
   operator evidence, but do not claim Windows support until a real Windows
-  Terminal smoke run is green and recorded.
-- **Image protocol emitters** still need terminal evidence and parity work.
+  Terminal smoke run is green and recorded per
+  `docs/runbooks/phase1-5-live-evidence.md`.
+- **Image protocol emitters** still need terminal evidence.
   Kitty graphics, iTerm2 inline PNG images, raw-RGBA Sixel, PNG+RGBA sidecar
   Sixel, and built-in bounded plain-PNG-to-Sixel decode are in tree. Remaining
-  image gaps: real iTerm2/Sixel terminal captures via `make smoke-image-live
-  PROTO=sixel|iterm2`. Multiplexer image passthrough is deliberately conservative
-  for Phase 1.5: image caps are stripped under tmux/screen/zellij unless a later
-  pass designs and tests a narrower passthrough contract.
+  image gaps: real iTerm2/Sixel terminal captures via `nix develop -c make
+  smoke-image-live PROTO=sixel|iterm2 FRAMES=N`, recorded per
+  `docs/runbooks/phase1-5-live-evidence.md`. Multiplexer image passthrough is
+  deliberately conservative for Phase 1.5: image caps are stripped under
+  tmux/screen/zellij unless a later pass designs and tests a narrower
+  passthrough contract.
   ConPTY should stay a transport, not a Windows-specific graphics abstraction.
 
 ## Still open (documented limitations, not Phase 1.5)

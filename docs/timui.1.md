@@ -124,7 +124,8 @@ The following `make` targets are the primary interface. Each is invoked as
 These targets exist to collect live evidence. They are intentionally outside
 **check**; headless pty captures prove byte streams and final cell text, not
 that a real terminal consumed an image protocol or that Windows ConPTY works in
-Windows Terminal.
+Windows Terminal. The canonical evidence procedure and recording template live
+in `docs/runbooks/phase1-5-live-evidence.md`.
 
 **check-image-smoke**
 : Headless sanity check for the image smoke harness. It forces protocol `none`,

@@ -81,5 +81,7 @@ instead of creating a binary that fails to load.
   Windows.
 - `make smoke-conpty-win32` is the live Windows Terminal target. A non-Windows
   skip or a MinGW compile is not live evidence.
+- `docs/runbooks/phase1-5-live-evidence.md` defines the accepted Windows
+  evidence record and what host/compiler/terminal details to capture.
 - These compile checks are not live Windows evidence. Do not claim supported
   Windows operation until a real Windows Terminal smoke run is captured.

@@ -79,9 +79,10 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
             Sixel, reusing the same RGBA Sixel encoder and fallback behavior
             for malformed/oversized PNGs.
       - [x] Operator smoke harnesses exist for live image protocols
-            (`make smoke-image-live PROTO=...`) and Windows ConPTY
-            (`make smoke-conpty-win32`); compile/headless harness checks are
-            wired, but live evidence is still pending.
+            (`nix develop -c make smoke-image-live PROTO=... FRAMES=N`) and
+            Windows ConPTY (`nix develop -c make smoke-conpty-win32`);
+            compile/headless harness checks are wired, but live evidence is
+            still pending. Use `docs/runbooks/phase1-5-live-evidence.md`.
       - [ ] Sixel terminal evidence.
       - [ ] iTerm2 terminal evidence.
 

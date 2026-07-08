@@ -58,8 +58,9 @@ WORKSTREAM A - Windows ConPTY backend:
   cross compiler is available.
 - DONE: `make smoke-conpty-win32` and
   `make check-conpty-win32-smoke-compile` exist for operator evidence capture.
-- PENDING: a real Windows Terminal smoke run recorded in docs before claiming
-  supported Windows operation; `make test` and sanitizers remain green on POSIX.
+- PENDING: a real Windows Terminal smoke run recorded per
+  `docs/runbooks/phase1-5-live-evidence.md` before claiming supported Windows
+  operation; `make test` and sanitizers remain green on POSIX.
 
 WORKSTREAM B - Widgets:
 - Textarea first. Add a result-returning controlled API, plus `_mut`
@@ -140,9 +141,10 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   giving Sixel caller-decoded pixels for emission and clipping.
 - DONE: Plain PNG images forced to Sixel are lazily decoded through a bounded
   PNG-only `stb_image` path and then emitted through the same RGBA Sixel encoder.
-- DONE: `make smoke-image-live PROTO=...` exists for live Kitty/Sixel/iTerm2
-  visual evidence capture, and `make check-image-smoke` checks the harness
-  headlessly without claiming protocol evidence.
+- DONE: `make smoke-image-live PROTO=... FRAMES=N` exists for live
+  Kitty/Sixel/iTerm2 visual evidence capture, and `make check-image-smoke`
+  checks the harness headlessly without claiming protocol evidence. The accepted
+  operator procedure is `docs/runbooks/phase1-5-live-evidence.md`.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API has PNG, raw-RGBA, and PNG+RGBA sidecar constructors; Sixel uses decoded
   pixels from raw RGBA, sidecars, or the bounded plain-PNG decoder.
@@ -162,6 +164,8 @@ DOCUMENTATION:
   and the website copy only when behavior is actually implemented.
 - Add handoff docs under `docs/handoff/` if Windows smoke evidence, protocol
   evidence, or dependency/licensing research remains incomplete.
+- Use `docs/runbooks/phase1-5-live-evidence.md` for the remaining Windows,
+  Sixel, and iTerm2 live evidence gates.
 
 VERIFICATION GATES:
 - `nix develop -c make test`

@@ -80,13 +80,13 @@ switching from Kitty to iTerm2, does not emit Kitty delete escapes after an
 iTerm2 frame, rejects oversized base64 expansions before writing partial
 escapes, and falls back to `[img]` for clipped iTerm2 draws.
 
-Keep Sixel as the next image emitter slice. The smallest honest implementation
-should avoid promoting `stb_image` into the public library for now: add a
-raw-RGBA image constructor, copy caller-owned pixel rows with strict
-dimension/stride/overflow validation, and emit Sixel only for that raw pixel
-kind. At that intermediate slice, plain PNG images forced to Sixel continued to
-draw `[img]`; the final local implementation state below supersedes this after
-the bounded PNG decoder decision.
+Historical Sixel staging note: the first Sixel emitter slice deliberately
+avoided promoting `stb_image` into the public library. It added a raw-RGBA image
+constructor, copied caller-owned pixel rows with strict dimension/stride/overflow
+validation, and emitted Sixel only for that raw pixel kind. At that intermediate
+slice, plain PNG images forced to Sixel continued to draw `[img]`; the final
+local implementation state below supersedes this after the bounded PNG decoder
+decision.
 
 Implemented state: `timui_image_from_rgba` copies rows into tightly packed RGBA
 storage and the Sixel emitter handles raw RGBA images with up to 16 opaque exact
@@ -108,13 +108,20 @@ fallback and emit no partial DCS payload. `tools/vendor/NOTICE` records this
 library use. Real-terminal capture evidence remains open.
 
 Operator smoke state: `examples/image_smoke.c` is a small live-terminal harness
-with a valid embedded PNG, matching RGBA pixels, and PNG+RGBA sidecar. Run
-`make smoke-image-live PROTO=auto|kitty|sixel|iterm2|none FRAMES=N` (or the
-convenience aliases) outside multiplexers to collect bounded visual evidence;
-omit `FRAMES` for an Escape-driven operator session. `make
-check-image-smoke` only proves the harness renders the placeholder path through
-a headless pty; it is not terminal image protocol evidence.
+with a valid embedded PNG, matching RGBA pixels, and PNG+RGBA sidecar. Run the
+live smoke outside multiplexers to collect bounded visual evidence, for example:
+
+```sh
+nix develop -c make smoke-image-live PROTO=sixel FRAMES=N
+```
+
+Omit `FRAMES` for an Escape-driven operator session. `check-image-smoke` only
+proves the harness renders the placeholder path through a headless pty; it is
+not terminal image protocol evidence.
+`docs/runbooks/phase1-5-live-evidence.md` defines the accepted Sixel/iTerm2
+evidence record and the placeholder rules for each protocol.
 
 Do not claim live Sixel support from fake-transport tests alone. The decoder and
 wire emitter are unit-tested, but terminal evidence still requires
-`make smoke-image-live PROTO=sixel` in a real Sixel-capable terminal.
+`nix develop -c make smoke-image-live PROTO=sixel FRAMES=N` in a real
+Sixel-capable terminal.
