@@ -6573,7 +6573,8 @@ TIMUI_API int timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b,
 }
 /* ---- text-area widget (v0.2) ------------------------------------------ *
  * A multi-line text editor. Click to focus, type to insert, Backspace/Delete
- * remove whole grapheme clusters. Lines are split on '\n'. */
+ * remove whole grapheme clusters. Lines are split on '\n'. Plain Enter can
+ * submit when requested; Shift-Enter and paste insert line breaks. */
 static int text_area_insert_span_(TimuiTextAreaState *st, const char *src, int nbytes){
     int j = 0;
     int changed = 0;
@@ -6644,7 +6645,7 @@ TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, Timu
     res.focused = 0;
     if(!f || !f->ui || !st.text || st.cap == 0) return res;
     { size_t text_len = text_len_bounded_(st.text, st.cap);
-      if(text_len >= st.cap) text_len = st.cap - 1;
+      if(text_len >= st.cap){ text_len = st.cap - 1; st.text[text_len] = '\0'; }
       if(st.cursor > text_len) st.cursor = text_len; }   /* Y1: untrusted cursor -> OOB */
     ui = f->ui;
     ir = timui_interact_button(&ui->ia, id, r);

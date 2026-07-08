@@ -294,6 +294,7 @@ void test_text_area_paste_preserves_newline(void);
 void test_text_area_zero_cap_safe(void);
 void test_text_area_cursor_overcap_safe(void);
 void test_text_area_cursor_clamped_to_text(void);
+void test_text_area_clamps_unterminated(void);
 void test_text_area_cursor_edit(void);
 void test_text_area_cursor_utf8(void);
 void test_text_area_grapheme_edit(void);

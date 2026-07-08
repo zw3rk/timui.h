@@ -431,6 +431,31 @@ TIMUI_TEST(test_text_area_cursor_clamped_to_text){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_text_area_clamps_unterminated){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    char storage[8] = { 'a', 'b', 'c', 'd', 'E', 'F', 'G', '\0' };
+    TimuiTextAreaState tas = { storage, 4, 4, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+
+#define TACU_FRAME() do{ timui_begin(ui,&f); timui_text_area(f, TIMUI_ID("ta"), r, &tas); timui_end(f); }while(0)
+    timui_fake_set_input(&fake, "\x1b[<0;2;1M", sizeof("\x1b[<0;2;1M") - 1); TACU_FRAME();
+    timui_fake_set_input(&fake, "\x1b[<0;2;1m", sizeof("\x1b[<0;2;1m") - 1); TACU_FRAME();
+    timui_fake_set_input(&fake, "\x7f", sizeof("\x7f") - 1); TACU_FRAME();
+    TIMUI_CHECK(storage[0] == 'a' && storage[1] == 'b' && storage[2] == '\0');
+    TIMUI_CHECK(storage[4] == 'E' && storage[5] == 'F' && storage[6] == 'G');
+    TIMUI_CHECK(tas.cursor == 2);
+#undef TACU_FRAME
+    timui_close(ui);
+}
+
 /* ---- ConPTY (#55) ---- */
 TIMUI_TEST(test_conpty_unsupported){
     TimuiTransport tr;

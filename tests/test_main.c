@@ -286,6 +286,7 @@ int main(void){
         test_text_area_zero_cap_safe,
         test_text_area_cursor_overcap_safe,
         test_text_area_cursor_clamped_to_text,
+        test_text_area_clamps_unterminated,
         test_text_area_cursor_edit,
         test_text_area_cursor_utf8,
         test_text_area_grapheme_edit,
