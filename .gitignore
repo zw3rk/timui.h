@@ -12,6 +12,7 @@
 compile_commands.json
 .cache/
 /recordings/
+/artifacts/
 /todo.txt
 .claude/
 .DS_Store

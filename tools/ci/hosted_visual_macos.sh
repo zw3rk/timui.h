@@ -43,6 +43,7 @@ note "- Frames: ${frames}"
 note "- GUI frames: ${gui_frames}"
 note "- TERM: ${TERM:-unset}"
 note "- TERM_PROGRAM: ${TERM_PROGRAM:-unset}"
+note "- Nix action outcome: ${TIMUI_HOSTED_NIX_STATUS:-unknown}"
 note ""
 
 {
@@ -61,13 +62,19 @@ note ""
 } > "${out}/metadata.txt" 2>&1
 
 note "## Build and stream diagnostics"
-capture image-smoke-build nix develop -c make build/image_smoke || true
+if command -v nix >/dev/null 2>&1 && [ "${TIMUI_HOSTED_NIX_STATUS:-success}" != "failure" ]; then
+  note "- Build path: nix develop -c make"
+  capture image-smoke-build nix develop -c make build/image_smoke || true
+else
+  note "- Build path: native make fallback (Nix unavailable or install failed)"
+  capture image-smoke-build make build/image_smoke CC="${CC:-cc}" || true
+fi
 
 diag_runner="${out}/run-iterm2-diagnostic.sh"
 cat > "${diag_runner}" <<EOF
 #!/usr/bin/env bash
 cd '${root}' || exit 1
-nix develop -c make smoke-image-live-iterm2 FRAMES=1
+./build/image_smoke --protocol iterm2 --frames 1
 EOF
 chmod +x "${diag_runner}"
 
@@ -109,9 +116,8 @@ if [ -d "${iterm_app}" ]; then
   cat > "${gui_runner}" <<EOF
 #!/usr/bin/env bash
 cd '${root}' || exit 1
-export NIX_CONFIG='${NIX_CONFIG:-extra-experimental-features = nix-command flakes}'
 printf '\033[8;30;100t'
-nix develop -c make smoke-image-live-iterm2 FRAMES=${gui_frames}
+./build/image_smoke --protocol iterm2 --frames ${gui_frames}
 status=\$?
 sleep 8
 exit \${status}

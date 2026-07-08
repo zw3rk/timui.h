@@ -100,8 +100,18 @@ if (-not $Bash) {
   exit 0
 }
 
-$MsysRoot = (& $Bash -lc "cygpath -u '$Root'").Trim()
-$MsysOut = (& $Bash -lc "cygpath -u '$Out'").Trim()
+function Invoke-BashLastLine {
+  param([string]$Command)
+  $lines = & $Bash --noprofile --norc -lc $Command 2>> (Join-Path $Out "bash-bootstrap.stderr")
+  $last = $lines | Where-Object { $_ -and $_.Trim().Length -gt 0 } | Select-Object -Last 1
+  if ($last) {
+    return $last.Trim()
+  }
+  return ""
+}
+
+$MsysRoot = Invoke-BashLastLine "cygpath -u '$Root'"
+$MsysOut = Invoke-BashLastLine "cygpath -u '$Out'"
 Add-Evidence "- MSYS2 bash: $Bash"
 Add-Evidence "- MSYS2 root: $MsysRoot"
 Add-Evidence ""
@@ -111,7 +121,7 @@ function Invoke-Msys {
     [string]$Name,
     [string]$Command
   )
-  Invoke-Captured $Name { & $Bash -lc $Command } | Out-Null
+  Invoke-Captured $Name { & $Bash --noprofile --norc -lc $Command } | Out-Null
 }
 
 Add-Evidence "## Build and stream diagnostics"
@@ -135,17 +145,20 @@ if ($Wt) {
     "sleep 8"
   )
   [System.IO.File]::WriteAllText($RunScript, ($RunLines -join "`n") + "`n", [System.Text.Encoding]::ASCII)
-  $MsysRunScript = (& $Bash -lc "cygpath -u '$RunScript'").Trim()
+  $MsysRunScript = Invoke-BashLastLine "cygpath -u '$RunScript'"
 
   try {
-    Start-Process -FilePath $Wt.Source -ArgumentList @(
+    $wtArgs = @(
       "new-tab",
       "--title",
-      "timui sixel smoke",
+      "timui-sixel-smoke",
       $Bash,
+      "--noprofile",
+      "--norc",
       "-lc",
-      "bash '$MsysRunScript'"
+      "`"bash '$MsysRunScript'`""
     )
+    Start-Process -FilePath $Wt.Source -ArgumentList $wtArgs
     Add-Evidence "- Windows Terminal launch: started"
   } catch {
     $_ | Out-File -FilePath (Join-Path $Out "wt-launch.stderr") -Encoding utf8
