@@ -66,11 +66,11 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       - [x] iTerm2 inline image emitter for unclipped PNG draws, with Kitty
             cleanup when switching protocols and placeholder fallback for
             clipped draws.
-      - [x] Sixel encoder/emitter for raw RGBA images with an exact 16-colour
-            palette cap and placeholder fallback for PNG/over-palette cases.
+      - [x] Sixel encoder/emitter for raw RGBA images with exact palettes up to
+            16 opaque colours and bounded quantization beyond that cap.
       - [x] Cropped Sixel emission for clipped raw-RGBA draws.
-      - [ ] Sixel terminal evidence plus PNG decode, quantization, scaling, and
-            non-raw clipped draw parity.
+      - [ ] Sixel terminal evidence plus PNG decode, scaling, and non-raw
+            clipped draw parity.
       - [ ] iTerm2 terminal evidence.
 
 ## Phase 2 backlog - architecture and applications

@@ -1202,9 +1202,9 @@ TIMUI_API int    timui_conpty_size_valid_for_test(int cols, int rows);
  * by it. Kitty transmits once by `id` and places by rect; iTerm2 emits an
  * inline File payload per draw. The caller reserves the region (draws its own
  * background and no text there). This release emits Kitty graphics and iTerm2
- * inline PNG images, plus Sixel for raw RGBA images with a bounded exact-color
- * palette and raw-RGBA clipped draws. Unsupported protocols and unsupported
- * clipped draws render a "[img]" cell placeholder. */
+ * inline PNG images, plus Sixel for raw RGBA images with exact palettes or
+ * bounded 16-colour quantization and raw-RGBA clipped draws. Unsupported
+ * protocols and unsupported clipped draws render a "[img]" cell placeholder. */
 typedef enum {
     TIMUI_IMAGE_KIND_PNG = 0,
     TIMUI_IMAGE_KIND_RGBA

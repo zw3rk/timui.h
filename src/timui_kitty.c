@@ -217,6 +217,12 @@ typedef struct {
     int sx, sy, sw, sh;
 } SixelCrop_;
 
+typedef struct {
+    SixelColor_ colors[SIXEL_MAX_COLORS];
+    int count;
+    int quantized;
+} SixelPalette_;
+
 static int image_rect_emit_valid_(TimuiRect r);
 static int image_rect_contains_(TimuiRect outer, TimuiRect inner);
 
@@ -232,6 +238,42 @@ static int sixel_palette_index_(const SixelColor_ *pal, int count,
     for(i = 0; i < count; i++)
         if(pal[i].r == r && pal[i].g == g && pal[i].b == b) return i;
     return -1;
+}
+
+static const SixelColor_ sixel_quant16_[SIXEL_MAX_COLORS] = {
+    {   0,   0,   0 }, { 128,   0,   0 }, {   0, 128,   0 }, { 128, 128,   0 },
+    {   0,   0, 128 }, { 128,   0, 128 }, {   0, 128, 128 }, { 192, 192, 192 },
+    { 128, 128, 128 }, { 255,   0,   0 }, {   0, 255,   0 }, { 255, 255,   0 },
+    {   0,   0, 255 }, { 255,   0, 255 }, {   0, 255, 255 }, { 255, 255, 255 }
+};
+
+static unsigned sixel_color_dist_(SixelColor_ c,
+                                  unsigned char r, unsigned char g, unsigned char b){
+    int dr = (int)c.r - (int)r;
+    int dg = (int)c.g - (int)g;
+    int db = (int)c.b - (int)b;
+    return (unsigned)(dr * dr + dg * dg + db * db);
+}
+
+static SixelColor_ sixel_quantize_color_(unsigned char r, unsigned char g, unsigned char b){
+    int i, best = 0;
+    unsigned best_dist = sixel_color_dist_(sixel_quant16_[0], r, g, b);
+    for(i = 1; i < SIXEL_MAX_COLORS; i++){
+        unsigned dist = sixel_color_dist_(sixel_quant16_[i], r, g, b);
+        if(dist < best_dist){
+            best = i;
+            best_dist = dist;
+        }
+    }
+    return sixel_quant16_[best];
+}
+
+static int sixel_palette_add_(SixelPalette_ *pal, SixelColor_ c){
+    if(!pal) return 0;
+    if(sixel_palette_index_(pal->colors, pal->count, c.r, c.g, c.b) >= 0) return 1;
+    if(pal->count >= SIXEL_MAX_COLORS) return 0;
+    pal->colors[pal->count++] = c;
+    return 1;
 }
 
 static int sixel_crop_(const TimuiImage *img, TimuiRect full, TimuiRect visible, SixelCrop_ *out){
@@ -259,52 +301,65 @@ static int sixel_crop_(const TimuiImage *img, TimuiRect full, TimuiRect visible,
     return 1;
 }
 
-static int sixel_palette_crop_(const TimuiImage *img, SixelCrop_ crop,
-                               SixelColor_ *pal, int *out_count){
-    int x, y, count = 0;
-    if(!sixel_is_rgba_(img) || !pal || !out_count) return 0;
+static int sixel_palette_crop_(const TimuiImage *img, SixelCrop_ crop, SixelPalette_ *pal){
+    int x, y;
+    if(!sixel_is_rgba_(img) || !pal) return 0;
     if(crop.sx < 0 || crop.sy < 0 || crop.sw <= 0 || crop.sh <= 0) return 0;
     if(crop.sx > img->px_w || crop.sy > img->px_h) return 0;
     if(crop.sw > img->px_w - crop.sx || crop.sh > img->px_h - crop.sy) return 0;
+    memset(pal, 0, sizeof *pal);
     for(y = crop.sy; y < crop.sy + crop.sh; y++){
         const unsigned char *row = img->data + (size_t)y * (size_t)img->stride;
         for(x = crop.sx; x < crop.sx + crop.sw; x++){
             const unsigned char *px = row + (size_t)x * 4u;
             if(px[3] < 128) continue;
-            if(sixel_palette_index_(pal, count, px[0], px[1], px[2]) >= 0) continue;
-            if(count >= SIXEL_MAX_COLORS) return 0;
-            pal[count].r = px[0];
-            pal[count].g = px[1];
-            pal[count].b = px[2];
-            count++;
+            if(sixel_palette_index_(pal->colors, pal->count, px[0], px[1], px[2]) >= 0)
+                continue;
+            if(pal->count >= SIXEL_MAX_COLORS) goto quantize;
+            pal->colors[pal->count].r = px[0];
+            pal->colors[pal->count].g = px[1];
+            pal->colors[pal->count].b = px[2];
+            pal->count++;
         }
     }
-    *out_count = count;
-    return count > 0;
+    return pal->count > 0;
+
+quantize:
+    memset(pal, 0, sizeof *pal);
+    pal->quantized = 1;
+    for(y = crop.sy; y < crop.sy + crop.sh; y++){
+        const unsigned char *row = img->data + (size_t)y * (size_t)img->stride;
+        for(x = crop.sx; x < crop.sx + crop.sw; x++){
+            const unsigned char *px = row + (size_t)x * 4u;
+            SixelColor_ q;
+            if(px[3] < 128) continue;
+            q = sixel_quantize_color_(px[0], px[1], px[2]);
+            if(!sixel_palette_add_(pal, q)) return 0;
+        }
+    }
+    return pal->count > 0;
 }
 
-static int sixel_palette_(const TimuiImage *img, SixelColor_ *pal, int *out_count){
+static int sixel_palette_(const TimuiImage *img, SixelPalette_ *pal){
     SixelCrop_ crop;
     if(!sixel_is_rgba_(img)) return 0;
     crop.sx = 0;
     crop.sy = 0;
     crop.sw = img->px_w;
     crop.sh = img->px_h;
-    return sixel_palette_crop_(img, crop, pal, out_count);
+    return sixel_palette_crop_(img, crop, pal);
 }
 
 static int sixel_image_supported_(const TimuiImage *img){
-    SixelColor_ pal[SIXEL_MAX_COLORS];
-    int count = 0;
-    return sixel_palette_(img, pal, &count);
+    SixelPalette_ pal;
+    return sixel_palette_(img, &pal);
 }
 
 static int sixel_image_supported_at_(const TimuiImage *img, TimuiRect full, TimuiRect visible){
-    SixelColor_ pal[SIXEL_MAX_COLORS];
+    SixelPalette_ pal;
     SixelCrop_ crop;
-    int count = 0;
     return sixel_crop_(img, full, visible, &crop) &&
-           sixel_palette_crop_(img, crop, pal, &count);
+           sixel_palette_crop_(img, crop, &pal);
 }
 
 static unsigned sixel_pct_(unsigned char v){
@@ -323,17 +378,26 @@ static void sixel_emit_color_def_(TimuiTransport *t, int idx, SixelColor_ c){
     image_write_all_(t, b, (size_t)n);
 }
 
+static int sixel_palette_pixel_matches_(const SixelPalette_ *pal, int idx,
+                                        const unsigned char *px){
+    SixelColor_ c;
+    if(!pal || !px || idx < 0 || idx >= pal->count || px[3] < 128) return 0;
+    c = pal->quantized ? sixel_quantize_color_(px[0], px[1], px[2])
+                       : (SixelColor_){ px[0], px[1], px[2] };
+    return c.r == pal->colors[idx].r && c.g == pal->colors[idx].g &&
+           c.b == pal->colors[idx].b;
+}
+
 static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r, TimuiRect full){
-    SixelColor_ pal[SIXEL_MAX_COLORS];
+    SixelPalette_ pal;
     SixelCrop_ crop;
-    int count = 0;
     int ci, x, band;
     char b[64];
     int n;
     const char *p;
     if(!t || !t->write || !image_rect_emit_valid_(r)) return 0;
     if(!sixel_crop_(img, full, r, &crop)) return 0;
-    if(!sixel_palette_crop_(img, crop, pal, &count)) return 0;
+    if(!sixel_palette_crop_(img, crop, &pal)) return 0;
     if(!image_cup_(t, r.x, r.y)) return 0;
     image_write_all_(t, "\x1bP0;1;0q", sizeof("\x1bP0;1;0q") - 1);
     n = 0;
@@ -341,9 +405,9 @@ static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r, Ti
     n += fmt_uint(b + n, (unsigned)crop.sw); b[n++] = ';';
     n += fmt_uint(b + n, (unsigned)crop.sh);
     image_write_all_(t, b, (size_t)n);
-    for(ci = 0; ci < count; ci++) sixel_emit_color_def_(t, ci, pal[ci]);
+    for(ci = 0; ci < pal.count; ci++) sixel_emit_color_def_(t, ci, pal.colors[ci]);
     for(band = 0; band < crop.sh; band += 6){
-        for(ci = 0; ci < count; ci++){
+        for(ci = 0; ci < pal.count; ci++){
             n = 0;
             b[n++] = '#';
             n += fmt_uint(b + n, (unsigned)(ci + 1));
@@ -357,13 +421,13 @@ static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r, Ti
                     if(y >= crop.sy + crop.sh) continue;
                     px = img->data + (size_t)y * (size_t)img->stride +
                          (size_t)(crop.sx + x) * 4u;
-                    if(px[3] >= 128 && px[0] == pal[ci].r && px[1] == pal[ci].g && px[2] == pal[ci].b)
+                    if(sixel_palette_pixel_matches_(&pal, ci, px))
                         bits |= (1u << bit);
                 }
                 b[0] = (char)(0x3f + bits);
                 image_write_all_(t, b, 1);
             }
-            p = (ci + 1 < count) ? "$" : ((band + 6 < crop.sh) ? "-" : "");
+            p = (ci + 1 < pal.count) ? "$" : ((band + 6 < crop.sh) ? "-" : "");
             if(*p) image_write_all_(t, p, 1);
         }
     }

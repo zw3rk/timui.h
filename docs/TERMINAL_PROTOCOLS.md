@@ -38,10 +38,10 @@ What `timui.h` speaks on the wire, and where it falls back.
   `timui_image_protocol`, with Kitty preferred when available, then Sixel, then
   iTerm2. This release emits Kitty graphics, iTerm2 inline images
   (`OSC 1337;File=...`) for unclipped PNG draws, and Sixel DCS for raw RGBA
-  images with a bounded exact-colour palette, including cropped raw-RGBA Sixel
-  draws. PNG images forced to Sixel, clipped iTerm2 draws, and unsupported paths
-  deliberately fall back to the same text placeholder instead of emitting
-  unsupported or lossy escapes.
+  images with exact palettes or bounded 16-colour quantization, including
+  cropped raw-RGBA Sixel draws. PNG images forced to Sixel, clipped iTerm2
+  draws, and unsupported paths deliberately fall back to the same text
+  placeholder instead of emitting unsupported or lossy escapes.
 
 ## Capability gating
 
@@ -60,6 +60,7 @@ set for tests or user overrides.
   belongs below the protocol layer, not as a graphics abstraction. Live Windows
   Terminal smoke evidence is still pending before claiming supported Windows
   operation.
-- **Sixel parity**: the raw-RGBA exact-palette emitter is implemented. Deferred
-  work: PNG-to-Sixel decode, palette quantization, scaling to cell geometry,
-  non-raw Sixel clipping, and real-terminal evidence.
+- **Sixel parity**: the raw-RGBA emitter is implemented with exact palettes,
+  bounded 16-colour quantization, and raw-RGBA clipping. Deferred work:
+  PNG-to-Sixel decode, scaling to cell geometry, non-raw Sixel clipping, and
+  real-terminal evidence.

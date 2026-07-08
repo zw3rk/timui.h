@@ -122,8 +122,9 @@ int main(void) {
 - API version is 0.2.0 and not yet 1.0 stable.
 - The library includes useful CJK/emoji width handling and Hebrew/Arabic
   approximation, but not full complex shaping or full bidi.
-- Images are protocol-dependent. Sixel currently expects raw RGBA pixels; PNG
-  images forced to Sixel use the placeholder fallback.
+- Images are protocol-dependent. Sixel currently expects raw RGBA pixels and
+  quantizes over-large palettes to 16 colours; PNG images forced to Sixel use
+  the placeholder fallback.
 
 ## License
 

@@ -439,7 +439,7 @@ TIMUI_TEST(test_sixel_rgba_alpha_and_band_order){
     timui_close(ui);
 }
 
-TIMUI_TEST(test_sixel_palette_over_cap_falls_back_no_partial_dcs){
+TIMUI_TEST(test_sixel_palette_over_cap_quantizes_to_dcs){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
     TimuiTransport t;
@@ -468,10 +468,44 @@ TIMUI_TEST(test_sixel_palette_over_cap_falls_back_no_partial_dcs){
     buf = timui_frame_buffer(f);
     timui_fake_clear_output(&fake);
     timui_image_draw(f, img, TIMUI_RECT(0, 0, 17, 1));
-    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == '[');
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == 0);
     timui_end(f);
     out = timui_fake_output(&fake);
-    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1bP"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1bP0;1;0q"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\"1;1;17;1"));
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "#17;2;"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_sixel_rgba_quantizer_preserves_exact_small_palette){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    unsigned char rgba[2 * 4] = {
+        0x11, 0x22, 0x33, 0xff,
+        0x44, 0x55, 0x66, 0xff
+    };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    img = timui_image_from_rgba(ui, rgba, 2, 1, 2 * 4);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 2, 1));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "#1;2;7;13;20"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "#2;2;27;33;40"));
 
     timui_image_free(ui, img);
     timui_close(ui);
