@@ -225,15 +225,14 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         c->flags |= TIMUI_CAP_256_COLOR;
         c->colors = 256;
     }
-    /* multiplexers reduce capabilities. Kitty GRAPHICS is ALWAYS stripped under a
-     * multiplexer: it requires explicit tmux `allow-passthrough` + graphics
-     * support we can't assume, and emitting APC graphics that tmux silently
-     * drops leaves a grey placeholder region and stray cursor moves. Keyboard
-     * and sync are only kept when the OUTER terminal (TERM_PROGRAM, inherited
-     * into the session) is kitty-family; otherwise stripped. timui_force_cap
-     * overrides either way (W12). */
+    /* multiplexers reduce capabilities. Image protocols are ALWAYS stripped
+     * under a multiplexer: they require explicit passthrough + graphics support
+     * we can't assume, and dropped image escapes leave a grey placeholder region
+     * plus stray cursor moves. Keyboard and sync are only kept when the OUTER
+     * terminal (TERM_PROGRAM, inherited into the session) is kitty-family;
+     * otherwise stripped. timui_force_cap overrides either way (W12). */
     if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
-        c->flags &= ~TIMUI_CAP_KITTY_GRAPHICS;
+        c->flags &= ~(TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES);
         if(!caps_is_kitty_family(term_program))
             c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
         c->flags |= TIMUI_CAP_256_COLOR;
@@ -247,6 +246,18 @@ TIMUI_API void timui_caps_apply_force(TimuiCaps *c, uint32_t force_on, uint32_t 
 }
 TIMUI_API int timui_caps_has(const TimuiCaps *c, TimuiCapFlags cap){
     return c && ((c->flags & (uint32_t)cap) != 0);
+}
+TIMUI_API void timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable){
+    if(!ui) return;
+    if(enable) ui->caps.flags |= (uint32_t)cap;
+    else       ui->caps.flags &= ~(uint32_t)cap;
+}
+TIMUI_API TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *c){
+    if(!c) return TIMUI_IMAGE_PROTOCOL_NONE;
+    if(c->flags & TIMUI_CAP_KITTY_GRAPHICS) return TIMUI_IMAGE_PROTOCOL_KITTY;
+    if(c->flags & TIMUI_CAP_SIXEL_GRAPHICS) return TIMUI_IMAGE_PROTOCOL_SIXEL;
+    if(c->flags & TIMUI_CAP_ITERM2_IMAGES) return TIMUI_IMAGE_PROTOCOL_ITERM2;
+    return TIMUI_IMAGE_PROTOCOL_NONE;
 }
 
 /* ---- synchronized output (DEC 2026) + cursor -------------------------- */

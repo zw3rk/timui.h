@@ -109,6 +109,11 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
 - Refactor `src/timui_kitty.c` into a protocol-neutral image layer while keeping
   the public `timui_image_*` API stable unless a breaking change is explicitly
   justified pre-1.0.
+- DONE: public `TimuiImageProtocol`, `timui_caps_image_protocol`,
+  `timui_image_protocol`, and `timui_force_image_protocol` are in place. Kitty
+  behavior is preserved, non-Kitty image protocols deliberately draw the
+  placeholder until emitters exist, and stale Kitty placements are cleared when
+  forcing images off.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API is already generic PNG-in/draw-out; Kitty is the only implemented terminal
   wire backend today.

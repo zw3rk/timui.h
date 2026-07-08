@@ -58,6 +58,10 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       but refactor image emission behind protocol capabilities. Add Sixel first
       (including Windows Terminal usefulness), then iTerm2 inline images, with
       fallback placeholders preserved.
+      - [x] Public image protocol enum, capability selector, force override,
+            and non-Kitty placeholder fallback.
+      - [ ] Sixel encoder/emitter and terminal evidence.
+      - [ ] iTerm2 inline image emitter and terminal evidence.
 
 ## Phase 2 backlog - architecture and applications
 

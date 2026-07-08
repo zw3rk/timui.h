@@ -17,11 +17,6 @@ static void kitty_write_all(TimuiTransport *t, const void *data, size_t len){
     }
 }
 
-TIMUI_API void timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable){
-    if(!ui) return;
-    if(enable) ui->caps.flags |= (uint32_t)cap;
-    else       ui->caps.flags &= ~(uint32_t)cap;
-}
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size){
     TimuiImage *img;
     TimuiAllocator al;
@@ -162,7 +157,7 @@ void timui_images_flush_(Timui *ui){
  * `full` is the uncropped rect (== visible when not clipping). The caller
  * reserves the region (draws its own background, no text). */
 static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRect full){
-    if(timui_caps_has(&ui->caps, TIMUI_CAP_KITTY_GRAPHICS)){
+    if(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_KITTY){
         if(ui->img_place_count < (int)(sizeof(ui->img_place) / sizeof(ui->img_place[0]))){
             ui->img_place[ui->img_place_count].img  = img;
             ui->img_place[ui->img_place_count].rect = visible;

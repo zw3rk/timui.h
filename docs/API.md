@@ -107,6 +107,36 @@ rectangle. `TIMUI_AXIS_H` returns left/divider/right panes; `TIMUI_AXIS_V`
 returns top/divider/bottom panes. State is caller-owned (`ratio`, `min_first`,
 `min_second`), and `_mut` writes back only while the divider is dragged.
 
+## Capabilities & Images
+
+```c
+void timui_caps_detect(TimuiCaps *, const char *term,
+                       const char *term_program, const char *colorterm);
+int  timui_caps_has(const TimuiCaps *, TimuiCapFlags);
+TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *);
+const TimuiCaps *timui_caps(const Timui *);
+TimuiImageProtocol timui_image_protocol(const Timui *);
+void timui_force_cap(Timui *, TimuiCapFlags, int enable);
+void timui_force_image_protocol(Timui *, TimuiImageProtocol);
+TimuiImage *timui_image_from_png(Timui *, const void *data, size_t size);
+void timui_image_draw(TimuiFrame *, TimuiImage *, TimuiRect);
+void timui_image_draw_clipped(TimuiFrame *, TimuiImage *,
+                              TimuiRect full, TimuiRect visible);
+void timui_image_free(Timui *, TimuiImage *);
+```
+
+Capability detection is deterministic from `TERM`, `TERM_PROGRAM`, and
+`COLORTERM`, with multiplexers conservatively stripping image protocols unless
+the application explicitly forces them. Image protocol selection returns
+`NONE`, `KITTY`, `SIXEL`, or `ITERM2`; when several image caps are present,
+Kitty wins, then Sixel, then iTerm2.
+
+The image API is protocol-neutral at the call site, but v0.2 only emits Kitty
+graphics. Sixel/iTerm2 selections deliberately draw the `[img]` placeholder
+until their wire encoders land. `timui_force_image_protocol` is intended for
+tests and user overrides; unknown enum values clear image caps and select
+`NONE`.
+
 ### Text editing
 
 `timui_input_field` (single line) and `timui_text_area` (multi-line) support

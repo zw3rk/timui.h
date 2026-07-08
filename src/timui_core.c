@@ -558,6 +558,30 @@ TIMUI_API int timui_events_dropped(Timui *ui){
 TIMUI_API void timui_quit(Timui *ui){ if(ui) ui->should_quit = 1; }
 TIMUI_API bool timui_should_quit(const Timui *ui){ return ui ? (bool)ui->should_quit : false; }
 TIMUI_API const TimuiCaps *timui_caps(const Timui *ui){ return ui ? &ui->caps : NULL; }
+TIMUI_API TimuiImageProtocol timui_image_protocol(const Timui *ui){
+    return ui ? timui_caps_image_protocol(&ui->caps) : TIMUI_IMAGE_PROTOCOL_NONE;
+}
+TIMUI_API void timui_force_image_protocol(Timui *ui, TimuiImageProtocol protocol){
+    const uint32_t mask = (uint32_t)(TIMUI_CAP_KITTY_GRAPHICS |
+                                    TIMUI_CAP_SIXEL_GRAPHICS |
+                                    TIMUI_CAP_ITERM2_IMAGES);
+    if(!ui) return;
+    ui->caps.flags &= ~mask;
+    switch(protocol){
+    case TIMUI_IMAGE_PROTOCOL_KITTY:
+        ui->caps.flags |= TIMUI_CAP_KITTY_GRAPHICS;
+        break;
+    case TIMUI_IMAGE_PROTOCOL_SIXEL:
+        ui->caps.flags |= TIMUI_CAP_SIXEL_GRAPHICS;
+        break;
+    case TIMUI_IMAGE_PROTOCOL_ITERM2:
+        ui->caps.flags |= TIMUI_CAP_ITERM2_IMAGES;
+        break;
+    case TIMUI_IMAGE_PROTOCOL_NONE:
+    default:
+        break;
+    }
+}
 TIMUI_API int timui_mouse_wheel(const TimuiFrame *f){ return (f && f->ui) ? f->ui->mouse_wheel : 0; }
 TIMUI_API int timui_mouse_clicked(const TimuiFrame *f, int *out_x, int *out_y){
     if(!f || !f->ui || !f->ui->mouse_clicked) return 0;

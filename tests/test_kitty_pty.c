@@ -153,6 +153,125 @@ TIMUI_TEST(test_kitty_graphics_placeholder){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_image_protocol_force_none_placeholder){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiCellBuffer *buf;
+    TimuiStr out;
+    static const unsigned char png[] = { 0x89, 0x50, 0x4E, 0x47 };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    TIMUI_CHECK(timui_image_protocol(NULL) == TIMUI_IMAGE_PROTOCOL_NONE);
+    timui_force_cap(ui, TIMUI_CAP_KITTY_GRAPHICS, 1);
+    TIMUI_CHECK(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_KITTY);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_NONE);
+    TIMUI_CHECK(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_NONE);
+
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 5, 1));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == '[');
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1b_G"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_image_protocol_non_kitty_placeholder){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiCellBuffer *buf;
+    TimuiStr out;
+    static const unsigned char png[] = { 0x89, 0x50 };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    TIMUI_CHECK(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_SIXEL);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 5, 1));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == '[');
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1b_G"));
+
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_ITERM2);
+    TIMUI_CHECK(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_ITERM2);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 1, 5, 1));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->codepoint == '[');
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1b_G"));
+
+    timui_force_image_protocol(ui, (TimuiImageProtocol)99);
+    TIMUI_CHECK(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_NONE);
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_image_protocol_force_none_clears_old_kitty_placements){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    static const unsigned char png[] = { 0x89, 0x50, 0x4E, 0x47 };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_KITTY);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 5, 2));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1b_G"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "a=p"));
+
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_NONE);
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 5, 2));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "a=d,d=a"));
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "a=p"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
 /* ---- pty integration test (#54) ---- */
 TIMUI_TEST(test_pty_hello_exits_on_esc){
     int master;

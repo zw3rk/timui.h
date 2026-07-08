@@ -471,6 +471,29 @@ TIMUI_API int timui_grid(TimuiRect area, const TimuiConstraint *rows, int nr,
 TIMUI_API int timui_grid_ex(TimuiRect area, const TimuiConstraint *rows, int nr,
                             const TimuiConstraint *cols, int nc, TimuiLayoutOpts opts, TimuiRect *out);
 
+/* Caller-owned two-pane splitter: TIMUI_AXIS_H gives left/divider/right,
+ * TIMUI_AXIS_V gives top/divider/bottom. The controlled form returns updated
+ * state without writing caller memory; the _mut form writes back only while the
+ * divider is dragged. */
+typedef struct {
+    float ratio;        /* first pane share of available space, clamped 0..1 */
+    int min_first;      /* minimum cells for the first pane */
+    int min_second;     /* minimum cells for the second pane */
+} TimuiSplitPaneState;
+typedef struct {
+    TimuiSplitPaneState state;
+    TimuiRect first;
+    TimuiRect divider;
+    TimuiRect second;
+    bool changed;
+    bool hovered;
+    bool dragging;
+} TimuiSplitPaneResult;
+TIMUI_API TimuiSplitPaneResult timui_split_pane(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                TimuiAxis axis, TimuiSplitPaneState state);
+TIMUI_API TimuiSplitPaneResult timui_split_pane_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                    TimuiAxis axis, TimuiSplitPaneState *state);
+
 /* ---- Box frame (line-drawing border) + colour lerp -------------------- *
  * timui_border strokes a 1-cell frame around `r` in the chosen line style with
  * an optional `title` embedded in the top edge, and returns the inner content
@@ -541,13 +564,22 @@ TIMUI_API uint32_t    timui_hyperlink_set(TimuiCellBuffer *buf, const char *uri)
 TIMUI_API void        timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiStr text, TimuiStyle st, uint32_t link);
 TIMUI_API void        timui_label_hyperlink(TimuiFrame *f, int x, int y, TimuiStr text, const char *uri, TimuiStyle style);
 
-/* ---- UTF-8 decode + display width (minimal v0.1) ---------------------- *
+/* ---- UTF-8 decode + display width ------------------------------------- *
  * timui_utf8_decode returns the byte length of the next codepoint (1..4),
  * 0 if the input is incomplete, or 1 with *out_cp=U+FFFD on an invalid byte.
- * timui_utf8_width is a minimal wcwidth: control/combining -> 0, CJK/
- * fullwidth -> 2, box-drawing/printable -> 1. (Generated tables are v0.2.) */
+ * timui_utf8_width is a minimal wcwidth: control/combining/format modifiers ->
+ * 0, CJK/fullwidth/emoji bases -> 2, box-drawing/printable -> 1.
+ *
+ * Grapheme helpers walk extended user-visible clusters for the common TUI
+ * cases timui must not split: CRLF, combining marks, variation selectors,
+ * emoji skin-tone modifiers, regional-indicator flags, and ZWJ emoji runs.
+ * `next` / `prev` take byte offsets into s[0..len] and return byte offsets;
+ * width measures the first cluster in s[0..len]. */
 TIMUI_API int timui_utf8_decode(const char *s, size_t len, uint32_t *out_cp);
 TIMUI_API int timui_utf8_width(uint32_t cp);
+TIMUI_API size_t timui_grapheme_next(const char *s, size_t len, size_t off);
+TIMUI_API size_t timui_grapheme_prev(const char *s, size_t len, size_t off);
+TIMUI_API int    timui_grapheme_width(const char *s, size_t len);
 
 /* ---- Drawing primitives (into the cell buffer) ------------------------ */
 typedef enum {
@@ -615,6 +647,76 @@ typedef struct {
 
 TIMUI_API TimuiTheme timui_theme_builtin(TimuiBuiltinTheme t);
 TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot);
+
+/* ---- Stylesheets (small TCSS-like parser/resolver) -------------------- */
+typedef enum {
+    TIMUI_WIDGET_ANY = 0,
+    TIMUI_WIDGET_LABEL,
+    TIMUI_WIDGET_PANEL,
+    TIMUI_WIDGET_BUTTON,
+    TIMUI_WIDGET_INPUT,
+    TIMUI_WIDGET_TEXT_AREA,
+    TIMUI_WIDGET_LISTBOX,
+    TIMUI_WIDGET_TABLE,
+    TIMUI_WIDGET_TREE,
+    TIMUI_WIDGET_MENU,
+    TIMUI_WIDGET_TOAST,
+    TIMUI_WIDGET_SPLIT
+} TimuiWidgetKind;
+
+typedef enum {
+    TIMUI_STYLE_STATE_FOCUSED  = 1u << 0,
+    TIMUI_STYLE_STATE_HOVERED  = 1u << 1,
+    TIMUI_STYLE_STATE_ACTIVE   = 1u << 2,
+    TIMUI_STYLE_STATE_DISABLED = 1u << 3,
+    TIMUI_STYLE_STATE_SELECTED = 1u << 4
+} TimuiStyleState;
+
+typedef enum {
+    TIMUI_STYLE_PROP_FG          = 1u << 0,
+    TIMUI_STYLE_PROP_BG          = 1u << 1,
+    TIMUI_STYLE_PROP_ATTRS       = 1u << 2,
+    TIMUI_STYLE_PROP_BORDER      = 1u << 3,
+    TIMUI_STYLE_PROP_PADDING     = 1u << 4,
+    TIMUI_STYLE_PROP_GAP         = 1u << 5,
+    TIMUI_STYLE_PROP_GRADIENT_LO = 1u << 6,
+    TIMUI_STYLE_PROP_GRADIENT_HI = 1u << 7
+} TimuiStyleProp;
+
+typedef struct TimuiStyleRule TimuiStyleRule;
+typedef struct {
+    TimuiStyleRule *rules;
+    int count;
+    int cap;
+    TimuiAllocator alloc;
+} TimuiStylesheet;
+
+typedef struct {
+    TimuiWidgetKind kind;
+    const char *id;
+    const char *classes;       /* whitespace-separated class names */
+    uint32_t states;
+    TimuiStyle base;
+} TimuiStyleQuery;
+
+typedef struct {
+    TimuiStyle style;
+    uint32_t mask;
+    uint32_t border;
+    int padding;
+    int gap;
+    uint32_t gradient_lo;
+    uint32_t gradient_hi;
+} TimuiResolvedStyle;
+
+TIMUI_API TimuiResult timui_stylesheet_parse(TimuiStylesheet *out, const char *src,
+                                             size_t len, const TimuiAllocator *alloc);
+TIMUI_API void timui_stylesheet_free(TimuiStylesheet *ss);
+TIMUI_API TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *ss,
+                                                      TimuiStyleQuery query);
+/* Borrow a parsed stylesheet for subsequent frames; ownership stays with the
+ * caller. Pass NULL to return to the builtin theme only. */
+TIMUI_API void timui_set_stylesheet(Timui *ui, const TimuiStylesheet *ss);
 
 /* ---- Terminal transport (backend abstraction) ------------------------- *
  * A vtable of read/write/flush/close over an opaque ctx. Real backends wrap
@@ -698,8 +800,17 @@ typedef enum {
     TIMUI_CAP_KITTY_KEYBOARD  = 1u << 7,
     TIMUI_CAP_OSC8_HYPERLINKS = 1u << 8,
     TIMUI_CAP_KITTY_GRAPHICS  = 1u << 9,
-    TIMUI_CAP_UNICODE_CORE    = 1u << 10
+    TIMUI_CAP_UNICODE_CORE    = 1u << 10,
+    TIMUI_CAP_SIXEL_GRAPHICS  = 1u << 11,
+    TIMUI_CAP_ITERM2_IMAGES   = 1u << 12
 } TimuiCapFlags;
+
+typedef enum {
+    TIMUI_IMAGE_PROTOCOL_NONE = 0,
+    TIMUI_IMAGE_PROTOCOL_KITTY,
+    TIMUI_IMAGE_PROTOCOL_SIXEL,
+    TIMUI_IMAGE_PROTOCOL_ITERM2
+} TimuiImageProtocol;
 
 typedef struct {
     uint32_t flags;
@@ -718,8 +829,12 @@ typedef struct {
 TIMUI_API void timui_caps_detect(TimuiCaps *caps, const char *term, const char *term_program, const char *colorterm);
 TIMUI_API void timui_caps_apply_force(TimuiCaps *caps, uint32_t force_on, uint32_t force_off);
 TIMUI_API int  timui_caps_has(const TimuiCaps *caps, TimuiCapFlags cap);
+/* Select the preferred image protocol from explicit capability flags. Kitty is
+ * preferred when present because it is the implemented and richest path in
+ * this release; otherwise Sixel wins over iTerm2 for broader terminal utility. */
+TIMUI_API TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *caps);
 /* The capabilities detected for an open ui — so apps can, e.g., choose an inline
- * Kitty-graphics image vs a text fallback: timui_caps_has(timui_caps(ui), ...). */
+ * image vs a text fallback: timui_image_protocol(ui) != TIMUI_IMAGE_PROTOCOL_NONE. */
 TIMUI_API const TimuiCaps *timui_caps(const Timui *ui);
 
 /* ---- Synchronized output (DEC 2026) + cursor -------------------------- *
@@ -967,6 +1082,56 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
 TIMUI_API TimuiCmdPaletteResult timui_command_palette_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *commands, int count, TimuiCmdPaletteState *state);
 
+/* Field-attached autocomplete/combobox. `query` is caller-owned storage; the
+ * widget edits it in place, filters `options`, and when an option is activated
+ * copies that option back into `query` (bounded by `cap`). `selected`/`scroll`
+ * are positions in the filtered list; result `selected`/`activated` are original
+ * option indices, or -1 when no option matches / activates. */
+typedef struct {
+    char *query;
+    size_t cap;
+    size_t cursor;
+    int scroll_x;
+    int open;
+    int selected;
+    int scroll;
+} TimuiComboboxState;
+typedef struct {
+    TimuiComboboxState state;
+    int state_changed;
+    int query_changed;
+    int activated;
+    int selected;
+    int match_count;
+    int focused;
+} TimuiComboboxResult;
+TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *options, int count, TimuiComboboxState state);
+TIMUI_API TimuiComboboxResult timui_combobox_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *options, int count, TimuiComboboxState *state);
+
+typedef enum {
+    TIMUI_TOAST_INFO = 0,
+    TIMUI_TOAST_SUCCESS,
+    TIMUI_TOAST_WARNING,
+    TIMUI_TOAST_ERROR
+} TimuiToastSeverity;
+typedef struct {
+    TimuiStr title;
+    TimuiStr message;
+    TimuiToastSeverity severity;
+    uint64_t created_ms;
+    uint64_t ttl_ms;      /* 0 = sticky until caller dismisses */
+    int dismissed;
+} TimuiToast;
+typedef struct {
+    int dismissed;        /* original toast index, or -1 */
+    int visible_count;    /* number drawn inside the supplied rect */
+} TimuiToastResult;
+TIMUI_API TimuiToastResult timui_toasts(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                        const TimuiToast *toasts, int count,
+                                        uint64_t now_ms);
+
 /* ---- Tab bar (W2) ------------------------------------------------------ *
  * A single-row bar of labeled tabs. timui_tabs highlights *selected as a boxed,
  * radio.c-style active tab, moves the selection on Left/Right (when focused) and
@@ -1008,18 +1173,32 @@ TIMUI_API int   timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b
                               char *diff_out, size_t diff_cap);
 
 typedef struct { char *text; size_t cap; size_t cursor; int scroll_y; } TimuiTextAreaState;
+typedef enum {
+    TIMUI_TEXT_AREA_DEFAULT = 0,
+    TIMUI_TEXT_AREA_ENTER_SUBMITS = 1u << 0
+} TimuiTextAreaFlags;
+typedef struct {
+    TimuiTextAreaState state;
+    int changed;
+    int submitted;
+    int focused;
+} TimuiTextAreaResult;
+TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                 TimuiTextAreaState state, uint32_t flags);
+TIMUI_API TimuiTextAreaResult timui_text_area_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                  TimuiTextAreaState *state, uint32_t flags);
 TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *state);
 
 TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);
 TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
 
-/* ---- v0.2: Kitty graphics images -------------------------------------- *
+/* ---- v0.2: terminal images -------------------------------------------- *
  * timui_image_draw records a placement; the image is transmitted (once, by id)
  * and placed ON TOP of the cell diff in timui_end, so it composes with the cell
  * renderer instead of being clobbered by it. `id` is assigned on first transmit
  * (0 = not yet sent). The caller reserves the region (draws its own background
- * and no text there). Kitty-graphics terminals only; a "[img]" cell placeholder
- * is drawn otherwise. */
+ * and no text there). This release emits Kitty graphics; other protocols draw
+ * a "[img]" cell placeholder until their emitters land. */
 typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id;
                             int px_w, px_h; } TimuiImage;   /* pixel size from the PNG IHDR */
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
@@ -1030,7 +1209,11 @@ TIMUI_API void        timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect
  * an image as it scrolls off a pane. `visible` must be within `full`. */
 TIMUI_API void        timui_image_draw_clipped(TimuiFrame *f, TimuiImage *img,
                                                TimuiRect full, TimuiRect visible);
+TIMUI_API TimuiImageProtocol timui_image_protocol(const Timui *ui);
 TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
+/* Override the active image cap set. Unknown protocol values clear all image
+ * caps and therefore select TIMUI_IMAGE_PROTOCOL_NONE. */
+TIMUI_API void        timui_force_image_protocol(Timui *ui, TimuiImageProtocol protocol);
 
 /* ---- Chart / indicator widgets (W3) ----------------------------------- *
  * Pure UI over caller-supplied values (NO DSP here): vertical bar charts with
@@ -1202,6 +1385,7 @@ struct Timui {
     int               have_ids;
     TimuiInteract     ia;
     TimuiTheme        theme;
+    const TimuiStylesheet *stylesheet;   /* borrowed; caller owns parse/free */
     char              text_in[256];
     int               text_in_len;
     char              paste_buf[256];   /* bracketed-paste accumulator (ev ptr is transient; a paste
@@ -1213,10 +1397,12 @@ struct Timui {
      * frame ("a\rb\r" -> "a" then "b") instead of merging; the post-first-Enter
      * tail is stashed in pending_* and re-injected by timui_begin next frame. */
     int               enter_at[32];
+    uint32_t          enter_mods[32];
     int               enter_count;
     char              pending_in[256];
     int               pending_in_len;
     int               pending_enter_at[32];
+    uint32_t          pending_enter_mods[32];
     int               pending_enter_count;
     unsigned          key_in;
     TimuiKey          key_pressed;
@@ -1661,7 +1847,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         int pe;
         memcpy(ui->text_in, ui->pending_in, (size_t)ui->pending_in_len);
         ui->text_in_len = ui->pending_in_len;
-        for(pe = 0; pe < ui->pending_enter_count; pe++) ui->enter_at[pe] = ui->pending_enter_at[pe];
+        for(pe = 0; pe < ui->pending_enter_count; pe++){
+            ui->enter_at[pe] = ui->pending_enter_at[pe];
+            ui->enter_mods[pe] = ui->pending_enter_mods[pe];
+        }
         ui->enter_count = ui->pending_enter_count;
         ui->pending_in_len = 0;
         ui->pending_enter_count = 0;
@@ -1678,10 +1867,13 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         TimuiEvent ev;
         while(timui_poll_event(ui, &ev)){
             if(ev.kind == TIMUI_EVENT_MOUSE){
-                timui_interact_set_mouse(&ui->ia, ev.as.mouse.x - 1, ev.as.mouse.y - 1, ev.as.mouse.pressed);
                 ui->mouse_wheel += ev.as.mouse.wheel_y;   /* expose wheel to the app */
                 ui->mouse_x = ev.as.mouse.x - 1; ui->mouse_y = ev.as.mouse.y - 1;
-                if(ev.as.mouse.pressed) ui->mouse_clicked = 1;
+                if(ev.as.mouse.wheel_y == 0 &&
+                   (ev.as.mouse.button == 0 || ev.as.mouse.released))
+                    timui_interact_set_mouse(&ui->ia, ev.as.mouse.x - 1, ev.as.mouse.y - 1,
+                                             ev.as.mouse.button == 0 && ev.as.mouse.pressed);
+                if(ev.as.mouse.button == 0 && ev.as.mouse.pressed) ui->mouse_clicked = 1;
             } else if(ev.kind == TIMUI_EVENT_KEY){
                 ui->key_pressed = ev.as.key.key;   /* app-level key detection */
                 ui->key_mods = ev.as.key.mods;
@@ -1690,8 +1882,11 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                     timui_interact_set_keys(&ui->ia, 0, 1);
                     /* record the Enter's position in the text stream (input_field
                      * segments submits on these; excess past the cap just merges). */
-                    if(ui->enter_count < (int)(sizeof(ui->enter_at)/sizeof(ui->enter_at[0])))
-                        ui->enter_at[ui->enter_count++] = ui->text_in_len;
+                    if(ui->enter_count < (int)(sizeof(ui->enter_at)/sizeof(ui->enter_at[0]))){
+                        ui->enter_at[ui->enter_count] = ui->text_in_len;
+                        ui->enter_mods[ui->enter_count] = ev.as.key.mods;
+                        ui->enter_count++;
+                    }
                 }
                 else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
                 else if(ev.as.key.key == TIMUI_KEY_LEFT)   ui->key_in |= TIMUI_KEYIN_LEFT;
@@ -1730,7 +1925,8 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 size_t pk;
                 for(pk = 0; pk < ev.as.paste.len && ui->text_in_len < (int)sizeof(ui->text_in); pk++){
                     unsigned char pc = (unsigned char)ev.as.paste.ptr[pk];
-                    if(pc >= 0x20 && pc != 0x7f) ui->text_in[ui->text_in_len++] = (char)pc;
+                    if((pc >= 0x20 && pc != 0x7f) || pc == '\n' || pc == '\r' || pc == '\t')
+                        ui->text_in[ui->text_in_len++] = (char)pc;
                 }
             }
         }
@@ -1843,6 +2039,30 @@ TIMUI_API int timui_events_dropped(Timui *ui){
 TIMUI_API void timui_quit(Timui *ui){ if(ui) ui->should_quit = 1; }
 TIMUI_API bool timui_should_quit(const Timui *ui){ return ui ? (bool)ui->should_quit : false; }
 TIMUI_API const TimuiCaps *timui_caps(const Timui *ui){ return ui ? &ui->caps : NULL; }
+TIMUI_API TimuiImageProtocol timui_image_protocol(const Timui *ui){
+    return ui ? timui_caps_image_protocol(&ui->caps) : TIMUI_IMAGE_PROTOCOL_NONE;
+}
+TIMUI_API void timui_force_image_protocol(Timui *ui, TimuiImageProtocol protocol){
+    const uint32_t mask = (uint32_t)(TIMUI_CAP_KITTY_GRAPHICS |
+                                    TIMUI_CAP_SIXEL_GRAPHICS |
+                                    TIMUI_CAP_ITERM2_IMAGES);
+    if(!ui) return;
+    ui->caps.flags &= ~mask;
+    switch(protocol){
+    case TIMUI_IMAGE_PROTOCOL_KITTY:
+        ui->caps.flags |= TIMUI_CAP_KITTY_GRAPHICS;
+        break;
+    case TIMUI_IMAGE_PROTOCOL_SIXEL:
+        ui->caps.flags |= TIMUI_CAP_SIXEL_GRAPHICS;
+        break;
+    case TIMUI_IMAGE_PROTOCOL_ITERM2:
+        ui->caps.flags |= TIMUI_CAP_ITERM2_IMAGES;
+        break;
+    case TIMUI_IMAGE_PROTOCOL_NONE:
+    default:
+        break;
+    }
+}
 TIMUI_API int timui_mouse_wheel(const TimuiFrame *f){ return (f && f->ui) ? f->ui->mouse_wheel : 0; }
 TIMUI_API int timui_mouse_clicked(const TimuiFrame *f, int *out_x, int *out_y){
     if(!f || !f->ui || !f->ui->mouse_clicked) return 0;
@@ -2387,6 +2607,9 @@ TIMUI_API int timui_utf8_width(uint32_t cp){
     if((cp >= 0x0300 && cp <= 0x036F) || (cp >= 0x1AB0 && cp <= 0x1AFF) ||
        (cp >= 0x1DC0 && cp <= 0x1DFF) || (cp >= 0x20D0 && cp <= 0x20FF) ||
        (cp >= 0xFE20 && cp <= 0xFE2F)) return 0;                /* combining */
+    if(cp == 0x200D || (cp >= 0xFE00 && cp <= 0xFE0F) ||
+       (cp >= 0xE0100 && cp <= 0xE01EF) ||
+       (cp >= 0x1F3FB && cp <= 0x1F3FF)) return 0;              /* joiner / variation / emoji modifier */
     if((cp >= 0x1100 && cp <= 0x115F) ||
        (cp >= 0x2E80 && cp <= 0xA4CF) || (cp >= 0xAC00 && cp <= 0xD7A3) ||
        (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFE30 && cp <= 0xFE6F) ||
@@ -2820,6 +3043,522 @@ TIMUI_API TimuiStyle timui_theme_style(const TimuiTheme *th, TimuiStyleSlot slot
     return th->slots[slot];
 }
 #undef R_EMIT   /* Z10: impl-only macro must not leak into the consumer TU */
+/* ---- stylesheet parser/resolver --------------------------------------- *
+ * A deliberately small TCSS-like layer over TimuiStyle. It parses one selector
+ * per rule and resolves by simple specificity + source order. */
+#define TIMUI_SS_NAME_MAX 63
+
+struct TimuiStyleRule {
+    TimuiWidgetKind kind;
+    char id[TIMUI_SS_NAME_MAX + 1];
+    char klass[TIMUI_SS_NAME_MAX + 1];
+    uint32_t states;
+    int specificity;
+    int order;
+    uint32_t props;
+    TimuiStyle style;
+    uint32_t attr_props;
+    uint32_t attr_values;
+    uint32_t border;
+    int padding;
+    int gap;
+    uint32_t gradient_lo;
+    uint32_t gradient_hi;
+};
+
+typedef struct {
+    const char *s;
+    size_t len;
+    size_t pos;
+} TimuiStyleParser;
+
+static int ss_alloc_valid_(const TimuiAllocator *a){
+    return a && a->alloc && a->realloc && a->free;
+}
+static int ss_is_space_(char c){
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
+}
+static int ss_is_alpha_(char c){
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+static int ss_is_name_(char c){
+    return ss_is_alpha_(c) || (c >= '0' && c <= '9') || c == '-';
+}
+static void ss_skip_ws_(TimuiStyleParser *p){
+    while(p->pos < p->len && ss_is_space_(p->s[p->pos])) p->pos++;
+}
+static int ss_at_(TimuiStyleParser *p, char c){
+    ss_skip_ws_(p);
+    return p->pos < p->len && p->s[p->pos] == c;
+}
+static int ss_take_(TimuiStyleParser *p, char c){
+    if(!ss_at_(p, c)) return 0;
+    p->pos++;
+    return 1;
+}
+static int ss_ident_(TimuiStyleParser *p, char *out, size_t cap){
+    size_t n = 0;
+    ss_skip_ws_(p);
+    if(p->pos >= p->len || !ss_is_alpha_(p->s[p->pos])) return 0;
+    while(p->pos < p->len && ss_is_name_(p->s[p->pos])){
+        if(n + 1 < cap) out[n++] = p->s[p->pos];
+        else return 0;
+        p->pos++;
+    }
+    out[n] = '\0';
+    return 1;
+}
+static int ss_streq_(const char *a, const char *b){
+    return strcmp(a ? a : "", b ? b : "") == 0;
+}
+static int ss_widget_kind_(const char *name, TimuiWidgetKind *out){
+    if(ss_streq_(name, "label")) *out = TIMUI_WIDGET_LABEL;
+    else if(ss_streq_(name, "panel")) *out = TIMUI_WIDGET_PANEL;
+    else if(ss_streq_(name, "button")) *out = TIMUI_WIDGET_BUTTON;
+    else if(ss_streq_(name, "input")) *out = TIMUI_WIDGET_INPUT;
+    else if(ss_streq_(name, "textarea") || ss_streq_(name, "text-area")) *out = TIMUI_WIDGET_TEXT_AREA;
+    else if(ss_streq_(name, "listbox")) *out = TIMUI_WIDGET_LISTBOX;
+    else if(ss_streq_(name, "table")) *out = TIMUI_WIDGET_TABLE;
+    else if(ss_streq_(name, "tree")) *out = TIMUI_WIDGET_TREE;
+    else if(ss_streq_(name, "menu")) *out = TIMUI_WIDGET_MENU;
+    else if(ss_streq_(name, "toast")) *out = TIMUI_WIDGET_TOAST;
+    else if(ss_streq_(name, "split")) *out = TIMUI_WIDGET_SPLIT;
+    else return 0;
+    return 1;
+}
+static int ss_state_(const char *name, uint32_t *out){
+    if(ss_streq_(name, "focused")) *out = TIMUI_STYLE_STATE_FOCUSED;
+    else if(ss_streq_(name, "hovered") || ss_streq_(name, "hover")) *out = TIMUI_STYLE_STATE_HOVERED;
+    else if(ss_streq_(name, "active") || ss_streq_(name, "pressed")) *out = TIMUI_STYLE_STATE_ACTIVE;
+    else if(ss_streq_(name, "disabled")) *out = TIMUI_STYLE_STATE_DISABLED;
+    else if(ss_streq_(name, "selected")) *out = TIMUI_STYLE_STATE_SELECTED;
+    else return 0;
+    return 1;
+}
+static int ss_hex_(char c){
+    if(c >= '0' && c <= '9') return c - '0';
+    if(c >= 'a' && c <= 'f') return 10 + c - 'a';
+    if(c >= 'A' && c <= 'F') return 10 + c - 'A';
+    return -1;
+}
+static int ss_color_(TimuiStyleParser *p, uint32_t *out){
+    uint32_t v = 0;
+    int i;
+    char word[TIMUI_SS_NAME_MAX + 1];
+    ss_skip_ws_(p);
+    if(p->pos < p->len && p->s[p->pos] == '#'){
+        p->pos++;
+        for(i = 0; i < 6; i++){
+            int h;
+            if(p->pos >= p->len) return 0;
+            h = ss_hex_(p->s[p->pos++]);
+            if(h < 0) return 0;
+            v = (v << 4) | (uint32_t)h;
+        }
+        if(p->pos < p->len && ss_is_name_(p->s[p->pos])) return 0;
+        *out = v;
+        return 1;
+    }
+    if(!ss_ident_(p, word, sizeof word)) return 0;
+    if(!ss_streq_(word, "default")) return 0;
+    *out = TIMUI_COLOR_DEFAULT;
+    return 1;
+}
+static int ss_bool_(TimuiStyleParser *p, int *out){
+    char word[TIMUI_SS_NAME_MAX + 1];
+    if(!ss_ident_(p, word, sizeof word)) return 0;
+    if(ss_streq_(word, "true") || ss_streq_(word, "on") || ss_streq_(word, "yes")){
+        *out = 1; return 1;
+    }
+    if(ss_streq_(word, "false") || ss_streq_(word, "off") || ss_streq_(word, "no")){
+        *out = 0; return 1;
+    }
+    return 0;
+}
+static int ss_int_(TimuiStyleParser *p, int *out){
+    long v = 0;
+    int neg = 0, any = 0;
+    ss_skip_ws_(p);
+    if(p->pos < p->len && p->s[p->pos] == '-'){ neg = 1; p->pos++; }
+    while(p->pos < p->len && p->s[p->pos] >= '0' && p->s[p->pos] <= '9'){
+        any = 1;
+        v = v * 10 + (p->s[p->pos] - '0');
+        if(v > 1000000L) return 0;
+        p->pos++;
+    }
+    if(!any || neg) return 0;
+    *out = (int)v;
+    return 1;
+}
+static int ss_border_(TimuiStyleParser *p, uint32_t *out){
+    char word[TIMUI_SS_NAME_MAX + 1];
+    if(!ss_ident_(p, word, sizeof word)) return 0;
+    if(ss_streq_(word, "none")) *out = TIMUI_BORDER_NONE;
+    else if(ss_streq_(word, "single")) *out = TIMUI_BORDER_SINGLE;
+    else if(ss_streq_(word, "double")) *out = TIMUI_BORDER_DOUBLE;
+    else if(ss_streq_(word, "round") || ss_streq_(word, "rounded")) *out = TIMUI_BORDER_ROUND;
+    else if(ss_streq_(word, "ascii")) *out = TIMUI_BORDER_ASCII;
+    else if(ss_streq_(word, "shadow")) *out = TIMUI_BORDER_SHADOW;
+    else return 0;
+    return 1;
+}
+static int ss_selector_(TimuiStyleParser *p, TimuiStyleRule *r){
+    char name[TIMUI_SS_NAME_MAX + 1];
+    int have = 0;
+    ss_skip_ws_(p);
+    r->kind = TIMUI_WIDGET_ANY;
+    if(p->pos < p->len && p->s[p->pos] == '*'){
+        p->pos++;
+        have = 1;
+    } else if(p->pos < p->len && ss_is_alpha_(p->s[p->pos])){
+        if(!ss_ident_(p, name, sizeof name)) return 0;
+        if(!ss_widget_kind_(name, &r->kind)) return 0;
+        r->specificity += 1;
+        have = 1;
+    }
+    for(;;){
+        uint32_t st;
+        ss_skip_ws_(p);
+        if(p->pos >= p->len) return 0;
+        if(p->s[p->pos] == '#'){
+            p->pos++;
+            if(r->id[0] || !ss_ident_(p, r->id, sizeof r->id)) return 0;
+            r->specificity += 100; have = 1;
+        } else if(p->s[p->pos] == '.'){
+            p->pos++;
+            if(r->klass[0] || !ss_ident_(p, r->klass, sizeof r->klass)) return 0;
+            r->specificity += 10; have = 1;
+        } else if(p->s[p->pos] == ':'){
+            p->pos++;
+            if(!ss_ident_(p, name, sizeof name) || !ss_state_(name, &st)) return 0;
+            r->states |= st;
+            r->specificity += 10; have = 1;
+        } else break;
+    }
+    return have;
+}
+static int ss_class_matches_(const char *classes, const char *klass){
+    size_t klen, i = 0;
+    if(!klass || !klass[0]) return 1;
+    if(!classes) return 0;
+    klen = strlen(klass);
+    while(classes[i]){
+        while(classes[i] && ss_is_space_(classes[i])) i++;
+        if(!classes[i]) break;
+        { size_t start = i;
+          while(classes[i] && !ss_is_space_(classes[i])) i++;
+          if(i - start == klen && memcmp(classes + start, klass, klen) == 0) return 1; }
+    }
+    return 0;
+}
+static int ss_rule_matches_(const TimuiStyleRule *r, TimuiStyleQuery q){
+    if(r->kind != TIMUI_WIDGET_ANY && r->kind != q.kind) return 0;
+    if(r->id[0] && (!q.id || strcmp(r->id, q.id) != 0)) return 0;
+    if(!ss_class_matches_(q.classes, r->klass)) return 0;
+    if((q.states & r->states) != r->states) return 0;
+    return 1;
+}
+static TimuiResult ss_push_rule_(TimuiStylesheet *ss, const TimuiStyleRule *r){
+    if(ss->count == ss->cap){
+        int ncap = ss->cap ? ss->cap * 2 : 8;
+        TimuiStyleRule *nr;
+        if(ncap < ss->cap) return TIMUI_ERR_OUT_OF_MEMORY;
+        if(ss->rules)
+            nr = (TimuiStyleRule *)ss->alloc.realloc(ss->alloc.userdata, ss->rules,
+                                                     (size_t)ss->cap * sizeof *ss->rules,
+                                                     (size_t)ncap * sizeof *ss->rules);
+        else
+            nr = (TimuiStyleRule *)ss->alloc.alloc(ss->alloc.userdata,
+                                                   (size_t)ncap * sizeof *ss->rules);
+        if(!nr) return TIMUI_ERR_OUT_OF_MEMORY;
+        ss->rules = nr;
+        ss->cap = ncap;
+    }
+    ss->rules[ss->count++] = *r;
+    return TIMUI_OK;
+}
+static int ss_decl_(TimuiStyleParser *p, TimuiStyleRule *r){
+    char prop[TIMUI_SS_NAME_MAX + 1];
+    if(!ss_ident_(p, prop, sizeof prop)) return 0;
+    if(!ss_take_(p, ':')) return 0;
+    if(ss_streq_(prop, "fg")){
+        if(!ss_color_(p, &r->style.fg)) return 0;
+        r->props |= TIMUI_STYLE_PROP_FG;
+    } else if(ss_streq_(prop, "bg")){
+        if(!ss_color_(p, &r->style.bg)) return 0;
+        r->props |= TIMUI_STYLE_PROP_BG;
+    } else if(ss_streq_(prop, "bold") || ss_streq_(prop, "dim") || ss_streq_(prop, "reverse")){
+        uint32_t bit = ss_streq_(prop, "bold") ? TIMUI_ATTR_BOLD :
+                       ss_streq_(prop, "dim") ? TIMUI_ATTR_DIM : TIMUI_ATTR_REVERSE;
+        int on;
+        if(!ss_bool_(p, &on)) return 0;
+        r->attr_props |= bit;
+        if(on) r->attr_values |= bit;
+        else r->attr_values &= ~bit;
+        r->props |= TIMUI_STYLE_PROP_ATTRS;
+    } else if(ss_streq_(prop, "border")){
+        if(!ss_border_(p, &r->border)) return 0;
+        r->props |= TIMUI_STYLE_PROP_BORDER;
+    } else if(ss_streq_(prop, "padding")){
+        if(!ss_int_(p, &r->padding)) return 0;
+        r->props |= TIMUI_STYLE_PROP_PADDING;
+    } else if(ss_streq_(prop, "gap")){
+        if(!ss_int_(p, &r->gap)) return 0;
+        r->props |= TIMUI_STYLE_PROP_GAP;
+    } else if(ss_streq_(prop, "gradient-lo")){
+        if(!ss_color_(p, &r->gradient_lo)) return 0;
+        r->props |= TIMUI_STYLE_PROP_GRADIENT_LO;
+    } else if(ss_streq_(prop, "gradient-hi")){
+        if(!ss_color_(p, &r->gradient_hi)) return 0;
+        r->props |= TIMUI_STYLE_PROP_GRADIENT_HI;
+    } else return 0;
+    return ss_take_(p, ';');
+}
+TIMUI_API void timui_stylesheet_free(TimuiStylesheet *ss){
+    if(!ss) return;
+    if(ss->rules && ss_alloc_valid_(&ss->alloc))
+        ss->alloc.free(ss->alloc.userdata, ss->rules, (size_t)ss->cap * sizeof *ss->rules);
+    ss->rules = NULL;
+    ss->count = 0;
+    ss->cap = 0;
+    memset(&ss->alloc, 0, sizeof ss->alloc);
+}
+TIMUI_API TimuiResult timui_stylesheet_parse(TimuiStylesheet *out, const char *src,
+                                             size_t len, const TimuiAllocator *alloc){
+    TimuiStyleParser p;
+    TimuiResult gr;
+    TimuiAllocator al;
+    if(!out || (!src && len > 0) || !ss_alloc_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
+    al = *alloc;
+    memset(out, 0, sizeof *out);
+    out->alloc = al;
+    p.s = src ? src : "";
+    p.len = len;
+    p.pos = 0;
+    while(1){
+        TimuiStyleRule r;
+        ss_skip_ws_(&p);
+        if(p.pos >= p.len) return TIMUI_OK;
+        memset(&r, 0, sizeof r);
+        r.order = out->count;
+        if(!ss_selector_(&p, &r) || !ss_take_(&p, '{')) goto protocol;
+        while(!ss_at_(&p, '}')){
+            if(p.pos >= p.len) goto protocol;
+            if(!ss_decl_(&p, &r)) goto protocol;
+        }
+        p.pos++;
+        gr = ss_push_rule_(out, &r);
+        if(gr != TIMUI_OK){ timui_stylesheet_free(out); return gr; }
+    }
+protocol:
+    timui_stylesheet_free(out);
+    return TIMUI_ERR_PROTOCOL;
+}
+static void ss_apply_style_(TimuiResolvedStyle *res, uint32_t prop, int spec, int *best,
+                            const TimuiStyleRule *r){
+    if(spec < *best) return;
+    *best = spec;
+    res->mask |= prop;
+    if(prop == TIMUI_STYLE_PROP_FG) res->style.fg = r->style.fg;
+    else if(prop == TIMUI_STYLE_PROP_BG) res->style.bg = r->style.bg;
+    else if(prop == TIMUI_STYLE_PROP_BORDER) res->border = r->border;
+    else if(prop == TIMUI_STYLE_PROP_PADDING) res->padding = r->padding;
+    else if(prop == TIMUI_STYLE_PROP_GAP) res->gap = r->gap;
+    else if(prop == TIMUI_STYLE_PROP_GRADIENT_LO) res->gradient_lo = r->gradient_lo;
+    else if(prop == TIMUI_STYLE_PROP_GRADIENT_HI) res->gradient_hi = r->gradient_hi;
+}
+TIMUI_API TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *ss,
+                                                      TimuiStyleQuery query){
+    enum { P_FG, P_BG, P_BOLD, P_DIM, P_REV, P_BORDER, P_PADDING, P_GAP, P_GLO, P_GHI, P_COUNT };
+    int best[P_COUNT];
+    TimuiResolvedStyle res;
+    int i;
+    res.style = query.base;
+    res.mask = 0;
+    res.border = TIMUI_BORDER_NONE;
+    res.padding = 0;
+    res.gap = 0;
+    res.gradient_lo = 0;
+    res.gradient_hi = 0;
+    for(i = 0; i < P_COUNT; i++) best[i] = -1;
+    if(!ss || !ss->rules) return res;
+    for(i = 0; i < ss->count; i++){
+        const TimuiStyleRule *r = &ss->rules[i];
+        int spec = r->specificity;
+        (void)r->order;
+        if(!ss_rule_matches_(r, query)) continue;
+        if(r->props & TIMUI_STYLE_PROP_FG) ss_apply_style_(&res, TIMUI_STYLE_PROP_FG, spec, &best[P_FG], r);
+        if(r->props & TIMUI_STYLE_PROP_BG) ss_apply_style_(&res, TIMUI_STYLE_PROP_BG, spec, &best[P_BG], r);
+        if((r->attr_props & TIMUI_ATTR_BOLD) && spec >= best[P_BOLD]){
+            best[P_BOLD] = spec; res.mask |= TIMUI_STYLE_PROP_ATTRS;
+            if(r->attr_values & TIMUI_ATTR_BOLD) res.style.attrs |= TIMUI_ATTR_BOLD;
+            else res.style.attrs &= ~TIMUI_ATTR_BOLD;
+        }
+        if((r->attr_props & TIMUI_ATTR_DIM) && spec >= best[P_DIM]){
+            best[P_DIM] = spec; res.mask |= TIMUI_STYLE_PROP_ATTRS;
+            if(r->attr_values & TIMUI_ATTR_DIM) res.style.attrs |= TIMUI_ATTR_DIM;
+            else res.style.attrs &= ~TIMUI_ATTR_DIM;
+        }
+        if((r->attr_props & TIMUI_ATTR_REVERSE) && spec >= best[P_REV]){
+            best[P_REV] = spec; res.mask |= TIMUI_STYLE_PROP_ATTRS;
+            if(r->attr_values & TIMUI_ATTR_REVERSE) res.style.attrs |= TIMUI_ATTR_REVERSE;
+            else res.style.attrs &= ~TIMUI_ATTR_REVERSE;
+        }
+        if(r->props & TIMUI_STYLE_PROP_BORDER) ss_apply_style_(&res, TIMUI_STYLE_PROP_BORDER, spec, &best[P_BORDER], r);
+        if(r->props & TIMUI_STYLE_PROP_PADDING) ss_apply_style_(&res, TIMUI_STYLE_PROP_PADDING, spec, &best[P_PADDING], r);
+        if(r->props & TIMUI_STYLE_PROP_GAP) ss_apply_style_(&res, TIMUI_STYLE_PROP_GAP, spec, &best[P_GAP], r);
+        if(r->props & TIMUI_STYLE_PROP_GRADIENT_LO) ss_apply_style_(&res, TIMUI_STYLE_PROP_GRADIENT_LO, spec, &best[P_GLO], r);
+        if(r->props & TIMUI_STYLE_PROP_GRADIENT_HI) ss_apply_style_(&res, TIMUI_STYLE_PROP_GRADIENT_HI, spec, &best[P_GHI], r);
+    }
+    return res;
+}
+
+TIMUI_API void timui_set_stylesheet(Timui *ui, const TimuiStylesheet *ss){
+    if(ui) ui->stylesheet = ss;
+}
+
+static TimuiStyle timui_widget_style_(Timui *ui, TimuiWidgetKind kind,
+                                      TimuiStyleSlot slot, uint32_t states){
+    TimuiStyle base;
+    TimuiStyleQuery q;
+    if(!ui) return timui_style_make(0, 0, 0);
+    base = timui_theme_style(&ui->theme, slot);
+    if(!ui->stylesheet) return base;
+    q.kind = kind;
+    q.id = NULL;
+    q.classes = NULL;
+    q.states = states;
+    q.base = base;
+    return timui_stylesheet_resolve(ui->stylesheet, q).style;
+}
+
+#undef TIMUI_SS_NAME_MAX
+/* ---- Grapheme cluster helpers (Phase 1.5) ------------------------------ *
+ * Table-driven coverage for the cluster classes that matter most in terminal
+ * editing and truncation: combining marks, variation selectors, emoji
+ * modifiers, regional-indicator flags, CRLF, and ZWJ emoji sequences.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd. */
+
+static int timui_cp_between_(uint32_t cp, uint32_t lo, uint32_t hi){
+    return cp >= lo && cp <= hi;
+}
+
+static int timui_grapheme_extend_(uint32_t cp){
+    return
+        timui_cp_between_(cp, 0x0300, 0x036F) ||      /* Combining Diacritical Marks */
+        timui_cp_between_(cp, 0x1AB0, 0x1AFF) ||
+        timui_cp_between_(cp, 0x1DC0, 0x1DFF) ||
+        timui_cp_between_(cp, 0x20D0, 0x20FF) ||
+        timui_cp_between_(cp, 0xFE20, 0xFE2F) ||
+        timui_cp_between_(cp, 0xFE00, 0xFE0F) ||      /* variation selectors */
+        timui_cp_between_(cp, 0xE0100, 0xE01EF) ||
+        timui_cp_between_(cp, 0x1F3FB, 0x1F3FF);      /* emoji skin tones */
+}
+
+static int timui_grapheme_ri_(uint32_t cp){
+    return timui_cp_between_(cp, 0x1F1E6, 0x1F1FF);
+}
+
+static int timui_grapheme_emoji_base_(uint32_t cp){
+    return
+        timui_cp_between_(cp, 0x1F000, 0x1FAFF) ||
+        timui_cp_between_(cp, 0x2600, 0x27BF) ||
+        timui_cp_between_(cp, 0x2300, 0x23FF) ||
+        cp == 0x00A9 || cp == 0x00AE;
+}
+
+static size_t timui_grapheme_decode_(const char *s, size_t len, size_t off, uint32_t *cp){
+    int adv;
+    if(cp) *cp = 0;
+    if(!s || off >= len) return off;
+    adv = timui_utf8_decode(s + off, len - off, cp);
+    if(adv <= 0) adv = 1;
+    if(off + (size_t)adv > len) return len;
+    return off + (size_t)adv;
+}
+
+TIMUI_API size_t timui_grapheme_next(const char *s, size_t len, size_t off){
+    uint32_t cp = 0;
+    size_t cur;
+    int ri_count = 0;
+    if(!s || off >= len) return len;
+    cur = timui_grapheme_decode_(s, len, off, &cp);
+
+    if(cp == '\r'){
+        uint32_t ncp = 0;
+        size_t n = timui_grapheme_decode_(s, len, cur, &ncp);
+        if(n > cur && ncp == '\n') return n;          /* CRLF is one cluster */
+        return cur;
+    }
+    if(cp == '\n') return cur;
+    if(timui_grapheme_ri_(cp)) ri_count = 1;
+
+    for(;;){
+        uint32_t ncp = 0;
+        size_t n;
+        if(cur >= len) break;
+        n = timui_grapheme_decode_(s, len, cur, &ncp);
+        if(n <= cur) break;
+        if(timui_grapheme_extend_(ncp)){
+            cur = n;
+            continue;
+        }
+        if(ncp == 0x200D){                            /* ZWJ sticks to both sides */
+            cur = n;
+            if(cur < len)
+                cur = timui_grapheme_decode_(s, len, cur, NULL);
+            continue;
+        }
+        if(ri_count == 1 && timui_grapheme_ri_(ncp)){
+            cur = n;                                  /* RI RI flag pair */
+            ri_count = 2;
+            continue;
+        }
+        break;
+    }
+    return cur;
+}
+
+TIMUI_API size_t timui_grapheme_prev(const char *s, size_t len, size_t off){
+    size_t prev = 0, cur = 0;
+    if(!s || off == 0) return 0;
+    if(off > len) off = len;
+    while(cur < off){
+        size_t next = timui_grapheme_next(s, len, cur);
+        if(next >= off) return cur;
+        if(next <= cur) break;
+        prev = cur;
+        cur = next;
+    }
+    return prev;
+}
+
+TIMUI_API int timui_grapheme_width(const char *s, size_t len){
+    size_t end, i;
+    int w = 0, saw_ri = 0, saw_zwj = 0, saw_vs16 = 0, saw_emoji = 0;
+    if(!s || len == 0) return 0;
+    end = timui_grapheme_next(s, len, 0);
+    for(i = 0; i < end;){
+        uint32_t cp = 0;
+        size_t n = timui_grapheme_decode_(s, end, i, &cp);
+        int cw;
+        if(n <= i) break;
+        if(cp == 0x200D){ saw_zwj = 1; i = n; continue; }
+        if(cp == 0xFE0F){ saw_vs16 = 1; i = n; continue; }
+        if(timui_grapheme_extend_(cp)){ i = n; continue; }
+        if(timui_grapheme_ri_(cp)){ saw_ri++; saw_emoji = 1; i = n; continue; }
+        if(timui_grapheme_emoji_base_(cp)) saw_emoji = 1;
+        cw = timui_utf8_width(cp);
+        if(cw > w) w = cw;
+        i = n;
+    }
+    if(saw_ri >= 1) return 2;
+    if(saw_zwj && saw_emoji) return 2;
+    if(saw_vs16 && saw_emoji && w < 2) return 2;
+    return w;
+}
 /* ---- terminal transport + fake backend --------------------------------- */
 static int fake_write(TimuiTransport *t, const void *data, size_t len){
     TimuiFakeTransport *f = (TimuiFakeTransport *)t->ctx;
@@ -3047,15 +3786,14 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         c->flags |= TIMUI_CAP_256_COLOR;
         c->colors = 256;
     }
-    /* multiplexers reduce capabilities. Kitty GRAPHICS is ALWAYS stripped under a
-     * multiplexer: it requires explicit tmux `allow-passthrough` + graphics
-     * support we can't assume, and emitting APC graphics that tmux silently
-     * drops leaves a grey placeholder region and stray cursor moves. Keyboard
-     * and sync are only kept when the OUTER terminal (TERM_PROGRAM, inherited
-     * into the session) is kitty-family; otherwise stripped. timui_force_cap
-     * overrides either way (W12). */
+    /* multiplexers reduce capabilities. Image protocols are ALWAYS stripped
+     * under a multiplexer: they require explicit passthrough + graphics support
+     * we can't assume, and dropped image escapes leave a grey placeholder region
+     * plus stray cursor moves. Keyboard and sync are only kept when the OUTER
+     * terminal (TERM_PROGRAM, inherited into the session) is kitty-family;
+     * otherwise stripped. timui_force_cap overrides either way (W12). */
     if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
-        c->flags &= ~TIMUI_CAP_KITTY_GRAPHICS;
+        c->flags &= ~(TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES);
         if(!caps_is_kitty_family(term_program))
             c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
         c->flags |= TIMUI_CAP_256_COLOR;
@@ -3069,6 +3807,18 @@ TIMUI_API void timui_caps_apply_force(TimuiCaps *c, uint32_t force_on, uint32_t 
 }
 TIMUI_API int timui_caps_has(const TimuiCaps *c, TimuiCapFlags cap){
     return c && ((c->flags & (uint32_t)cap) != 0);
+}
+TIMUI_API void timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable){
+    if(!ui) return;
+    if(enable) ui->caps.flags |= (uint32_t)cap;
+    else       ui->caps.flags &= ~(uint32_t)cap;
+}
+TIMUI_API TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *c){
+    if(!c) return TIMUI_IMAGE_PROTOCOL_NONE;
+    if(c->flags & TIMUI_CAP_KITTY_GRAPHICS) return TIMUI_IMAGE_PROTOCOL_KITTY;
+    if(c->flags & TIMUI_CAP_SIXEL_GRAPHICS) return TIMUI_IMAGE_PROTOCOL_SIXEL;
+    if(c->flags & TIMUI_CAP_ITERM2_IMAGES) return TIMUI_IMAGE_PROTOCOL_ITERM2;
+    return TIMUI_IMAGE_PROTOCOL_NONE;
 }
 
 /* ---- synchronized output (DEC 2026) + cursor -------------------------- */
@@ -3582,7 +4332,10 @@ TIMUI_API TimuiButtonResult timui_button(TimuiFrame *f, TimuiId id, TimuiRect r,
           : ir.hovered ? TIMUI_SLOT_BUTTON_HOVERED
           : ir.focused ? TIMUI_SLOT_BUTTON_FOCUSED
           : TIMUI_SLOT_BUTTON;
-    st = timui_theme_style(&ui->theme, slot);
+    st = timui_widget_style_(ui, TIMUI_WIDGET_BUTTON, slot,
+                             (ir.active ? TIMUI_STYLE_STATE_ACTIVE : 0) |
+                             (ir.hovered ? TIMUI_STYLE_STATE_HOVERED : 0) |
+                             (ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0));
     timui_draw_fill(&ui->curr, r, st);
     widget_draw_text_clipped(f, r, r.x + 1, r.y + (r.h > 1 ? (r.h - 1) / 2 : 0), label, st);
     return br;
@@ -3599,15 +4352,18 @@ TIMUI_API TimuiRect timui_panel_begin(TimuiFrame *f, TimuiId id, TimuiRect r, Ti
     (void)id;
     if(!f || !f->ui) return body;
     ui = f->ui;
-    timui_draw_box(&ui->curr, r, border_flags, timui_theme_style(&ui->theme, TIMUI_SLOT_BORDER));
+    timui_draw_box(&ui->curr, r, border_flags,
+                   timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_BORDER, 0));
     timui_push_clip(f, r);   /* W10: clip title + body content to the panel rect */
     if(title.ptr && title.len)
-        timui_draw_text(&ui->curr, r.x + 1, r.y, title, timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL_TITLE));
+        timui_draw_text(&ui->curr, r.x + 1, r.y, title,
+                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_PANEL_TITLE, 0));
     body.x = r.x + 1; body.y = r.y + 1;
     body.w = r.w - 2; body.h = r.h - 2;
     if(body.w < 0) body.w = 0;
     if(body.h < 0) body.h = 0;
-    timui_draw_fill(&ui->curr, body, timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL));
+    timui_draw_fill(&ui->curr, body,
+                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_PANEL, 0));
     return body;
 }
 TIMUI_API void timui_panel_end(TimuiFrame *f){ if(f) timui_pop_clip(f); }
@@ -3627,14 +4383,17 @@ static TimuiBoolEdit bool_widget(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiSt
         be.changed = true;
         be.value = is_radio ? true : !value;   /* radio selects; checkbox toggles */
     }
-    st = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    st = timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+                             ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+                             ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     box[0] = is_radio ? '(' : '[';
     box[1] = value ? (is_radio ? 'o' : 'x') : ' ';
     box[2] = is_radio ? ')' : ']';
     box[3] = ' ';
     timui_push_clip(f, r);
     timui_draw_text(&ui->curr, r.x, r.y, (TimuiStr){ box, 4 }, st);
-    timui_draw_text(&ui->curr, r.x + 4, r.y, label, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
+    timui_draw_text(&ui->curr, r.x + 4, r.y, label,
+                    timui_widget_style_(ui, TIMUI_WIDGET_INPUT, TIMUI_SLOT_TEXT, 0));
     timui_pop_clip(f);
     return be;
 }
@@ -3655,14 +4414,15 @@ TIMUI_API void timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text){
     Timui *ui;
     if(!f || !f->ui) return;
     ui = f->ui;
-    timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
-    timui_draw_text(&ui->curr, r.x, r.y, text, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
+    timui_draw_fill(&ui->curr, r, timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
+    timui_draw_text(&ui->curr, r.x, r.y, text,
+                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
 }
-/* ---- UTF-8 codepoint helpers (shared with timui_text_area) ------------- *
+/* ---- UTF-8 / grapheme edit helpers (shared with timui_text_area) -------- *
  * text_in carries UTF-8 (since the G8 fix), so text inputs must append and
- * delete whole codepoints — a byte-wise append splits a multibyte char at the
- * cap boundary, and a 1-byte backspace leaves a dangling lead byte. Both
- * corrupt the buffer into permanently invalid UTF-8. */
+ * delete whole clusters — a byte-wise append can split a multibyte char at the
+ * cap boundary, and a codepoint-wise backspace can leave a dangling skin-tone
+ * modifier, variation selector, or joiner sequence. */
 
 /* byte length of a well-formed UTF-8 sequence starting at lead byte b (1..4),
  * or 0 if b is not a lead. */
@@ -3673,26 +4433,23 @@ static int utf8_lead_len(unsigned char b){
     if((b & 0xF8) == 0xF0) return 4;
     return 0;
 }
-/* New length after removing one complete UTF-8 codepoint from the end of
- * buf[0..len): walk back over trailing continuation bytes (0x80-0xBF) to the
- * lead byte, then drop the lead. */
+static int single_line_text_byte_(unsigned char b){
+    return b >= 0x20 && b != 0x7f;
+}
+/* New length after removing one complete grapheme cluster from the end of
+ * buf[0..len). The state structs keep byte cursors, so callers still pass and
+ * receive byte offsets. */
 static size_t utf8_drop_last(const char *buf, size_t len){
-    size_t i = len;
-    while(i > 0 && ((unsigned char)buf[i - 1] & 0xC0) == 0x80) i--;
-    if(i > 0) i--;
-    return i;
+    return timui_grapheme_prev(buf, len, len);
 }
 /* ---- in-line editing primitives (F1.2) --------------------------------- *
  * All operate on a NUL-terminated buffer; utf8_drop_last(buf, cursor) already
- * gives the previous codepoint boundary (Left / Backspace). */
+ * gives the previous grapheme boundary (Left / Backspace). */
 
-/* Byte offset after the codepoint at `cursor`, clamped to len (Right / Delete). */
+/* Byte offset after the grapheme at `cursor`, clamped to len (Right / Delete). */
 static size_t utf8_next_(const char *buf, size_t cursor, size_t len){
-    size_t step;
     if(cursor >= len) return len;
-    step = (size_t)utf8_lead_len((unsigned char)buf[cursor]);
-    if(step == 0) step = 1;                       /* stray byte: advance one */
-    return (cursor + step > len) ? len : cursor + step;
+    return timui_grapheme_next(buf, len, cursor);
 }
 /* Start of the line containing `pos` (after the preceding \n/\r, or 0). */
 static size_t line_start_(const char *buf, size_t pos){
@@ -3707,7 +4464,7 @@ static size_t line_end_(const char *buf, size_t pos){
 }
 /* Insert `n` bytes at byte offset `at`. Returns 1 on success, 0 if it won't fit
  * (len + n + 1 > cap). The tail (incl. the NUL) is shifted right. Callers pass
- * whole codepoints so nothing is split at the cap boundary. */
+ * whole codepoints so nothing is split at the UTF-8 byte boundary. */
 static int text_insert_(char *buf, size_t cap, size_t at, const char *bytes, size_t n){
     size_t len = strlen(buf);
     if(at > len) at = len;
@@ -3743,13 +4500,14 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
             /* append whole UTF-8 codepoints; skip one that won't fit intact */
             while(i < ui->text_in_len){
                 size_t m = (size_t)utf8_lead_len((unsigned char)ui->text_in[i]);
+                if(!single_line_text_byte_((unsigned char)ui->text_in[i])){ i++; continue; }
                 if(m == 0) m = 1;                       /* defensive: stray byte */
                 if(len + m >= cap) break;               /* no room for the codepoint + NUL */
                 while(m-- > 0 && i < ui->text_in_len) buf[len++] = ui->text_in[i++];
             }
             buf[len] = '\0';
             if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && len > 0){
-                len = utf8_drop_last(buf, len);         /* delete a whole codepoint */
+                len = utf8_drop_last(buf, len);         /* delete a whole cluster */
                 buf[len] = '\0';
             }
             if(submit) submitted = true;
@@ -3757,22 +4515,24 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
             ui->key_in = 0;
         }
     }
-    st = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    st = timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+                             ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+                             ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     timui_draw_fill(&ui->curr, r, st);
     timui_draw_text(&ui->curr, r.x, r.y, timui_str_from_cstr(buf), st);
     return submitted;
 }
-/* Display column of the cursor: sum of glyph widths over buf[0..upto) (F1.5). */
+/* Display column of the cursor: sum of grapheme widths over buf[0..upto) (F1.5). */
 static int display_col_(const char *buf, size_t upto){
     size_t i = 0, len = strlen(buf);
     int col = 0;
     if(upto > len) upto = len;
     while(i < upto){
-        uint32_t cp = 0;
-        int adv = timui_utf8_decode(buf + i, len - i, &cp);
-        if(adv <= 0) adv = 1;
-        col += timui_utf8_width(cp);
-        i += (size_t)adv;
+        size_t n = timui_grapheme_next(buf, len, i);
+        if(n <= i) n = i + 1;
+        if(n > upto) n = upto;
+        col += timui_grapheme_width(buf + i, n - i);
+        i = n;
     }
     return col;
 }
@@ -3815,6 +4575,7 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
             while(j < upto){
                 int n = utf8_lead_len((unsigned char)ui->text_in[j]);
                 size_t m = (size_t)(n > 0 ? n : 1);
+                if(!single_line_text_byte_((unsigned char)ui->text_in[j])){ j++; continue; }
                 if(j + (int)m > upto) m = (size_t)(upto - j);
                 if(!text_insert_(st->text, st->cap, st->cursor, ui->text_in + j, m)) break;
                 st->cursor += m; j += (int)m;
@@ -3833,7 +4594,7 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
                 (void)text_erase_(st->text, st->cursor, nxt);
             }
             if(ui->key_in & TIMUI_KEYIN_KILL_EOL){          /* Ctrl-K: cursor..end */
-                st->text[st->cursor] = '\0';                /* cursor is a codepoint boundary */
+                st->text[st->cursor] = '\0';                /* cursor is a cluster boundary */
             }
             if(ui->key_in & TIMUI_KEYIN_KILL_BOL){          /* Ctrl-U: start..cursor */
                 size_t rest = strlen(st->text + st->cursor);
@@ -3855,8 +4616,10 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
                 memcpy(ui->pending_in, ui->text_in + upto, (size_t)tail);
                 ui->pending_in_len = tail;
                 ui->pending_enter_count = ui->enter_count - 1;
-                for(k = 0; k < ui->pending_enter_count; k++)
+                for(k = 0; k < ui->pending_enter_count; k++){
                     ui->pending_enter_at[k] = ui->enter_at[k + 1] - upto;
+                    ui->pending_enter_mods[k] = ui->enter_mods[k + 1];
+                }
             }
             ui->text_in_len = 0;
             ui->enter_count = 0;
@@ -3875,7 +4638,9 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
       }
     }
     style = ovr ? *ovr
-                : timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+                : timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+                                      ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+                                      ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     timui_draw_fill(&ui->curr, r, style);
     /* clip to the field and shift the text left by scroll_x so the visible
      * window tracks the cursor (put_glyph drops the clipped leading columns). */
@@ -3938,7 +4703,8 @@ TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
         if(idx >= count) break;
         s = label ? label(userdata, idx) : "";
         slot = (idx == state.selected) ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT;
-        st = timui_theme_style(&ui->theme, slot);
+        st = timui_widget_style_(ui, TIMUI_WIDGET_LISTBOX, slot,
+                                 idx == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
         timui_draw_row_(&ui->curr, TIMUI_RECT(r.x, r.y + i, r.w, 1), 0, timui_str_from_cstr(s), st);
     }
     if(state.selected != orig) res.state_changed = 1;
@@ -3975,7 +4741,8 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
     ui->ia.modal_active = 1;
     ui->ia.modal_rect = TIMUI_RECT(bx, by, boxw, boxh);
     timui_panel_begin(f, id, TIMUI_RECT(bx, by, boxw, boxh), title, TIMUI_BORDER_DOUBLE);
-    timui_label(f, bx + 2, by + 1, message, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
+    timui_label(f, bx + 2, by + 1, message,
+                timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_TEXT, 0));
     btnx = bx + 2;
     { int any_btn = 0;
       for(i = 0; i < count; i++){
@@ -4111,7 +4878,7 @@ TIMUI_API int timui_tabs(TimuiFrame *f, TimuiId id, TimuiRect r,
     ui = f->ui;
     if(!selected) return 0;
     sel = *selected;
-    bar_st = timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL);
+    bar_st = timui_widget_style_(ui, TIMUI_WIDGET_MENU, TIMUI_SLOT_PANEL, 0);
 
     /* No tabs: clear the bar, normalize the selection, and bail out. */
     if(n <= 0){
@@ -4155,8 +4922,9 @@ TIMUI_API int timui_tabs(TimuiFrame *f, TimuiId id, TimuiRect r,
 
     /* ---- draw: boxed/highlighted active tab, dim inactive labels ---- */
     y = r.y;
-    sel_st = timui_theme_style(&ui->theme, TIMUI_SLOT_SELECTION);
-    txt_st = timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT);
+    sel_st = timui_widget_style_(ui, TIMUI_WIDGET_MENU, TIMUI_SLOT_SELECTION,
+                                 TIMUI_STYLE_STATE_SELECTED);
+    txt_st = timui_widget_style_(ui, TIMUI_WIDGET_MENU, TIMUI_SLOT_TEXT, 0);
     txt_st.bg = bar_st.bg;                    /* inactive labels sit on the bar bg */
     timui_draw_fill(&ui->curr, r, bar_st);    /* clear the bar */
     timui_push_clip(f, r);                    /* clip any overflow to the bar */
@@ -4349,11 +5117,10 @@ static int timui_disp_width_n_(const char *s, size_t len){
     int w = 0;
     if(!s) return 0;
     for(i = 0; i < len;){
-        uint32_t cp = 0xFFFDu;
-        int adv = timui_utf8_decode(s + i, len - i, &cp);
-        if(adv <= 0) adv = 1;                  /* never stall on a bad byte */
-        w += timui_utf8_width(cp);
-        i += (size_t)adv;
+        size_t n = timui_grapheme_next(s, len, i);
+        if(n <= i) n = i + 1;                  /* never stall on malformed input */
+        w += timui_grapheme_width(s + i, n - i);
+        i = n;
     }
     return w;
 }
@@ -4404,17 +5171,16 @@ TIMUI_API int timui_fit_cell(const char *s, int width, char *out, size_t cap, in
      * caller pads the slack). */
     budget = width - 1;
     for(i = 0; i < len;){
-        uint32_t cp = 0xFFFDu;
-        int adv = timui_utf8_decode(s + i, len - i, &cp);
+        size_t n = timui_grapheme_next(s, len, i);
         int gw;
-        if(adv <= 0) adv = 1;
-        gw = timui_utf8_width(cp);
+        if(n <= i) n = i + 1;
+        gw = timui_grapheme_width(s + i, n - i);
         if(used + gw > budget) break;
-        if(o + (size_t)adv + sizeof(TIMUI_ELLIPSIS_) > cap) break;  /* keep room for "…" + NUL */
-        memcpy(out + o, s + i, (size_t)adv);
-        o += (size_t)adv;
+        if(o + (n - i) + sizeof(TIMUI_ELLIPSIS_) > cap) break;  /* keep room for "…" + NUL */
+        memcpy(out + o, s + i, n - i);
+        o += n - i;
         used += gw;
-        i += (size_t)adv;
+        i = n;
     }
     if(o + 3 < cap){ memcpy(out + o, TIMUI_ELLIPSIS_, 3); o += 3; }
     out[o] = '\0';
@@ -4472,7 +5238,7 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
     if(state.selected < state.scroll) state.scroll = state.selected;
     if(state.selected >= state.scroll + vis) state.scroll = state.selected - vis + 1;
     /* header row */
-    { TimuiStyle hs = timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL_TITLE);
+    { TimuiStyle hs = timui_widget_style_(ui, TIMUI_WIDGET_TABLE, TIMUI_SLOT_PANEL_TITLE, 0);
       x = r.x;
       for(col = 0; col < ncols; col++){
           TimuiStr h = (headers && headers[col].ptr) ? headers[col] : (TimuiStr){ NULL, 0 };
@@ -4484,8 +5250,9 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
     body = TIMUI_RECT(r.x, r.y + hdr_h, r.w, r.h - hdr_h);
     content = timui_scroll_begin(f, body, state.scroll);
     for(row = 0; row < nrows; row++){
-        TimuiStyle st = timui_theme_style(&ui->theme,
-            row == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+        TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TABLE,
+            row == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+            row == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
         x = content.x;
         for(col = 0; col < ncols; col++){
             const char *cell = cell_fn ? cell_fn(ud, row, col) : "";
@@ -4628,7 +5395,7 @@ TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r
     if(r.h >= 1 && r.w >= 1){
         timui_push_clip(f, r);
         /* sticky header: h-scrolled only, never v-scrolled. */
-        { TimuiStyle hs = timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL_TITLE);
+        { TimuiStyle hs = timui_widget_style_(ui, TIMUI_WIDGET_TABLE, TIMUI_SLOT_PANEL_TITLE, 0);
           timui_draw_fill(&ui->curr, TIMUI_RECT(r.x, r.y, r.w, 1), hs);
           cx = r.x - hscroll;
           for(c = 0; c < ncols; c++){
@@ -4644,8 +5411,9 @@ TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r
           int i;
           for(i = 0; i < rows.count; i++){
               int row = rows.first + i;
-              TimuiStyle st = timui_theme_style(&ui->theme,
-                  row == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+              TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TABLE,
+                  row == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+                  row == sel ? TIMUI_STYLE_STATE_SELECTED : 0);
               y = r.y + 1 + i;
               /* fill the whole row first for a continuous selection highlight */
               timui_draw_fill(&ui->curr, TIMUI_RECT(r.x, y, r.w, 1), st);
@@ -4765,8 +5533,9 @@ TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
     content = timui_scroll_begin(f, r, 0);
     for(i = 0; i < count; i++){
         int y = content.y + i;
-        TimuiStyle st = timui_theme_style(&ui->theme,
-            i == selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+        TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TREE,
+            i == selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+            i == selected ? TIMUI_STYLE_STATE_SELECTED : 0);
         timui_tree_draw_node_(ui, &nodes[i], TIMUI_RECT(content.x, y, r.w, 1), y, st);
     }
     timui_scroll_end(f);
@@ -4842,8 +5611,9 @@ TIMUI_API TimuiTreeScrollResult timui_tree_scroll(TimuiFrame *f, TimuiId id, Tim
         if(!timui_tree_step_(&nodes[i], &hidden)) continue;
         row = vp - scroll;
         if(row >= 0 && row < vis){
-            TimuiStyle st = timui_theme_style(&ui->theme,
-                vp == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+            TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TREE,
+                vp == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+                vp == sel ? TIMUI_STYLE_STATE_SELECTED : 0);
             timui_tree_draw_node_(ui, &nodes[i], r, r.y + row, st);
         }
         vp++;
@@ -4914,8 +5684,9 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
     { TimuiRect content = timui_scroll_begin(f, list_r, 0);
       for(i = 0; i < matched_count; i++){
           int orig = matched_idx[i];
-          TimuiStyle st = timui_theme_style(&ui->theme,
-              i == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+          TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_LISTBOX,
+              i == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+              i == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
           timui_draw_row_(&ui->curr, TIMUI_RECT(content.x, content.y + i, list_r.w, 1), 1, commands[orig], st);
       }
       timui_scroll_end(f);
@@ -4943,6 +5714,409 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette_mut(TimuiFrame *f, TimuiId
     if(state) in = *state; else memset(&in, 0, sizeof in);
     res = timui_command_palette(f, id, r, commands, count, in);
     if(state && res.state_changed) *state = res.state;   /* write back edits/nav/activation reset */
+    return res;
+}
+/* ---- combobox / autocomplete ------------------------------------------ *
+ * A single-focus editable field with an attached filtered popup. The caller
+ * owns query storage and selection state; options are immutable TimuiStrs. */
+static int cb_match_(TimuiStr opt, const char *query){
+    size_t ol = opt.len, ql = strlen(query ? query : "");
+    size_t i, j;
+    if(ql == 0) return 1;
+    if(!opt.ptr || ql > ol) return 0;
+    for(i = 0; i + ql <= ol; i++){
+        for(j = 0; j < ql; j++){
+            char a = opt.ptr[i + j], b = query[j];
+            if(a >= 'A' && a <= 'Z') a += 32;
+            if(b >= 'A' && b <= 'Z') b += 32;
+            if(a != b) break;
+        }
+        if(j == ql) return 1;
+    }
+    return 0;
+}
+static int cb_text_byte_(unsigned char b){
+    return b >= 0x20 && b != 0x7f;
+}
+static int cb_filter_(const TimuiStr *options, int count, const char *query, int *matches, int max){
+    int i, n = 0;
+    if(!options || count <= 0 || !matches || max <= 0) return 0;
+    for(i = 0; i < count && n < max; i++){
+        TimuiStr opt = options[i].ptr ? options[i] : (TimuiStr){ "", 0 };
+        if(cb_match_(opt, query)) matches[n++] = i;
+    }
+    return n;
+}
+static int cb_insert_text_(TimuiComboboxState *st, const char *src, int nbytes){
+    int j = 0, changed = 0;
+    while(j < nbytes){
+        int n = utf8_lead_len((unsigned char)src[j]);
+        size_t m = (size_t)(n > 0 ? n : 1);
+        if(!cb_text_byte_((unsigned char)src[j])){ j++; continue; }
+        if(j + (int)m > nbytes) m = (size_t)(nbytes - j);
+        if(!text_insert_(st->query, st->cap, st->cursor, src + j, m)) break;
+        st->cursor += m;
+        j += (int)m;
+        changed = 1;
+    }
+    return changed;
+}
+static void cb_copy_option_(TimuiComboboxState *st, TimuiStr opt){
+    size_t out = 0, i = 0;
+    if(!st || !st->query || st->cap == 0) return;
+    while(i < opt.len && out + 1 < st->cap){
+        size_t n = timui_grapheme_next(opt.ptr, opt.len, i);
+        if(n <= i) n = i + 1;
+        if(out + (n - i) + 1 > st->cap) break;
+        memcpy(st->query + out, opt.ptr + i, n - i);
+        out += n - i;
+        i = n;
+    }
+    st->query[out] = '\0';
+    st->cursor = out;
+    st->scroll_x = 0;
+}
+static void cb_scroll_to_selected_(TimuiComboboxState *st, int visible, int count){
+    if(st->selected < 0) st->selected = 0;
+    if(count <= 0){ st->selected = 0; st->scroll = 0; return; }
+    if(st->selected >= count) st->selected = count - 1;
+    if(st->scroll < 0) st->scroll = 0;
+    if(visible <= 0){ st->scroll = 0; return; }
+    if(st->selected < st->scroll) st->scroll = st->selected;
+    if(st->selected >= st->scroll + visible) st->scroll = st->selected - visible + 1;
+    if(count <= visible) st->scroll = 0;
+    else if(st->scroll > count - visible) st->scroll = count - visible;
+}
+TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *options, int count, TimuiComboboxState state){
+    TimuiComboboxResult res;
+    Timui *ui;
+    TimuiInteractResult ir;
+    TimuiRect field, popup;
+    int matches[256], match_count = 0, visible, i;
+    int user_changed = 0, query_changed = 0;
+    int accept_filtered = -1;
+    res.state = state;
+    res.state_changed = 0;
+    res.query_changed = 0;
+    res.activated = -1;
+    res.selected = -1;
+    res.match_count = 0;
+    res.focused = 0;
+    if(!f || !f->ui || !state.query || state.cap == 0 || count < 0) return res;
+    ui = f->ui;
+    if(state.cursor >= state.cap) state.cursor = state.cap - 1;
+    field = TIMUI_RECT(r.x, r.y, r.w, r.h > 0 ? 1 : 0);
+    popup = TIMUI_RECT(r.x, r.y + 1, r.w, r.h > 1 ? r.h - 1 : 0);
+    ir = timui_interact_button(&ui->ia, id, r);
+    res.focused = ir.focused;
+    if(ir.focused){
+        size_t len;
+        size_t cursor_before;
+        if(ui->text_in_len > 0){
+            query_changed = cb_insert_text_(&state, ui->text_in, ui->text_in_len);
+            if(query_changed){ state.open = 1; state.selected = 0; state.scroll = 0; user_changed = 1; }
+        }
+        len = strlen(state.query);
+        cursor_before = state.cursor;
+        if(ui->key_in & TIMUI_KEYIN_LEFT)  state.cursor = utf8_drop_last(state.query, state.cursor);
+        if(ui->key_in & TIMUI_KEYIN_RIGHT) state.cursor = utf8_next_(state.query, state.cursor, len);
+        if(ui->key_in & TIMUI_KEYIN_HOME)  state.cursor = 0;
+        if(ui->key_in & TIMUI_KEYIN_END)   state.cursor = len;
+        if(state.cursor != cursor_before) user_changed = 1;
+        if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && state.cursor > 0){
+            size_t prev = utf8_drop_last(state.query, state.cursor);
+            state.cursor = text_erase_(state.query, prev, state.cursor);
+            query_changed = 1; state.open = 1; state.selected = 0; state.scroll = 0; user_changed = 1;
+        }
+        if(ui->key_in & TIMUI_KEYIN_DELETE){
+            size_t nxt = utf8_next_(state.query, state.cursor, strlen(state.query));
+            if(nxt > state.cursor){
+                (void)text_erase_(state.query, state.cursor, nxt);
+                query_changed = 1; state.open = 1; state.selected = 0; state.scroll = 0; user_changed = 1;
+            }
+        }
+        if(ui->key_pressed == TIMUI_KEY_ESCAPE && state.open){
+            state.open = 0;
+            user_changed = 1;
+        }
+        ui->text_in_len = 0;
+        ui->enter_count = 0;
+        ui->key_in = 0;
+    }
+    match_count = cb_filter_(options, count, state.query, matches, (int)(sizeof matches / sizeof matches[0]));
+    visible = popup.h > 0 ? popup.h : 0;
+    cb_scroll_to_selected_(&state, visible, match_count);
+    if(match_count > 0) res.selected = matches[state.selected];
+    if(ir.focused && state.open && match_count > 0){
+        if(timui_key_pressed(f, TIMUI_KEY_UP) && state.selected > 0){
+            state.selected--; user_changed = 1;
+        }
+        if(timui_key_pressed(f, TIMUI_KEY_DOWN) && state.selected < match_count - 1){
+            state.selected++; user_changed = 1;
+        }
+        cb_scroll_to_selected_(&state, visible, match_count);
+    }
+    if(ir.clicked && ui->ia.mouse_released){
+        int my = ui->ia.mouse_y - r.y;
+        if(my == 0){ state.open = 1; user_changed = 1; }
+        else if(state.open && my > 0 && my <= visible){
+            int row = state.scroll + my - 1;
+            if(row >= 0 && row < match_count) accept_filtered = row;
+        }
+    }
+    if(ir.focused && state.open && timui_key_pressed(f, TIMUI_KEY_ENTER) && match_count > 0)
+        accept_filtered = state.selected;
+    if(accept_filtered >= 0 && accept_filtered < match_count){
+        int orig = matches[accept_filtered];
+        cb_copy_option_(&state, options[orig]);
+        res.activated = orig;
+        res.selected = orig;
+        query_changed = 1;
+        user_changed = 1;
+        state.open = 0;
+        state.selected = accept_filtered;
+    } else if(match_count > 0) {
+        res.selected = matches[state.selected];
+    }
+    { int ccol = display_col_(state.query, state.cursor);
+      int scroll_x = state.scroll_x;
+      if(ccol < scroll_x) scroll_x = ccol;
+      if(field.w > 0 && ccol >= scroll_x + field.w) scroll_x = ccol - field.w + 1;
+      if(scroll_x < 0) scroll_x = 0;
+      state.scroll_x = scroll_x;
+      if(ir.focused && field.h > 0){
+          ui->cursor_x = field.x + (ccol - state.scroll_x);
+          ui->cursor_y = field.y;
+          ui->cursor_visible = 1;
+      }
+    }
+    { TimuiStyle fst = timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+          ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+          ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
+      timui_draw_fill(&ui->curr, field, fst);
+      timui_push_clip(f, field);
+      timui_draw_text(&ui->curr, field.x - state.scroll_x, field.y, timui_str_from_cstr(state.query), fst);
+      timui_pop_clip(f); }
+    if(state.open && popup.h > 0){
+        timui_push_clip(f, popup);
+        for(i = 0; i < popup.h; i++){
+            int mi = state.scroll + i;
+            TimuiStyle st;
+            TimuiStr label;
+            if(mi >= match_count) break;
+            st = timui_widget_style_(ui, TIMUI_WIDGET_LISTBOX,
+                mi == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+                mi == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
+            label = options[matches[mi]].ptr ? options[matches[mi]] : TIMUI_STR_LIT("");
+            timui_draw_row_(&ui->curr, TIMUI_RECT(popup.x, popup.y + i, popup.w, 1), 0, label, st);
+        }
+        timui_pop_clip(f);
+    }
+    res.state = state;
+    res.state_changed = user_changed;
+    res.query_changed = query_changed;
+    res.match_count = match_count;
+    res.focused = ir.focused;
+    return res;
+}
+TIMUI_API TimuiComboboxResult timui_combobox_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+    const TimuiStr *options, int count, TimuiComboboxState *state){
+    TimuiComboboxState empty;
+    TimuiComboboxResult res;
+    memset(&empty, 0, sizeof empty);
+    res = timui_combobox(f, id, r, options, count, state ? *state : empty);
+    if(state && res.state_changed) *state = res.state;
+    return res;
+}
+/* ---- toast / notification renderer ------------------------------------ *
+ * Immediate-mode, caller-owned notifications. The widget only reports which
+ * original item was clicked for dismissal; callers decide whether to remove it. */
+static int toast_alive_(const TimuiToast *t, uint64_t now_ms){
+    if(!t || t->dismissed) return 0;
+    if(t->ttl_ms == 0) return 1;
+    if(now_ms < t->created_ms) return 1;
+    return now_ms - t->created_ms < t->ttl_ms;
+}
+static TimuiStyle toast_style_(Timui *ui, TimuiToastSeverity severity){
+    TimuiStyleSlot slot = TIMUI_SLOT_STATUS;
+    if(severity == TIMUI_TOAST_SUCCESS) slot = TIMUI_SLOT_SUCCESS;
+    else if(severity == TIMUI_TOAST_WARNING) slot = TIMUI_SLOT_WARNING;
+    else if(severity == TIMUI_TOAST_ERROR) slot = TIMUI_SLOT_ERROR;
+    return timui_widget_style_(ui, TIMUI_WIDGET_TOAST, slot, 0);
+}
+TIMUI_API TimuiToastResult timui_toasts(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                        const TimuiToast *toasts, int count,
+                                        uint64_t now_ms){
+    TimuiToastResult res;
+    Timui *ui;
+    int i, y;
+    res.dismissed = -1;
+    res.visible_count = 0;
+    if(!f || !f->ui || !toasts || count <= 0 || r.w <= 0 || r.h <= 0) return res;
+    ui = f->ui;
+    y = r.y;
+    timui_push_clip(f, r);
+    for(i = 0; i < count; i++){
+        TimuiRect tr;
+        TimuiStyle st;
+        TimuiInteractResult ir;
+        if(!toast_alive_(&toasts[i], now_ms)) continue;
+        if(y + 3 > r.y + r.h) break;
+        tr = TIMUI_RECT(r.x, y, r.w, 3);
+        st = toast_style_(ui, toasts[i].severity);
+        ir = timui_interact_button(&ui->ia, id + (TimuiId)(i + 1), tr);
+        if(ir.clicked && ui->ia.mouse_released) res.dismissed = i;
+        timui_draw_fill(&ui->curr, tr,
+                        timui_widget_style_(ui, TIMUI_WIDGET_TOAST, TIMUI_SLOT_PANEL, 0));
+        timui_draw_box(&ui->curr, tr, TIMUI_BORDER_ROUND, st);
+        widget_draw_text_clipped(f, tr, tr.x + 2, tr.y, toasts[i].title, st);
+        widget_draw_text_clipped(f, tr, tr.x + 2, tr.y + 1, toasts[i].message,
+                                 timui_widget_style_(ui, TIMUI_WIDGET_TOAST, TIMUI_SLOT_TEXT, 0));
+        if(tr.w >= 5)
+            timui_draw_text(&ui->curr, tr.x + tr.w - 4, tr.y, TIMUI_STR_LIT("[x]"), st);
+        res.visible_count++;
+        y += 3;
+    }
+    timui_pop_clip(f);
+    return res;
+}
+/* ---- split / resizable pane widget ------------------------------------ *
+ * Caller-owned two-pane splitter. This intentionally implements only local
+ * divider drag; richer pointer capture and hover routing belong to Phase 2. */
+
+static float split_pane_ratio_(float ratio){
+    if(!(ratio == ratio)) return 0.5f;   /* NaN */
+    if(ratio < 0.0f) return 0.0f;
+    if(ratio > 1.0f) return 1.0f;
+    return ratio;
+}
+
+static int split_pane_axis_len_(TimuiRect r, TimuiAxis axis){
+    int n = axis == TIMUI_AXIS_V ? r.h : r.w;
+    return n > 0 ? n : 0;
+}
+
+static int split_pane_cross_len_(TimuiRect r, TimuiAxis axis){
+    int n = axis == TIMUI_AXIS_V ? r.w : r.h;
+    return n > 0 ? n : 0;
+}
+
+static int split_pane_first_size_(int desired, int avail, int min_first, int min_second){
+    int lo, hi;
+    if(avail <= 0) return 0;
+    if(min_first < 0) min_first = 0;
+    if(min_second < 0) min_second = 0;
+    if(min_first + min_second > avail){
+        int total = min_first + min_second;
+        if(total <= 0) return avail / 2;
+        return (int)(((long)avail * min_first + total / 2) / total);
+    }
+    lo = min_first;
+    hi = avail - min_second;
+    if(desired < lo) desired = lo;
+    if(desired > hi) desired = hi;
+    return desired;
+}
+
+static TimuiSplitPaneResult split_pane_layout_(TimuiRect r, TimuiAxis axis,
+                                               TimuiSplitPaneState state){
+    TimuiSplitPaneResult res;
+    int axis_len = split_pane_axis_len_(r, axis);
+    int cross_len = split_pane_cross_len_(r, axis);
+    int div = axis_len > 0 ? 1 : 0;
+    int avail = axis_len - div;
+    int first;
+    if(avail < 0) avail = 0;
+    state.ratio = split_pane_ratio_(state.ratio);
+    if(state.min_first < 0) state.min_first = 0;
+    if(state.min_second < 0) state.min_second = 0;
+    first = split_pane_first_size_((int)((float)avail * state.ratio + 0.5f),
+                                   avail, state.min_first, state.min_second);
+    state.ratio = avail > 0 ? (float)first / (float)avail : 0.0f;
+
+    res.state = state;
+    res.changed = false;
+    res.hovered = false;
+    res.dragging = false;
+    if(axis == TIMUI_AXIS_V){
+        res.first = TIMUI_RECT(r.x, r.y, cross_len, first);
+        res.divider = TIMUI_RECT(r.x, r.y + first, cross_len, div);
+        res.second = TIMUI_RECT(r.x, r.y + first + div, cross_len, avail - first);
+    } else {
+        res.first = TIMUI_RECT(r.x, r.y, first, cross_len);
+        res.divider = TIMUI_RECT(r.x + first, r.y, div, cross_len);
+        res.second = TIMUI_RECT(r.x + first + div, r.y, avail - first, cross_len);
+    }
+    return res;
+}
+
+static int split_pane_same_layout_(TimuiSplitPaneResult a, TimuiSplitPaneResult b){
+    return a.first.x == b.first.x && a.first.y == b.first.y &&
+           a.first.w == b.first.w && a.first.h == b.first.h &&
+           a.divider.x == b.divider.x && a.divider.y == b.divider.y &&
+           a.divider.w == b.divider.w && a.divider.h == b.divider.h &&
+           a.second.x == b.second.x && a.second.y == b.second.y &&
+           a.second.w == b.second.w && a.second.h == b.second.h;
+}
+
+static TimuiSplitPaneResult split_pane_drag_(TimuiSplitPaneResult base, TimuiRect r,
+                                             TimuiAxis axis, int mouse_x, int mouse_y){
+    TimuiSplitPaneState state = base.state;
+    int axis_len = split_pane_axis_len_(r, axis);
+    int avail = axis_len > 0 ? axis_len - 1 : 0;
+    int first = axis == TIMUI_AXIS_V ? mouse_y - r.y : mouse_x - r.x;
+    TimuiSplitPaneResult next;
+    if(avail < 0) avail = 0;
+    first = split_pane_first_size_(first, avail, state.min_first, state.min_second);
+    state.ratio = avail > 0 ? (float)first / (float)avail : 0.0f;
+    next = split_pane_layout_(r, axis, state);
+    next.changed = !split_pane_same_layout_(base, next);
+    next.dragging = true;
+    next.hovered = base.hovered;
+    return next;
+}
+
+static void split_pane_draw_(Timui *ui, TimuiSplitPaneResult res, TimuiAxis axis){
+    TimuiStyle st;
+    if(!ui || res.divider.w <= 0 || res.divider.h <= 0) return;
+    st = timui_widget_style_(ui, TIMUI_WIDGET_SPLIT,
+                             res.dragging ? TIMUI_SLOT_SELECTION :
+                             res.hovered ? TIMUI_SLOT_BUTTON_HOVERED : TIMUI_SLOT_BORDER,
+                             (res.dragging ? TIMUI_STYLE_STATE_ACTIVE : 0) |
+                             (res.hovered ? TIMUI_STYLE_STATE_HOVERED : 0));
+    timui_draw_fill(&ui->curr, res.divider, st);
+    if(axis == TIMUI_AXIS_V)
+        timui_draw_hline(&ui->curr, res.divider.x, res.divider.y, res.divider.w, st);
+    else
+        timui_draw_vline(&ui->curr, res.divider.x, res.divider.y, res.divider.h, st);
+}
+
+TIMUI_API TimuiSplitPaneResult timui_split_pane(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                TimuiAxis axis, TimuiSplitPaneState state){
+    TimuiSplitPaneResult res;
+    Timui *ui;
+    TimuiInteractResult ir;
+    if(axis != TIMUI_AXIS_V) axis = TIMUI_AXIS_H;
+    res = split_pane_layout_(r, axis, state);
+    if(!f || !f->ui) return res;
+    ui = f->ui;
+    ir = timui_interact_button(&ui->ia, id, res.divider);
+    res.hovered = ir.hovered;
+    res.dragging = ir.pressed;
+    if(ir.pressed)
+        res = split_pane_drag_(res, r, axis, ui->ia.mouse_x, ui->ia.mouse_y);
+    split_pane_draw_(ui, res, axis);
+    return res;
+}
+
+TIMUI_API TimuiSplitPaneResult timui_split_pane_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                    TimuiAxis axis, TimuiSplitPaneState *state){
+    TimuiSplitPaneState in = {0.5f, 0, 0};
+    TimuiSplitPaneResult res;
+    if(state) in = *state;
+    res = timui_split_pane(f, id, r, axis, in);
+    if(state && res.changed) *state = res.state;
     return res;
 }
 /* ---- snapshot testing (v0.2) ------------------------------------------ *
@@ -5110,63 +6284,127 @@ TIMUI_API int timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b,
     return 1;
 }
 /* ---- text-area widget (v0.2) ------------------------------------------ *
- * A multi-line text editor. Click to focus, type to insert, backspace deletes.
- * Lines are split on '\n'. (Cursor movement beyond append-at-end is future.) */
-TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *st){
+ * A multi-line text editor. Click to focus, type to insert, Backspace/Delete
+ * remove whole grapheme clusters. Lines are split on '\n'. */
+static int text_area_insert_span_(TimuiTextAreaState *st, const char *src, int nbytes){
+    int j = 0;
+    int changed = 0;
+    while(j < nbytes){
+        int n = utf8_lead_len((unsigned char)src[j]);
+        size_t m = (size_t)(n > 0 ? n : 1);     /* defensive: stray byte as 1 */
+        if(j + (int)m > nbytes) m = (size_t)(nbytes - j);
+        if(!text_insert_(st->text, st->cap, st->cursor, src + j, m)) break;
+        st->cursor += m;
+        j += (int)m;
+        changed = 1;
+    }
+    return changed;
+}
+static int text_area_insert_newline_(TimuiTextAreaState *st){
+    if(!text_insert_(st->text, st->cap, st->cursor, "\n", 1)) return 0;
+    st->cursor++;
+    return 1;
+}
+static int text_area_enter_submits_(const Timui *ui, int enter_index, uint32_t flags){
+    if(!(flags & TIMUI_TEXT_AREA_ENTER_SUBMITS)) return 0;
+    return !(ui->enter_mods[enter_index] & TIMUI_MOD_SHIFT);
+}
+static void text_area_defer_after_enter_(Timui *ui, int at, int enter_index){
+    int tail = ui->text_in_len - at;
+    int k;
+    if(tail < 0) tail = 0;
+    if(tail > (int)sizeof(ui->pending_in)) tail = (int)sizeof(ui->pending_in);
+    memcpy(ui->pending_in, ui->text_in + at, (size_t)tail);
+    ui->pending_in_len = tail;
+    ui->pending_enter_count = ui->enter_count - enter_index - 1;
+    if(ui->pending_enter_count < 0) ui->pending_enter_count = 0;
+    for(k = 0; k < ui->pending_enter_count; k++){
+        ui->pending_enter_at[k] = ui->enter_at[enter_index + 1 + k] - at;
+        ui->pending_enter_mods[k] = ui->enter_mods[enter_index + 1 + k];
+    }
+}
+static void text_area_process_text_(Timui *ui, TimuiTextAreaState *st,
+                                    uint32_t flags, TimuiTextAreaResult *res){
+    int j = 0;
+    int e;
+    for(e = 0; e < ui->enter_count; e++){
+        int at = ui->enter_at[e];
+        if(at < j) at = j;
+        if(at > ui->text_in_len) at = ui->text_in_len;
+        if(text_area_insert_span_(st, ui->text_in + j, at - j)) res->changed = 1;
+        if(text_area_enter_submits_(ui, e, flags)){
+            res->submitted = 1;
+            text_area_defer_after_enter_(ui, at, e);
+            return;
+        }
+        if(text_area_insert_newline_(st)) res->changed = 1;
+        j = at;
+    }
+    if(text_area_insert_span_(st, ui->text_in + j, ui->text_in_len - j)) res->changed = 1;
+}
+TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                 TimuiTextAreaState st, uint32_t flags){
     Timui *ui;
     TimuiInteractResult ir;
     TimuiRect content;
+    TimuiTextAreaResult res;
     size_t i;
     int y = 0;
-    if(!f || !f->ui || !st || !st->text || st->cap == 0) return;
-    if(st->cursor >= st->cap) st->cursor = st->cap - 1;   /* Y1: untrusted cursor -> OOB */
+    res.state = st;
+    res.changed = 0;
+    res.submitted = 0;
+    res.focused = 0;
+    if(!f || !f->ui || !st.text || st.cap == 0) return res;
+    if(st.cursor >= st.cap) st.cursor = st.cap - 1;   /* Y1: untrusted cursor -> OOB */
     ui = f->ui;
     ir = timui_interact_button(&ui->ia, id, r);
+    res.focused = ir.focused;
     if(ir.focused){
-        int j = 0;
-        /* insert typed codepoints AT the cursor (mid-string, F1.3), whole
-         * codepoints only; stop when one won't fit (text_insert_ is cap-bounded).
+        /* Insert typed codepoints at the cursor. Deletion/movement below is
+         * grapheme-aware; insertion remains codepoint-by-codepoint and
+         * cap-bounded, so invalid partial UTF-8 is not created.
          * The edit helpers live in the widgets section, in scope via the unity
          * build. */
-        while(j < ui->text_in_len){
-            int n = utf8_lead_len((unsigned char)ui->text_in[j]);
-            size_t m = (size_t)(n > 0 ? n : 1);     /* defensive: stray byte as 1 */
-            if(j + (int)m > ui->text_in_len) m = (size_t)(ui->text_in_len - j);
-            if(!text_insert_(st->text, st->cap, st->cursor, ui->text_in + j, m)) break;
-            st->cursor += m; j += (int)m;
-        }
+        text_area_process_text_(ui, &st, flags, &res);
         /* cursor movement (one step per frame — the key_in bitmask can't count
          * repeats; key auto-repeat delivers one per frame). */
-        if(ui->key_in & TIMUI_KEYIN_LEFT)  st->cursor = utf8_drop_last(st->text, st->cursor);
-        if(ui->key_in & TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, strlen(st->text));
-        if(ui->key_in & TIMUI_KEYIN_HOME)  st->cursor = line_start_(st->text, st->cursor);
-        if(ui->key_in & TIMUI_KEYIN_END)   st->cursor = line_end_(st->text, st->cursor);
-        /* deletion: backspace removes the codepoint before the cursor, DELETE
+        if(ui->key_in & TIMUI_KEYIN_LEFT)  st.cursor = utf8_drop_last(st.text, st.cursor);
+        if(ui->key_in & TIMUI_KEYIN_RIGHT) st.cursor = utf8_next_(st.text, st.cursor, strlen(st.text));
+        if(ui->key_in & TIMUI_KEYIN_HOME)  st.cursor = line_start_(st.text, st.cursor);
+        if(ui->key_in & TIMUI_KEYIN_END)   st.cursor = line_end_(st.text, st.cursor);
+        /* deletion: backspace removes the cluster before the cursor, DELETE
          * the one at the cursor. */
-        if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st->cursor > 0){
-            size_t prev = utf8_drop_last(st->text, st->cursor);
-            st->cursor = text_erase_(st->text, prev, st->cursor);
+        if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st.cursor > 0){
+            size_t prev = utf8_drop_last(st.text, st.cursor);
+            st.cursor = text_erase_(st.text, prev, st.cursor);
+            res.changed = 1;
         }
         if(ui->key_in & TIMUI_KEYIN_DELETE){
-            size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
-            (void)text_erase_(st->text, st->cursor, nxt);
+            size_t nxt = utf8_next_(st.text, st.cursor, strlen(st.text));
+            if(nxt > st.cursor){
+                (void)text_erase_(st.text, st.cursor, nxt);
+                res.changed = 1;
+            }
         }
         ui->text_in_len = 0;
+        ui->enter_count = 0;
         ui->key_in = 0;
     }
-    { TimuiStyle sst = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
-      content = timui_scroll_begin(f, r, st->scroll_y);
+    { TimuiStyle sst = timui_widget_style_(ui, TIMUI_WIDGET_TEXT_AREA,
+          ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+          ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
+      content = timui_scroll_begin(f, r, st.scroll_y);
       i = 0;
-      while(i < st->cap && st->text[i]){
+      while(i < st.cap && st.text[i]){
           size_t ls = i;
-          while(i < st->cap && st->text[i] && st->text[i] != '\n'){
-              if(st->text[i] == '\r') break;  /* \r or \r\n line break */
+          while(i < st.cap && st.text[i] && st.text[i] != '\n'){
+              if(st.text[i] == '\r') break;  /* \r or \r\n line break */
               i++;
           }
           timui_draw_text(&ui->curr, content.x, content.y + y,
-                          (TimuiStr){ st->text + ls, i - ls }, sst);
-          if(i < st->cap && (st->text[i] == '\r' || st->text[i] == '\n')){
-              if(st->text[i] == '\r' && i + 1 < st->cap && st->text[i+1] == '\n') i++;
+                          (TimuiStr){ st.text + ls, i - ls }, sst);
+          if(i < st.cap && (st.text[i] == '\r' || st.text[i] == '\n')){
+              if(st.text[i] == '\r' && i + 1 < st.cap && st.text[i+1] == '\n') i++;
               i++;
           }
           y++;
@@ -5174,26 +6412,42 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
       /* auto-scroll to keep the cursor visible (computed before scroll_begin next frame) */
       {  int cursor_row = 0;
          size_t ci;
-         for(ci = 0; ci < st->cursor && ci < st->cap; ci++)
-             if(st->text[ci] == '\n' || st->text[ci] == '\r'){
+         for(ci = 0; ci < st.cursor && ci < st.cap; ci++)
+             if(st.text[ci] == '\n' || st.text[ci] == '\r'){
                  cursor_row++;
-                 if(st->text[ci] == '\r' && ci + 1 < st->cap && st->text[ci+1] == '\n') ci++;
+                 if(st.text[ci] == '\r' && ci + 1 < st.cap && st.text[ci+1] == '\n') ci++;
              }
-         if(cursor_row < st->scroll_y) st->scroll_y = cursor_row;
-         if(cursor_row >= st->scroll_y + r.h) st->scroll_y = cursor_row - r.h + 1;
-         if(st->scroll_y < 0) st->scroll_y = 0;
+         if(cursor_row < st.scroll_y) st.scroll_y = cursor_row;
+         if(cursor_row >= st.scroll_y + r.h) st.scroll_y = cursor_row - r.h + 1;
+         if(st.scroll_y < 0) st.scroll_y = 0;
       }
       timui_scroll_end(f);
       if(ir.focused){                                 /* F1.4: request the hardware cursor */
           int crow, ccol;
-          text_pos_(st->text, st->cursor, &crow, &ccol);
-          if(crow >= st->scroll_y && crow < st->scroll_y + r.h && ccol < r.w){
+          text_pos_(st.text, st.cursor, &crow, &ccol);
+          if(crow >= st.scroll_y && crow < st.scroll_y + r.h && ccol < r.w){
               ui->cursor_x = r.x + ccol;                /* content.x == r.x (vertical scroll only) */
-              ui->cursor_y = r.y + (crow - st->scroll_y);
+              ui->cursor_y = r.y + (crow - st.scroll_y);
               ui->cursor_visible = 1;
           }
       }
     }
+    res.state = st;
+    return res;
+}
+TIMUI_API TimuiTextAreaResult timui_text_area_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                  TimuiTextAreaState *state, uint32_t flags){
+    TimuiTextAreaResult res;
+    if(!state){
+        TimuiTextAreaState empty = {0};
+        return timui_text_area_ex(f, id, r, empty, flags);
+    }
+    res = timui_text_area_ex(f, id, r, *state, flags);
+    *state = res.state;
+    return res;
+}
+TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *state){
+    (void)timui_text_area_mut(f, id, r, state, TIMUI_TEXT_AREA_DEFAULT);
 }
 /* ---- Windows ConPTY backend (v0.2) ------------------------------------ *
  * On Windows, ConPTY (CreatePseudoConsole) provides the equivalent of POSIX
@@ -5260,11 +6514,6 @@ static void kitty_write_all(TimuiTransport *t, const void *data, size_t len){
     }
 }
 
-TIMUI_API void timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable){
-    if(!ui) return;
-    if(enable) ui->caps.flags |= (uint32_t)cap;
-    else       ui->caps.flags &= ~(uint32_t)cap;
-}
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size){
     TimuiImage *img;
     TimuiAllocator al;
@@ -5405,7 +6654,7 @@ void timui_images_flush_(Timui *ui){
  * `full` is the uncropped rect (== visible when not clipping). The caller
  * reserves the region (draws its own background, no text). */
 static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRect full){
-    if(timui_caps_has(&ui->caps, TIMUI_CAP_KITTY_GRAPHICS)){
+    if(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_KITTY){
         if(ui->img_place_count < (int)(sizeof(ui->img_place) / sizeof(ui->img_place[0]))){
             ui->img_place[ui->img_place_count].img  = img;
             ui->img_place[ui->img_place_count].rect = visible;
@@ -5414,9 +6663,10 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
         }
     } else {
         /* placeholder fallback (cells) for non-Kitty terminals */
-        timui_draw_fill(&ui->curr, visible, timui_theme_style(&ui->theme, TIMUI_SLOT_INPUT));
+        timui_draw_fill(&ui->curr, visible,
+                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_INPUT, 0));
         timui_draw_text(&ui->curr, visible.x, visible.y, TIMUI_STR_LIT("[img]"),
-                        timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT_DIM));
+                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_TEXT_DIM, 0));
     }
 }
 TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){
@@ -5442,7 +6692,7 @@ TIMUI_API void timui_menu_bar_begin(TimuiFrame *f, TimuiMenuBar *bar, TimuiRect 
     bar->bar_x = r.x;
     bar->bar_y = r.y;
     bar->clicked = 0;
-    timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_MENU));
+    timui_draw_fill(&ui->curr, r, timui_widget_style_(ui, TIMUI_WIDGET_MENU, TIMUI_SLOT_MENU, 0));
 }
 TIMUI_API int timui_menu_begin(TimuiFrame *f, TimuiMenuBar *bar, TimuiId id, TimuiStr label){
     Timui *ui;
@@ -5457,7 +6707,9 @@ TIMUI_API int timui_menu_begin(TimuiFrame *f, TimuiMenuBar *bar, TimuiId id, Tim
     if(ir.clicked) bar->open = (bar->open == id) ? 0 : id;     /* release toggles */
     is_open = (bar->open == id);
     {
-        TimuiStyle st = timui_theme_style(&ui->theme, is_open ? TIMUI_SLOT_MENU_ACTIVE : TIMUI_SLOT_MENU);
+        TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_MENU,
+            is_open ? TIMUI_SLOT_MENU_ACTIVE : TIMUI_SLOT_MENU,
+            is_open ? TIMUI_STYLE_STATE_ACTIVE : 0);
         timui_draw_row_(&ui->curr, hdr, 1, label, st);
     }
     bar->bar_x += hdr.w;
@@ -5474,7 +6726,9 @@ TIMUI_API int timui_menu_item(TimuiFrame *f, TimuiMenuBar *bar, TimuiId id, Timu
     ir = timui_interact_button(&ui->ia, id, r);
     if(ir.hovered && ui->ia.mouse_pressed) bar->clicked = 1;   /* press on item */
     {
-        TimuiStyle st = timui_theme_style(&ui->theme, ir.hovered ? TIMUI_SLOT_MENU_ACTIVE : TIMUI_SLOT_MENU);
+        TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_MENU,
+            ir.hovered ? TIMUI_SLOT_MENU_ACTIVE : TIMUI_SLOT_MENU,
+            ir.hovered ? TIMUI_STYLE_STATE_HOVERED : 0);
         timui_draw_row_(&ui->curr, r, 2, label, st);
     }
     bar->item_y++;

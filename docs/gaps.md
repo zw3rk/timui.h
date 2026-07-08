@@ -53,9 +53,11 @@ These are known limitations promoted into the next planned follow-up. See
   lifecycle, resize path, close semantics, VT mode setup, and `size_t` to
   `DWORD` chunking remain to be implemented. Do not claim Windows support until
   compile checks and a real Windows smoke run are green.
-- **Image protocols** are Kitty-only. Sixel and iTerm2 inline images should be
-  added through a protocol-neutral image layer; ConPTY should stay a transport,
-  not a Windows-specific graphics abstraction.
+- **Image protocol emitters** are still Kitty-only. The public protocol enum,
+  capability selector, force override, and non-Kitty placeholder behavior are in
+  tree, but Sixel and iTerm2 inline image wire emitters still need to land
+  through the protocol-neutral image layer. ConPTY should stay a transport, not
+  a Windows-specific graphics abstraction.
 
 ## Still open (documented limitations, not Phase 1.5)
 

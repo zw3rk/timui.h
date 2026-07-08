@@ -37,6 +37,7 @@ TIMUI_TEST(test_caps_multiplexer_kitty_passthrough){
      * cursor moves. Run outside the multiplexer for real images. */
     timui_caps_detect(&c, "tmux-256color", "kitty", "truecolor");
     TIMUI_CHECK(!timui_caps_has(&c, TIMUI_CAP_KITTY_GRAPHICS));   /* stripped under tmux */
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_NONE);
     TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_KITTY_KEYBOARD));
     TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_256_COLOR));
 }
@@ -56,4 +57,25 @@ TIMUI_TEST(test_caps_force_masks){
     TIMUI_CHECK(!timui_caps_has(&c, TIMUI_CAP_KITTY_KEYBOARD));
     timui_caps_apply_force(&c, TIMUI_CAP_KITTY_KEYBOARD, 0);   /* force-enable */
     TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_KITTY_KEYBOARD));
+}
+
+TIMUI_TEST(test_caps_image_protocol_selection){
+    TimuiCaps c = {0};
+    TIMUI_CHECK(timui_caps_image_protocol(NULL) == TIMUI_IMAGE_PROTOCOL_NONE);
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_NONE);
+
+    timui_caps_detect(&c, "xterm-ghostty", "ghostty", "truecolor");
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_KITTY);
+
+    c.flags = TIMUI_CAP_ITERM2_IMAGES;
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_ITERM2);
+
+    c.flags = TIMUI_CAP_SIXEL_GRAPHICS;
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_SIXEL);
+
+    c.flags = TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES;
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_SIXEL);
+
+    c.flags = TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES;
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_KITTY);
 }

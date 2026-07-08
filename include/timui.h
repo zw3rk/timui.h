@@ -799,8 +799,17 @@ typedef enum {
     TIMUI_CAP_KITTY_KEYBOARD  = 1u << 7,
     TIMUI_CAP_OSC8_HYPERLINKS = 1u << 8,
     TIMUI_CAP_KITTY_GRAPHICS  = 1u << 9,
-    TIMUI_CAP_UNICODE_CORE    = 1u << 10
+    TIMUI_CAP_UNICODE_CORE    = 1u << 10,
+    TIMUI_CAP_SIXEL_GRAPHICS  = 1u << 11,
+    TIMUI_CAP_ITERM2_IMAGES   = 1u << 12
 } TimuiCapFlags;
+
+typedef enum {
+    TIMUI_IMAGE_PROTOCOL_NONE = 0,
+    TIMUI_IMAGE_PROTOCOL_KITTY,
+    TIMUI_IMAGE_PROTOCOL_SIXEL,
+    TIMUI_IMAGE_PROTOCOL_ITERM2
+} TimuiImageProtocol;
 
 typedef struct {
     uint32_t flags;
@@ -819,8 +828,12 @@ typedef struct {
 TIMUI_API void timui_caps_detect(TimuiCaps *caps, const char *term, const char *term_program, const char *colorterm);
 TIMUI_API void timui_caps_apply_force(TimuiCaps *caps, uint32_t force_on, uint32_t force_off);
 TIMUI_API int  timui_caps_has(const TimuiCaps *caps, TimuiCapFlags cap);
+/* Select the preferred image protocol from explicit capability flags. Kitty is
+ * preferred when present because it is the implemented and richest path in
+ * this release; otherwise Sixel wins over iTerm2 for broader terminal utility. */
+TIMUI_API TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *caps);
 /* The capabilities detected for an open ui — so apps can, e.g., choose an inline
- * Kitty-graphics image vs a text fallback: timui_caps_has(timui_caps(ui), ...). */
+ * image vs a text fallback: timui_image_protocol(ui) != TIMUI_IMAGE_PROTOCOL_NONE. */
 TIMUI_API const TimuiCaps *timui_caps(const Timui *ui);
 
 /* ---- Synchronized output (DEC 2026) + cursor -------------------------- *
@@ -1178,13 +1191,13 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
 TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);
 TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
 
-/* ---- v0.2: Kitty graphics images -------------------------------------- *
+/* ---- v0.2: terminal images -------------------------------------------- *
  * timui_image_draw records a placement; the image is transmitted (once, by id)
  * and placed ON TOP of the cell diff in timui_end, so it composes with the cell
  * renderer instead of being clobbered by it. `id` is assigned on first transmit
  * (0 = not yet sent). The caller reserves the region (draws its own background
- * and no text there). Kitty-graphics terminals only; a "[img]" cell placeholder
- * is drawn otherwise. */
+ * and no text there). This release emits Kitty graphics; other protocols draw
+ * a "[img]" cell placeholder until their emitters land. */
 typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id;
                             int px_w, px_h; } TimuiImage;   /* pixel size from the PNG IHDR */
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
@@ -1195,7 +1208,11 @@ TIMUI_API void        timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect
  * an image as it scrolls off a pane. `visible` must be within `full`. */
 TIMUI_API void        timui_image_draw_clipped(TimuiFrame *f, TimuiImage *img,
                                                TimuiRect full, TimuiRect visible);
+TIMUI_API TimuiImageProtocol timui_image_protocol(const Timui *ui);
 TIMUI_API void        timui_force_cap(Timui *ui, TimuiCapFlags cap, int enable);
+/* Override the active image cap set. Unknown protocol values clear all image
+ * caps and therefore select TIMUI_IMAGE_PROTOCOL_NONE. */
+TIMUI_API void        timui_force_image_protocol(Timui *ui, TimuiImageProtocol protocol);
 
 /* ---- Chart / indicator widgets (W3) ----------------------------------- *
  * Pure UI over caller-supplied values (NO DSP here): vertical bar charts with

@@ -33,23 +33,27 @@ What `timui.h` speaks on the wire, and where it falls back.
 - **Alternate screen** (`CSI ? 1049 h/l`), title (`OSC 0 ; … BEL`).
 - **OSC 8 hyperlinks**: emitted when `TIMUI_CAP_OSC8_HYPERLINKS` is set, with
   cell-level link tracking for hit-testing.
-- **Kitty graphics**: `timui_image_*` accepts PNG bytes and currently emits the
-  Kitty graphics protocol when `TIMUI_CAP_KITTY_GRAPHICS` is set. Non-capable
-  terminals get a text placeholder fallback.
+- **Terminal images**: `timui_image_*` accepts PNG bytes. Protocol selection is
+  exposed via `timui_caps_image_protocol` / `timui_image_protocol`, with Kitty
+  preferred when available, then Sixel, then iTerm2. This release emits the
+  Kitty graphics protocol only; Sixel/iTerm2 caps currently fall back to the
+  same text placeholder instead of emitting unsupported escapes.
 
 ## Capability gating
 
 Detection (`timui_caps_detect`) is conservative and deterministic from
 `TERM` / `TERM_PROGRAM` / `COLORTERM`: modern terminals get the full set;
-multiplexers (**tmux / screen / zellij**) conservatively drop kitty-keyboard /
-graphics / sync (unless passthrough is known); unknown terminals fall back to a
-safe 16-colour, ASCII-friendly minimum. `force_on` / `force_off` masks override.
+multiplexers (**tmux / screen / zellij**) conservatively drop image protocols
+and, unless passthrough is known, kitty-keyboard / sync; unknown terminals fall
+back to a safe 16-colour, ASCII-friendly minimum. `force_on` / `force_off`
+masks override, and `timui_force_image_protocol` switches the active image cap
+set for tests or user overrides.
 
 ## Planned
 
 - **Windows ConPTY**: currently a runtime-unsupported backend stub. It belongs
   below the protocol layer as a transport/lifecycle backend, not as a graphics
   abstraction.
-- **Sixel and iTerm2 images**: planned as additional wire protocols behind the
-  existing image API/capability model. Kitty remains the only implemented image
-  wire protocol today.
+- **Sixel and iTerm2 emitters**: planned as additional wire protocols behind
+  the existing image API/capability model. The capability enum and selector are
+  in place; Kitty remains the only implemented image wire protocol today.
