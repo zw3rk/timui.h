@@ -13,6 +13,7 @@ int main(void){
     typedef void (*test_fn)(void);
     test_fn tests[] = {
         test_rect_cuts,
+        test_rect_cut_null_safe,
         test_rect_split,
         test_rect_inset_clamp,
         test_ids_stable,

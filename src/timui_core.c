@@ -1077,7 +1077,8 @@ TIMUI_API void timui_arena_free(TimuiArena *a){
 
 /* ---- rect layout (clamps to non-negative; never overflows the parent) -- */
 TIMUI_API TimuiRect timui_cut_top(TimuiRect *r, int h){
-    TimuiRect out;
+    TimuiRect out = {0, 0, 0, 0};
+    if(!r) return out;
     if(h < 0) h = 0;
     if(h > r->h) h = r->h;
     out.x = r->x; out.y = r->y; out.w = r->w; out.h = h;
@@ -1085,7 +1086,8 @@ TIMUI_API TimuiRect timui_cut_top(TimuiRect *r, int h){
     return out;
 }
 TIMUI_API TimuiRect timui_cut_bottom(TimuiRect *r, int h){
-    TimuiRect out;
+    TimuiRect out = {0, 0, 0, 0};
+    if(!r) return out;
     if(h < 0) h = 0;
     if(h > r->h) h = r->h;
     r->h -= h;
@@ -1093,7 +1095,8 @@ TIMUI_API TimuiRect timui_cut_bottom(TimuiRect *r, int h){
     return out;
 }
 TIMUI_API TimuiRect timui_cut_left(TimuiRect *r, int w){
-    TimuiRect out;
+    TimuiRect out = {0, 0, 0, 0};
+    if(!r) return out;
     if(w < 0) w = 0;
     if(w > r->w) w = r->w;
     out.x = r->x; out.y = r->y; out.w = w; out.h = r->h;
@@ -1101,7 +1104,8 @@ TIMUI_API TimuiRect timui_cut_left(TimuiRect *r, int w){
     return out;
 }
 TIMUI_API TimuiRect timui_cut_right(TimuiRect *r, int w){
-    TimuiRect out;
+    TimuiRect out = {0, 0, 0, 0};
+    if(!r) return out;
     if(w < 0) w = 0;
     if(w > r->w) w = r->w;
     r->w -= w;

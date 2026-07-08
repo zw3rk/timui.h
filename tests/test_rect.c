@@ -19,6 +19,18 @@ TIMUI_TEST(test_rect_cuts){
     TIMUI_CHECK(r.h == 0);
 }
 
+TIMUI_TEST(test_rect_cut_null_safe){
+    TimuiRect r;
+    r = timui_cut_top(NULL, 1);
+    TIMUI_CHECK(r.x == 0 && r.y == 0 && r.w == 0 && r.h == 0);
+    r = timui_cut_bottom(NULL, 1);
+    TIMUI_CHECK(r.x == 0 && r.y == 0 && r.w == 0 && r.h == 0);
+    r = timui_cut_left(NULL, 1);
+    TIMUI_CHECK(r.x == 0 && r.y == 0 && r.w == 0 && r.h == 0);
+    r = timui_cut_right(NULL, 1);
+    TIMUI_CHECK(r.x == 0 && r.y == 0 && r.w == 0 && r.h == 0);
+}
+
 TIMUI_TEST(test_rect_split){
     TimuiRect a, b;
     timui_split_cols(TIMUI_RECT(0, 0, 100, 10), 0.25f, &a, &b);
