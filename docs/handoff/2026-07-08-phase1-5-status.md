@@ -9,12 +9,14 @@ date: 2026-07-08
 ## Landing State
 
 - Branch: `phase1-5-impl`
-- Local master checkpoint before this slice: `3a28af1` (`images: scale raw rgba sixel output`)
-- Merge status: `phase1-5-impl` fast-forwarded into local
-  `/Users/angerman/Projects/zw3rk/timui.h-master`
+- Latest implementation checkpoint: `1614016` (`images: honor no-images builds`)
+- Previous local master checkpoint before the `TIMUI_NO_IMAGES` slice:
+  `d471470` (`images: use protocol-neutral source module`)
+- Merge status: ready to fast-forward local
+  `/Users/angerman/Projects/zw3rk/timui.h-master` after this handoff update
 - Push status: not pushed
-- Remote state before this slice: local `master` is ahead of `github/master` by
-  19 commits
+- Remote state before this slice: local `master` was ahead of `github/master`
+  by 20 commits
 
 ## Read First
 
@@ -43,6 +45,13 @@ date: 2026-07-08
   when terminal cell-pixel geometry is known.
 - PNG images forced to Sixel, PNG/non-raw clipped Sixel draws, and clipped
   iTerm2 draws intentionally render `[img]`.
+- `TIMUI_NO_IMAGES` is now active as an API-preserving no-terminal-image mode:
+  image constructors/free/draw APIs still compile, image caps are stripped even
+  when forced on, protocol selectors return `TIMUI_IMAGE_PROTOCOL_NONE`, and
+  draws render `[img]` without Kitty, iTerm2, or Sixel escapes.
+- `make check` now includes `check-no-images`, and `make release-check`
+  compiles the amalgamated release header both normally and with
+  `TIMUI_NO_IMAGES`.
 - Win32 ConPTY is implemented behind `_WIN32`, runtime-probed for
   `CreatePseudoConsole`/`ResizePseudoConsole`/`ClosePseudoConsole`, and covered
   by POSIX fallback/helper tests plus a MinGW compile seam in `make check`.
@@ -91,6 +100,21 @@ date: 2026-07-08
   source rename.
 - `nix develop -c make check` - passed after the protocol-neutral image source
   rename, including build, 295 tests, and the MinGW ConPTY compile seam.
+- `nix develop -c make check-no-images` - first failed before implementation
+  (16/24 checks), then failed a mixed-cap regression check (1/26 checks), then
+  passed after the cap-mask fix (26 checks).
+- `nix develop -c make www` - passed after the `TIMUI_NO_IMAGES` header/docs
+  changes, refreshing `www/timui.h` and `www/LICENSE`.
+- `nix develop -c make release-check` - passed after the `TIMUI_NO_IMAGES`
+  change; the release header compiles standalone in both normal and no-images
+  modes.
+- `nix develop -c make check` - passed after the `TIMUI_NO_IMAGES` change:
+  build, 295 tests, `check-no-images` (26 checks), and the MinGW ConPTY compile
+  seam.
+- `nix develop -c make test-san SAN=undefined` - passed after the
+  `TIMUI_NO_IMAGES` change, 295 tests, existing pty Esc sandbox skip.
+- `nix develop -c make check-vt-gif-all` - passed after the `TIMUI_NO_IMAGES`
+  change; Pillow emitted a deprecation warning in `tools/vtg_probe.py`.
 
 ## Next Safe Move
 
