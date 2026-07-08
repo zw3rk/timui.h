@@ -11,10 +11,13 @@ date: 2026-07-08
 - Branch: `phase1-5-kitty-transmit`
 - Latest implementation checkpoint: `61705f1`
   (`images: decode plain png for sixel`)
+- Latest integrated local master checkpoint: `ca74b88`
+  (`docs: update phase 1.5 png decode handoff`)
 - Previous local master checkpoint before this slice:
   `5392c72` (`smoke: add phase 1.5 operator harnesses`)
-- Merge status: ready to fast-forward local
-  `/Users/angerman/Projects/zw3rk/timui.h-master` after this checkpoint
+- Merge status: fast-forwarded into local
+  `/Users/angerman/Projects/zw3rk/timui.h-master` at `ca74b88`; this
+  evidence-copy update is a follow-up docs checkpoint
 - Push status: not pushed
 - Remote state before this slice: local `master` was ahead of `github/master`
   by 25 commits
@@ -91,10 +94,28 @@ date: 2026-07-08
 - AddressSanitizer did not complete locally: `nix develop -c make test-san
   SAN=address` hung in macOS ASAN runtime initialization before entering the
   test harness. A `sample` of the process showed `__asan::AsanInitInternal` /
-  `__sanitizer::MemoryRangeIsAvailable`; the run was interrupted.
+  `__sanitizer::MemoryRangeIsAvailable`; the run was interrupted. A follow-up
+  run on `ca74b88` was still silent after roughly 90 seconds and was also
+  interrupted, so ASAN remains weak evidence rather than accepted.
 
 ## Verification Already Run
 
+- `nix develop -c make build` - passed on `ca74b88`.
+- `nix develop -c make test` - passed on `ca74b88`, 307 tests, existing pty Esc
+  sandbox skip.
+- `nix develop -c make check check-layout check-grid check-tabs check-chat-text
+  check-chat-highlight check-irc smoke-irc smoke-gallery check-image-smoke
+  vt-test release-check check-vt-gif-all` - passed on `ca74b88`; this covered
+  build, 307 tests, `check-no-images` (26 checks), both Win32 ConPTY compile
+  seams, website license/link checks, layout/grid/tabs, chat text/highlight,
+  IRC parser and smoke, gallery smoke, image smoke harness, vt-tests (315
+  tests), release header compile, and all vt_gif renderer checks.
+- `nix develop -c make test-san SAN=address` - rerun on `ca74b88`; produced no
+  output for roughly 90 seconds and was interrupted. Do not count ASAN as green
+  from this macOS runner.
+- `nix develop -c make www check-www test-san SAN=undefined` - passed after the
+  website evidence-copy update; refreshed `www/timui.h` and `www/LICENSE`,
+  verified website license links, and passed UBSAN with 307 tests.
 - `nix develop -c make test` - intentionally failed before the built-in
   PNG-to-Sixel decode slice: `test_sixel_plain_png_decodes_to_dcs` and
   `test_sixel_clipped_png_decodes_and_crops` rendered the placeholder instead

@@ -56,7 +56,9 @@ These are known limitations promoted into the next planned follow-up. See
   Kitty graphics, iTerm2 inline PNG images, raw-RGBA Sixel, PNG+RGBA sidecar
   Sixel, and built-in bounded plain-PNG-to-Sixel decode are in tree. Remaining
   image gaps: real iTerm2/Sixel terminal captures via `make smoke-image-live
-  PROTO=sixel|iterm2`, and any mux passthrough story.
+  PROTO=sixel|iterm2`. Multiplexer image passthrough is deliberately conservative
+  for Phase 1.5: image caps are stripped under tmux/screen/zellij unless a later
+  pass designs and tests a narrower passthrough contract.
   ConPTY should stay a transport, not a Windows-specific graphics abstraction.
 
 ## Still open (documented limitations, not Phase 1.5)

@@ -84,8 +84,9 @@ Keep Sixel as the next image emitter slice. The smallest honest implementation
 should avoid promoting `stb_image` into the public library for now: add a
 raw-RGBA image constructor, copy caller-owned pixel rows with strict
 dimension/stride/overflow validation, and emit Sixel only for that raw pixel
-kind. Plain PNG images forced to Sixel should continue to draw `[img]` until
-PNG decode is deliberately designed.
+kind. At that intermediate slice, plain PNG images forced to Sixel continued to
+draw `[img]`; the final local implementation state below supersedes this after
+the bounded PNG decoder decision.
 
 Implemented state: `timui_image_from_rgba` copies rows into tightly packed RGBA
 storage and the Sixel emitter handles raw RGBA images with up to 16 opaque exact

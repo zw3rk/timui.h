@@ -72,11 +72,14 @@ Ctrl / Alt / …) is applied to ~ finals, letter finals, and CSI-u.
 
 ## Capabilities & fallback
 
-Detection is conservative and deterministic (no live queries in v0.1): modern
-terminals (Ghostty / kitty / WezTerm / Alacritty / foot / Rio) get the full
-cap set; multiplexers (tmux / screen / zellij) drop kitty-keyboard / graphics
-/ sync; unknown terminals fall back to a safe 16-colour minimum. Force masks
-override the result.
+Detection is conservative and deterministic from environment hints: modern
+terminals (Ghostty / kitty / WezTerm / Alacritty / foot / Rio) get the VT
+features they are known to support, while multiplexers (tmux / screen /
+zellij) drop protocol-sensitive keyboard, sync, and image caps unless
+passthrough is known. Image selection is protocol-neutral at the draw site:
+Kitty is preferred, then Sixel, then iTerm2, and `TIMUI_NO_IMAGES` strips image
+caps entirely while preserving placeholder rendering. Unknown terminals fall
+back to a safe 16-colour minimum. Force masks override the result.
 
 ## Threading
 
