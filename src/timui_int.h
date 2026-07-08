@@ -87,19 +87,20 @@ struct Timui {
     int               event_count;
     struct { TimuiRect clip; int has_clip; } clip_stack[8];
     int               clip_count;
-    /* Kitty-graphics image placements recorded this frame by timui_image_draw;
-     * transmitted (once, keyed by TimuiImage.id) and placed ON TOP of the cell
-     * diff in timui_end, so they compose with the renderer. */
+    /* Terminal-image placements recorded this frame by timui_image_draw;
+     * emitted ON TOP of the cell diff in timui_end, so they compose with the
+     * renderer. Protocol-specific lifecycle state is tracked separately. */
     struct { TimuiImage *img; TimuiRect rect; TimuiRect full; } img_place[8];   /* rect=visible, full=uncropped */
     int               img_place_count;
-    int               img_last_count;   /* placements emitted last frame (for shrink-cleanup) */
+    int               img_last_count;       /* placements emitted last frame */
+    TimuiImageProtocol img_last_protocol;   /* protocol that emitted those placements */
     uint32_t          next_image_id;
     /* Z27: menu state moved out of Timui into the caller-owned TimuiMenuBar. */
     TimuiFrame        frame;
 };
 
-/* Transmit+place any images recorded this frame (Kitty graphics), on top of the
- * cell diff. Defined in timui_kitty.c; called by timui_end in timui_core.c. */
+/* Emit any images recorded this frame, on top of the cell diff. Defined in
+ * timui_kitty.c; called by timui_end in timui_core.c. */
 void timui_images_flush_(Timui *ui);
 
 /* Z6: the single shared UTF-8 encoder. Encodes an already-validated codepoint

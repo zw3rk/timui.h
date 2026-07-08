@@ -84,8 +84,9 @@ Rendering and terminal:
 - Cell buffer, clipping, drawing primitives, panels, borders.
 - Truecolor SGR, text attributes, cursor placement, synchronized output.
 - OSC 8 hyperlinks.
-- Kitty graphics image placement and clipped image drawing, with placeholder
-  fallback outside Kitty-graphics-capable terminals.
+- Kitty graphics image placement and clipped image drawing, plus iTerm2 inline
+  images for unclipped PNG draws; placeholder fallback outside supported image
+  protocol paths.
 - Minimal UTF-8 decode and display width, including CJK/fullwidth awareness.
 
 Input and interaction:
@@ -325,8 +326,8 @@ int main(void) {
   bar, message boxes.
 - Thread-safe `timui_post`; all other UI/frame/widget APIs are UI-thread only.
 - Fake transport, snapshot/golden tests, libvterm round-trip verification.
-- Kitty graphics support where the terminal supports it; fallback placeholder
-  elsewhere.
+- Kitty graphics support where the terminal supports it, and iTerm2 inline
+  images for unclipped PNG draws; fallback placeholder elsewhere.
 
 ## Claims to avoid or qualify
 
@@ -334,8 +335,8 @@ int main(void) {
 - Do not say "full Unicode" or "full bidi." The chat example has a useful
   Hebrew/Arabic approximation and CJK/emoji rendering support, but full UAX #9,
   grapheme clusters, ZWJ emoji, and skin-tone sequences remain future work.
-- Do not say "images work everywhere." They are Kitty-graphics-dependent in the
-  terminal, with a fallback placeholder.
+- Do not say "images work everywhere." They are terminal-protocol-dependent
+  (Kitty graphics or iTerm2 inline images today), with a fallback placeholder.
 - Do not imply `make check` alone is the whole project gate. CI also runs
   `release-check`, golden staleness checks, `vt-test`, and sanitizers.
 - Do not claim a website build system exists. This repo has product docs and

@@ -35,9 +35,10 @@ What `timui.h` speaks on the wire, and where it falls back.
   cell-level link tracking for hit-testing.
 - **Terminal images**: `timui_image_*` accepts PNG bytes. Protocol selection is
   exposed via `timui_caps_image_protocol` / `timui_image_protocol`, with Kitty
-  preferred when available, then Sixel, then iTerm2. This release emits the
-  Kitty graphics protocol only; Sixel/iTerm2 caps currently fall back to the
-  same text placeholder instead of emitting unsupported escapes.
+  preferred when available, then Sixel, then iTerm2. This release emits Kitty
+  graphics and iTerm2 inline images (`OSC 1337;File=...`) for unclipped draws.
+  Sixel caps, and iTerm2 clipped draws, deliberately fall back to the same text
+  placeholder instead of emitting unsupported or lossy escapes.
 
 ## Capability gating
 
@@ -54,6 +55,6 @@ set for tests or user overrides.
 - **Windows ConPTY**: currently a runtime-unsupported backend stub. It belongs
   below the protocol layer as a transport/lifecycle backend, not as a graphics
   abstraction.
-- **Sixel and iTerm2 emitters**: planned as additional wire protocols behind
-  the existing image API/capability model. The capability enum and selector are
-  in place; Kitty remains the only implemented image wire protocol today.
+- **Sixel emitter**: planned as an additional wire protocol behind the existing
+  image API/capability model. The capability enum and selector are in place,
+  but Sixel needs a real pixel source/encoder before timui can honestly emit it.

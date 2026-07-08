@@ -114,9 +114,12 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   behavior is preserved, non-Kitty image protocols deliberately draw the
   placeholder until emitters exist, and stale Kitty placements are cleared when
   forcing images off.
+- DONE: iTerm2 inline image emission is implemented for unclipped PNG draws via
+  OSC 1337, including stale Kitty placement cleanup when switching from Kitty to
+  iTerm2 and placeholder fallback for clipped iTerm2 draws.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
-  API is already generic PNG-in/draw-out; Kitty is the only implemented terminal
-  wire backend today.
+  API is already generic PNG-in/draw-out; Sixel remains placeholder-only until a
+  real pixel source/encoder is selected.
 - Add capability selection for Kitty, Sixel, iTerm2 inline images, and none.
   Sixel should be prioritized before iTerm2 because it is useful for Windows
   Terminal and classic terminal compatibility.

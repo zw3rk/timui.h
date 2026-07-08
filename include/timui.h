@@ -1192,12 +1192,13 @@ TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_
 TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
 
 /* ---- v0.2: terminal images -------------------------------------------- *
- * timui_image_draw records a placement; the image is transmitted (once, by id)
- * and placed ON TOP of the cell diff in timui_end, so it composes with the cell
- * renderer instead of being clobbered by it. `id` is assigned on first transmit
- * (0 = not yet sent). The caller reserves the region (draws its own background
- * and no text there). This release emits Kitty graphics; other protocols draw
- * a "[img]" cell placeholder until their emitters land. */
+ * timui_image_draw records a placement emitted ON TOP of the cell diff in
+ * timui_end, so it composes with the cell renderer instead of being clobbered
+ * by it. Kitty transmits once by `id` and places by rect; iTerm2 emits an
+ * inline File payload per draw. The caller reserves the region (draws its own
+ * background and no text there). This release emits Kitty graphics and iTerm2
+ * inline images; unsupported protocols and unsupported clipped draws render a
+ * "[img]" cell placeholder. */
 typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id;
                             int px_w, px_h; } TimuiImage;   /* pixel size from the PNG IHDR */
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);

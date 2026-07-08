@@ -1193,12 +1193,13 @@ TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_
 TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
 
 /* ---- v0.2: terminal images -------------------------------------------- *
- * timui_image_draw records a placement; the image is transmitted (once, by id)
- * and placed ON TOP of the cell diff in timui_end, so it composes with the cell
- * renderer instead of being clobbered by it. `id` is assigned on first transmit
- * (0 = not yet sent). The caller reserves the region (draws its own background
- * and no text there). This release emits Kitty graphics; other protocols draw
- * a "[img]" cell placeholder until their emitters land. */
+ * timui_image_draw records a placement emitted ON TOP of the cell diff in
+ * timui_end, so it composes with the cell renderer instead of being clobbered
+ * by it. Kitty transmits once by `id` and places by rect; iTerm2 emits an
+ * inline File payload per draw. The caller reserves the region (draws its own
+ * background and no text there). This release emits Kitty graphics and iTerm2
+ * inline images; unsupported protocols and unsupported clipped draws render a
+ * "[img]" cell placeholder. */
 typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id;
                             int px_w, px_h; } TimuiImage;   /* pixel size from the PNG IHDR */
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
@@ -1424,19 +1425,20 @@ struct Timui {
     int               event_count;
     struct { TimuiRect clip; int has_clip; } clip_stack[8];
     int               clip_count;
-    /* Kitty-graphics image placements recorded this frame by timui_image_draw;
-     * transmitted (once, keyed by TimuiImage.id) and placed ON TOP of the cell
-     * diff in timui_end, so they compose with the renderer. */
+    /* Terminal-image placements recorded this frame by timui_image_draw;
+     * emitted ON TOP of the cell diff in timui_end, so they compose with the
+     * renderer. Protocol-specific lifecycle state is tracked separately. */
     struct { TimuiImage *img; TimuiRect rect; TimuiRect full; } img_place[8];   /* rect=visible, full=uncropped */
     int               img_place_count;
-    int               img_last_count;   /* placements emitted last frame (for shrink-cleanup) */
+    int               img_last_count;       /* placements emitted last frame */
+    TimuiImageProtocol img_last_protocol;   /* protocol that emitted those placements */
     uint32_t          next_image_id;
     /* Z27: menu state moved out of Timui into the caller-owned TimuiMenuBar. */
     TimuiFrame        frame;
 };
 
-/* Transmit+place any images recorded this frame (Kitty graphics), on top of the
- * cell diff. Defined in timui_kitty.c; called by timui_end in timui_core.c. */
+/* Emit any images recorded this frame, on top of the cell diff. Defined in
+ * timui_kitty.c; called by timui_end in timui_core.c. */
 void timui_images_flush_(Timui *ui);
 
 /* Z6: the single shared UTF-8 encoder. Encodes an already-validated codepoint
@@ -6495,23 +6497,36 @@ TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid){
     (void)transport; (void)pid;
 }
 #endif
-/* ---- Kitty graphics images (v0.2) ------------------------------------- *
- * Accept PNG bytes; when the terminal supports Kitty graphics, transmit via
- * ESC_G (base64-encoded PNG, f=100); otherwise draw a "[img]" placeholder.
- * Image caching/placement lifecycle is deferred (re-transmit per frame). */
+/* ---- Terminal images (v0.2) ------------------------------------------- *
+ * Accept PNG bytes; Kitty terminals get APC graphics, iTerm2 gets OSC 1337,
+ * and unsupported paths draw a "[img]" placeholder. */
 
 /* Write all len bytes, looping past short writes. A real fd transport may
  * deliver fewer bytes than requested; without this a graphics chunk can split
  * across the header/payload/ST boundary and corrupt the image (G5 residual). */
-static void kitty_write_all(TimuiTransport *t, const void *data, size_t len){
+static void image_write_all_(TimuiTransport *t, const void *data, size_t len){
     const unsigned char *p = (const unsigned char *)data;
     size_t off = 0;
     if(!t || !t->write) return;
     while(off < len){
-        int w = t->write(t, p + off, len - off);
+        size_t chunk = len - off;
+        int w;
+        if(chunk > 4096) chunk = 4096;
+        w = t->write(t, p + off, chunk);
         if(w <= 0) break;                /* error / would-block: best-effort, stop */
-        off += (size_t)w;
+        off += ((size_t)w > chunk) ? chunk : (size_t)w;
     }
+}
+
+static int image_fmt_size_(char *buf, size_t v){
+    char tmp[32];
+    int n = 0, i;
+    do {
+        tmp[n++] = (char)('0' + (v % 10));
+        v /= 10;
+    } while(v > 0);
+    for(i = 0; i < n; i++) buf[i] = tmp[n - 1 - i];
+    return n;
 }
 
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size){
@@ -6532,8 +6547,10 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     img->px_w = img->px_h = 0;
     if(size >= 24){
         const unsigned char *d = (const unsigned char *)data;
-        img->px_w = (int)(((uint32_t)d[16] << 24) | ((uint32_t)d[17] << 16) | ((uint32_t)d[18] << 8) | d[19]);
-        img->px_h = (int)(((uint32_t)d[20] << 24) | ((uint32_t)d[21] << 16) | ((uint32_t)d[22] << 8) | d[23]);
+        uint32_t w = ((uint32_t)d[16] << 24) | ((uint32_t)d[17] << 16) | ((uint32_t)d[18] << 8) | d[19];
+        uint32_t h = ((uint32_t)d[20] << 24) | ((uint32_t)d[21] << 16) | ((uint32_t)d[22] << 8) | d[23];
+        img->px_w = (w <= (uint32_t)INT_MAX) ? (int)w : 0;
+        img->px_h = (h <= (uint32_t)INT_MAX) ? (int)h : 0;
     }
     return img;
 }
@@ -6574,9 +6591,9 @@ static void kitty_transmit_(TimuiTransport *t, uint32_t id, const unsigned char 
                 hdr[hn++] = ',';
             }
             hdr[hn++] = 'm'; hdr[hn++] = '='; hdr[hn++] = is_last ? '0' : '1'; hdr[hn++] = ';';
-            kitty_write_all(t, hdr, (size_t)hn);
-            kitty_write_all(t, buf + sent, chunk);
-            kitty_write_all(t, "\x1b\\", 2);
+            image_write_all_(t, hdr, (size_t)hn);
+            image_write_all_(t, buf + sent, chunk);
+            image_write_all_(t, "\x1b\\", 2);
             sent += chunk; first = 0;
         }
         #undef KITTY_CHUNK
@@ -6603,58 +6620,153 @@ static void kitty_place_(TimuiTransport *t, uint32_t id, int cols, int rows, int
     p = ",c="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(cols > 0 ? cols : 1));
     p = ",r="; while(*p) b[n++] = *p++;  n += fmt_uint(b + n, (unsigned)(rows > 0 ? rows : 1));
     b[n++] = 0x1b; b[n++] = '\\';
-    kitty_write_all(t, b, (size_t)n);
+    image_write_all_(t, b, (size_t)n);
 }
 /* delete every visible placement (keeps image data: lowercase d=a). */
 static void kitty_delete_all_placements(TimuiTransport *t){
-    kitty_write_all(t, "\x1b_Ga=d,d=a\x1b\\", 12);
+    image_write_all_(t, "\x1b_Ga=d,d=a\x1b\\", 12);
 }
-/* Transmit (once) + place every image recorded this frame, on top of the cell
- * diff. Each on-screen slot gets a distinct placement id (i+1) and is CUP'd to
- * its rect, scaled to its cell size. When the count SHRINKS (placements scrolled
- * away, or shuffled slots), clear last frame's placements first so nothing
- * lingers above the cells (a cell redraw can't erase a Kitty image), then
- * re-place this frame's set. Under synchronized output the clear+replace is
- * atomic, so there is no flicker. Skipped on the first frame (nothing to
- * clear), which keeps a lone draw to a single transmit+place. */
+
+static int image_cup_(TimuiTransport *t, int x, int y){
+    char cup[32];
+    int cn = 0;
+    if(x < 0 || y < 0 || x == INT_MAX || y == INT_MAX) return 0;
+    cup[cn++] = 0x1b; cup[cn++] = '[';
+    cn += fmt_uint(cup + cn, (unsigned)(y + 1)); cup[cn++] = ';';
+    cn += fmt_uint(cup + cn, (unsigned)(x + 1)); cup[cn++] = 'H';
+    image_write_all_(t, cup, (size_t)cn);
+    return 1;
+}
+
+static int iterm2_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r){
+    size_t b64cap, b64len;
+    TimuiAllocator al = timui_default_allocator();
+    char *buf;
+    char hdr[160];
+    int hn = 0;
+    const char *p;
+    if(!t || !t->write || !img || !img->data || img->len == 0 || r.w <= 0 || r.h <= 0) return 0;
+    if(r.x < 0 || r.y < 0) return 0;
+    if(img->len > (SIZE_MAX - 1) / 4) return 0;
+    b64cap = ((img->len + 2) / 3) * 4 + 1;
+    buf = (char *)al.alloc(al.userdata, b64cap);
+    if(!buf) return 0;
+    b64len = b64_encode(img->data, img->len, buf, b64cap - 1);
+    if(b64len == 0 || b64len == (size_t)-1){
+        al.free(al.userdata, buf, b64cap);
+        return 0;
+    }
+    if(!image_cup_(t, r.x, r.y)){
+        al.free(al.userdata, buf, b64cap);
+        return 0;
+    }
+    hdr[hn++] = 0x1b; hdr[hn++] = ']';
+    p = "1337;File=inline=1;size="; while(*p) hdr[hn++] = *p++;
+    hn += image_fmt_size_(hdr + hn, img->len);
+    p = ";width="; while(*p) hdr[hn++] = *p++;
+    hn += fmt_uint(hdr + hn, (unsigned)r.w);
+    p = ";height="; while(*p) hdr[hn++] = *p++;
+    hn += fmt_uint(hdr + hn, (unsigned)r.h);
+    p = ";preserveAspectRatio=0:"; while(*p) hdr[hn++] = *p++;
+    image_write_all_(t, hdr, (size_t)hn);
+    image_write_all_(t, buf, b64len);
+    image_write_all_(t, "\x1b\\", 2);
+    al.free(al.userdata, buf, b64cap);
+    return 1;
+}
+
+/* Transmit/place or emit every image recorded this frame, on top of the cell
+ * diff. Kitty gets explicit placement lifecycle management; iTerm2 is a direct
+ * inline image write with no placement ids or delete escape. */
 void timui_images_flush_(Timui *ui){
     int i;
+    int emitted = 0;
+    TimuiImageProtocol protocol;
     if(!ui) return;
-    if(ui->img_last_count > 0)
+    protocol = timui_image_protocol(ui);
+    if(ui->img_last_count > 0 && ui->img_last_protocol == TIMUI_IMAGE_PROTOCOL_KITTY)
         kitty_delete_all_placements(&ui->transport);
-    for(i = 0; i < ui->img_place_count; i++){
-        TimuiImage *img = ui->img_place[i].img;
-        TimuiRect r    = ui->img_place[i].rect;   /* visible sub-rect */
-        TimuiRect full = ui->img_place[i].full;   /* uncropped rect   */
-        int sx = 0, sy = 0, sw = 0, sh = 0;
-        char cup[32]; int cn = 0;
-        if(!img) continue;
-        /* If the visible rect is a vertical sub-slice of `full`, crop the source
-         * pixels to match, so the image clips smoothly at a pane edge. */
-        if(img->px_w > 0 && img->px_h > 0 && full.h > 0 && (r.y != full.y || r.h != full.h)){
-            sx = 0; sw = img->px_w;
-            sy = (int)((long)(r.y - full.y) * img->px_h / full.h);
-            sh = (int)((long)r.h * img->px_h / full.h);
-            if(sh < 1) sh = 1;
+    if(protocol == TIMUI_IMAGE_PROTOCOL_KITTY){
+        for(i = 0; i < ui->img_place_count; i++){
+            TimuiImage *img = ui->img_place[i].img;
+            TimuiRect r    = ui->img_place[i].rect;   /* visible sub-rect */
+            TimuiRect full = ui->img_place[i].full;   /* uncropped rect   */
+            int sx = 0, sy = 0, sw = 0, sh = 0;
+            if(!img) continue;
+            if(r.x < 0 || r.y < 0 || r.x == INT_MAX || r.y == INT_MAX) continue;
+            /* If the visible rect is a vertical sub-slice of `full`, crop the source
+             * pixels to match, so the image clips smoothly at a pane edge. */
+            if(img->px_w > 0 && img->px_h > 0 && full.h > 0 && (r.y != full.y || r.h != full.h)){
+                int64_t sy64 = ((int64_t)r.y - (int64_t)full.y) * (int64_t)img->px_h / (int64_t)full.h;
+                int64_t sh64 = (int64_t)r.h * (int64_t)img->px_h / (int64_t)full.h;
+                sx = 0;
+                sw = img->px_w;
+                if(sy64 < 0) sy64 = 0;
+                if(sy64 > img->px_h) sy64 = img->px_h;
+                if(sh64 < 1) sh64 = 1;
+                if(sy64 + sh64 > img->px_h) sh64 = (int64_t)img->px_h - sy64;
+                if(sh64 < 1) sh64 = 1;
+                sy = (int)sy64;
+                sh = (int)sh64;
+            }
+            if(img->id == 0){                                   /* transmit once, keyed by id */
+                img->id = ++ui->next_image_id;
+                kitty_transmit_(&ui->transport, img->id, img->data, img->len);
+            }
+            if(image_cup_(&ui->transport, r.x, r.y)){
+                kitty_place_(&ui->transport, img->id, r.w, r.h, i + 1, sx, sy, sw, sh);
+                emitted++;
+            }
         }
-        if(img->id == 0){                                   /* transmit once, keyed by id */
-            img->id = ++ui->next_image_id;
-            kitty_transmit_(&ui->transport, img->id, img->data, img->len);
-        }
-        cup[cn++] = 0x1b; cup[cn++] = '[';                  /* CUP to the top-left cell */
-        cn += fmt_uint(cup + cn, (unsigned)(r.y + 1)); cup[cn++] = ';';
-        cn += fmt_uint(cup + cn, (unsigned)(r.x + 1)); cup[cn++] = 'H';
-        kitty_write_all(&ui->transport, cup, (size_t)cn);
-        kitty_place_(&ui->transport, img->id, r.w, r.h, i + 1, sx, sy, sw, sh);
+    } else if(protocol == TIMUI_IMAGE_PROTOCOL_ITERM2){
+        for(i = 0; i < ui->img_place_count; i++)
+            emitted += iterm2_emit_(&ui->transport, ui->img_place[i].img, ui->img_place[i].rect);
     }
-    ui->img_last_count = ui->img_place_count;
+    ui->img_last_count = emitted;
+    ui->img_last_protocol = emitted ? protocol : TIMUI_IMAGE_PROTOCOL_NONE;
 }
+
+static int image_rect_same_(TimuiRect a, TimuiRect b){
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+static int image_rect_emit_valid_(TimuiRect r){
+    return r.w > 0 && r.h > 0 && r.x >= 0 && r.y >= 0 && r.x != INT_MAX && r.y != INT_MAX;
+}
+
+static int image_rect_contains_(TimuiRect outer, TimuiRect inner){
+    int64_t ox = outer.x, oy = outer.y, ow = outer.w, oh = outer.h;
+    int64_t ix = inner.x, iy = inner.y, iw = inner.w, ih = inner.h;
+    if(ow <= 0 || oh <= 0 || iw <= 0 || ih <= 0) return 0;
+    return ix >= ox && iy >= oy && ix + iw <= ox + ow && iy + ih <= oy + oh;
+}
+
+static void image_placeholder_(Timui *ui, TimuiRect visible){
+    if(!ui || visible.w <= 0 || visible.h <= 0) return;
+    timui_draw_fill(&ui->curr, visible,
+                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_INPUT, 0));
+    timui_draw_text(&ui->curr, visible.x, visible.y, TIMUI_STR_LIT("[img]"),
+                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_TEXT_DIM, 0));
+}
+
 /* Record an image placement (transmit + place happen on top of the cell diff in
  * timui_end, so the renderer can't clobber it). `visible` is where it's drawn;
  * `full` is the uncropped rect (== visible when not clipping). The caller
  * reserves the region (draws its own background, no text). */
 static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRect full){
-    if(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_KITTY){
+    TimuiImageProtocol protocol;
+    if(!ui || visible.w <= 0 || visible.h <= 0) return;
+    if(!image_rect_contains_(full, visible)){
+        image_placeholder_(ui, visible);
+        return;
+    }
+    protocol = timui_image_protocol(ui);
+    if(protocol == TIMUI_IMAGE_PROTOCOL_KITTY ||
+       (protocol == TIMUI_IMAGE_PROTOCOL_ITERM2 && image_rect_same_(visible, full))){
+        if(!image_rect_emit_valid_(visible)){
+            image_placeholder_(ui, visible);
+            return;
+        }
         if(ui->img_place_count < (int)(sizeof(ui->img_place) / sizeof(ui->img_place[0]))){
             ui->img_place[ui->img_place_count].img  = img;
             ui->img_place[ui->img_place_count].rect = visible;
@@ -6662,11 +6774,7 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
             ui->img_place_count++;
         }
     } else {
-        /* placeholder fallback (cells) for non-Kitty terminals */
-        timui_draw_fill(&ui->curr, visible,
-                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_INPUT, 0));
-        timui_draw_text(&ui->curr, visible.x, visible.y, TIMUI_STR_LIT("[img]"),
-                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_TEXT_DIM, 0));
+        image_placeholder_(ui, visible);
     }
 }
 TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){

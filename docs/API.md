@@ -131,9 +131,12 @@ the application explicitly forces them. Image protocol selection returns
 `NONE`, `KITTY`, `SIXEL`, or `ITERM2`; when several image caps are present,
 Kitty wins, then Sixel, then iTerm2.
 
-The image API is protocol-neutral at the call site, but v0.2 only emits Kitty
-graphics. Sixel/iTerm2 selections deliberately draw the `[img]` placeholder
-until their wire encoders land. `timui_force_image_protocol` is intended for
+The image API is protocol-neutral at the call site. v0.2 emits Kitty graphics
+and iTerm2 inline images from the PNG bytes supplied to `timui_image_from_png`;
+Sixel selections deliberately draw the `[img]` placeholder until a real pixel
+source/encoder lands. `timui_image_draw_clipped` currently keeps clipped image
+support Kitty-only; iTerm2 clipped draws fall back to `[img]` rather than crop
+and re-encode PNGs implicitly. `timui_force_image_protocol` is intended for
 tests and user overrides; unknown enum values clear image caps and select
 `NONE`.
 

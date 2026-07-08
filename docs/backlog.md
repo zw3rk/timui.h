@@ -60,8 +60,11 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       fallback placeholders preserved.
       - [x] Public image protocol enum, capability selector, force override,
             and non-Kitty placeholder fallback.
+      - [x] iTerm2 inline image emitter for unclipped PNG draws, with Kitty
+            cleanup when switching protocols and placeholder fallback for
+            clipped draws.
       - [ ] Sixel encoder/emitter and terminal evidence.
-      - [ ] iTerm2 inline image emitter and terminal evidence.
+      - [ ] iTerm2 terminal evidence.
 
 ## Phase 2 backlog - architecture and applications
 
