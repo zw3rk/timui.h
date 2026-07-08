@@ -28,19 +28,29 @@ static void timui_box_put_(TimuiCellBuffer *buf, int x, int y, uint32_t cp, Timu
     timui_draw_text(buf, x, y, s, st);
 }
 
+static int timui_box_clamp_i64_(int64_t v){
+    if(v < (int64_t)INT_MIN) return INT_MIN;
+    if(v > (int64_t)INT_MAX) return INT_MAX;
+    return (int)v;
+}
+
 TIMUI_API TimuiRect timui_border(TimuiFrame *f, TimuiRect r, TimuiBorderStyle style,
                                  TimuiStr title, TimuiStyle st){
     TimuiCellBuffer *buf;
     TimuiRect inner;
     uint32_t hz, vt, tl, tr, bl, br;
-    int i;
+    int64_t x0, y0, x1, y1;
+    int64_t xs, xe, ys, ye, p;
+    int64_t iw, ih;
 
     /* Inner content rect: r inset by the 1-cell frame, clamped non-negative.
      * Always computed so it is valid even on the no-draw paths below. */
-    inner.x = r.x + 1;
-    inner.y = r.y + 1;
-    inner.w = r.w - 2; if(inner.w < 0) inner.w = 0;
-    inner.h = r.h - 2; if(inner.h < 0) inner.h = 0;
+    inner.x = timui_box_clamp_i64_((int64_t)r.x + 1);
+    inner.y = timui_box_clamp_i64_((int64_t)r.y + 1);
+    iw = (int64_t)r.w - 2;
+    ih = (int64_t)r.h - 2;
+    inner.w = iw > 0 ? timui_box_clamp_i64_(iw) : 0;
+    inner.h = ih > 0 ? timui_box_clamp_i64_(ih) : 0;
 
     if(!f) return inner;
     buf = timui_frame_buffer(f);
@@ -59,25 +69,46 @@ TIMUI_API TimuiRect timui_border(TimuiFrame *f, TimuiRect r, TimuiBorderStyle st
      * inner rect is still returned for layout. */
     if(r.w < 2 || r.h < 2) return inner;
 
-    timui_box_put_(buf, r.x,           r.y,           tl, st);
-    timui_box_put_(buf, r.x + r.w - 1, r.y,           tr, st);
-    timui_box_put_(buf, r.x,           r.y + r.h - 1, bl, st);
-    timui_box_put_(buf, r.x + r.w - 1, r.y + r.h - 1, br, st);
-    for(i = 1; i < r.w - 1; i++){
-        timui_box_put_(buf, r.x + i, r.y,           hz, st);
-        timui_box_put_(buf, r.x + i, r.y + r.h - 1, hz, st);
+    x0 = (int64_t)r.x; y0 = (int64_t)r.y;
+    x1 = x0 + (int64_t)r.w - 1;
+    y1 = y0 + (int64_t)r.h - 1;
+
+    if(y0 >= 0 && y0 < buf->h){
+        if(x0 >= 0 && x0 < buf->w) timui_box_put_(buf, (int)x0, (int)y0, tl, st);
+        if(x1 >= 0 && x1 < buf->w) timui_box_put_(buf, (int)x1, (int)y0, tr, st);
+        xs = x0 + 1; xe = x1 - 1;
+        if(xs < 0) xs = 0;
+        if(xe > (int64_t)buf->w - 1) xe = (int64_t)buf->w - 1;
+        for(p = xs; p <= xe; p++) timui_box_put_(buf, (int)p, (int)y0, hz, st);
     }
-    for(i = 1; i < r.h - 1; i++){
-        timui_box_put_(buf, r.x,           r.y + i, vt, st);
-        timui_box_put_(buf, r.x + r.w - 1, r.y + i, vt, st);
+    if(y1 >= 0 && y1 < buf->h){
+        if(x0 >= 0 && x0 < buf->w) timui_box_put_(buf, (int)x0, (int)y1, bl, st);
+        if(x1 >= 0 && x1 < buf->w) timui_box_put_(buf, (int)x1, (int)y1, br, st);
+        xs = x0 + 1; xe = x1 - 1;
+        if(xs < 0) xs = 0;
+        if(xe > (int64_t)buf->w - 1) xe = (int64_t)buf->w - 1;
+        for(p = xs; p <= xe; p++) timui_box_put_(buf, (int)p, (int)y1, hz, st);
+    }
+    ys = y0 + 1; ye = y1 - 1;
+    if(ys < 0) ys = 0;
+    if(ye > (int64_t)buf->h - 1) ye = (int64_t)buf->h - 1;
+    for(p = ys; p <= ye; p++){
+        if(x0 >= 0 && x0 < buf->w) timui_box_put_(buf, (int)x0, (int)p, vt, st);
+        if(x1 >= 0 && x1 < buf->w) timui_box_put_(buf, (int)x1, (int)p, vt, st);
     }
 
     /* Optional title in the top edge, one cell in. Clip to the interior span so
      * a long title truncates cleanly rather than spilling over the corners. */
-    if(title.ptr && title.len && r.w > 2){
-        timui_push_clip(f, TIMUI_RECT(r.x + 1, r.y, r.w - 2, 1));
-        timui_draw_text(buf, r.x + 1, r.y, title, st);
-        timui_pop_clip(f);
+    if(title.ptr && title.len && r.w > 2 && y0 >= 0 && y0 < buf->h){
+        int64_t tx = x0 + 1;
+        xs = tx; xe = x1 - 1;
+        if(xs < 0) xs = 0;
+        if(xe > (int64_t)buf->w - 1) xe = (int64_t)buf->w - 1;
+        if(xs <= xe && tx >= (int64_t)INT_MIN && tx <= (int64_t)INT_MAX){
+            timui_push_clip(f, TIMUI_RECT((int)xs, (int)y0, (int)(xe - xs + 1), 1));
+            timui_draw_text(buf, (int)tx, (int)y0, title, st);
+            timui_pop_clip(f);
+        }
     }
 
     return inner;

@@ -12,6 +12,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 #define TIMUI_IMPLEMENTATION
 #include "timui.h"
+#include <limits.h>
 #include <stdio.h>
 
 static int failures;
@@ -217,6 +218,8 @@ static void test_border(void){
                1, 1, 0, 0);                                  /* degenerate 1x1: clamp >=0 */
     CHECK_RECT(timui_border(NULL, TIMUI_RECT(0, 0, 2, 2), TIMUI_BOX_SINGLE, empty, st),
                1, 1, 0, 0);                                  /* degenerate 2x2 */
+    CHECK_RECT(timui_border(NULL, TIMUI_RECT(INT_MAX, INT_MAX, 4, 4), TIMUI_BOX_SINGLE, empty, st),
+               INT_MAX, INT_MAX, 2, 2);                       /* saturating origin */
 
     /* Frame-backed draw: corners per style + a title in the top edge. */
     timui_fake_init(&fake, &al);
