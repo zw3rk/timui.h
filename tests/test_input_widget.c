@@ -352,6 +352,27 @@ TIMUI_TEST(test_input_field_paste_drops_controls){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_field_paste_invalid_utf8_replaced){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 30, 1);
+    static const char expect[] = "A\xEF\xBF\xBD" "B";   /* A U+FFFD B */
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 5, &al);
+#define PIF() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PIF();
+    SETIN(&fake, "\x1b[<0;2;1m"); PIF();
+    timui_fake_set_input(&fake, "\x1b[200~A\xC0""B\x1b[201~", sizeof("\x1b[200~A\xC0""B\x1b[201~") - 1);
+    PIF();
+    TIMUI_CHECK(strcmp(text, expect) == 0);
+    TIMUI_CHECK(is.cursor == sizeof(expect) - 1);
+#undef PIF
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_paste_preserves_text_order){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake; TimuiTransport t;

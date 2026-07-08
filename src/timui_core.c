@@ -63,6 +63,37 @@ static void ui_event_cb(void *ctx, const TimuiEvent *ev){
     else
         ui->events_dropped++;
 }
+static void timui_append_text_cp_(Timui *ui, uint32_t cp){
+    char enc[4];
+    int enclen;
+    if(!ui) return;
+    if(cp < 0x20 || cp == 0x7f || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return;
+    enclen = timui_utf8_encode_(cp, enc);
+    if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
+        int ei;
+        for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
+    }
+}
+static void timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
+    size_t pk = 0;
+    while(ui && pk < len && ui->text_in_len < (int)sizeof(ui->text_in)){
+        unsigned char pc = (unsigned char)ptr[pk];
+        uint32_t cp = 0;
+        int adv;
+        if(pc == 0 || pc == 0x7f){ pk++; continue; }
+        if(pc < 0x20){
+            if(pc != '\n' && pc != '\r' && pc != '\t'){ pk++; continue; }
+            if(ui->text_in_len < (int)sizeof(ui->text_in)) ui->text_in[ui->text_in_len++] = (char)pc;
+            pk++;
+            continue;
+        }
+        adv = timui_utf8_decode(ptr + pk, len - pk, &cp);
+        if(adv == 0){ cp = 0xFFFD; adv = (int)(len - pk); }
+        if(adv < 0) adv = 1;
+        timui_append_text_cp_(ui, cp);
+        pk += (size_t)adv;
+    }
+}
 /* Write ALL n bytes to fd. The output fd typically SHARES its open file
  * description with the input fd (fd 0/1 on a tty), which we set O_NONBLOCK for
  * the frame loop's read — so writes can return a short count or EAGAIN under
@@ -470,14 +501,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 else if(ev.as.key.key == TIMUI_KEY_UNKNOWN &&
                         (ev.as.key.mods & ~TIMUI_MOD_SHIFT) == TIMUI_MOD_NONE){
                     uint32_t cp = ev.as.key.codepoint;
-                    if(cp >= 0x20 && cp != 0x7f && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff)){
-                        char enc[4];
-                        int enclen = timui_utf8_encode_(cp, enc);
-                        if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
-                            int ei;
-                            for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
-                        }
-                    }
+                    timui_append_text_cp_(ui, cp);
                 }
                 else if(ev.as.key.key == TIMUI_KEY_UNKNOWN && (ev.as.key.mods & TIMUI_MOD_CTRL)){
                     /* emacs / readline line editing (ubiquitous on macOS). Ctrl-H
@@ -498,19 +522,9 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 /* UTF-8 encode the codepoint into text_in (supports international
                  * input) via the single shared encoder (Z6). */
                 uint32_t cp = ev.as.text.codepoint;
-                char enc[4];
-                int enclen = timui_utf8_encode_(cp, enc);
-                if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
-                    int ei;
-                    for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
-                }
+                timui_append_text_cp_(ui, cp);
             } else if(ev.kind == TIMUI_EVENT_PASTE){
-                size_t pk;
-                for(pk = 0; pk < ev.as.paste.len && ui->text_in_len < (int)sizeof(ui->text_in); pk++){
-                    unsigned char pc = (unsigned char)ev.as.paste.ptr[pk];
-                    if((pc >= 0x20 && pc != 0x7f) || pc == '\n' || pc == '\r' || pc == '\t')
-                        ui->text_in[ui->text_in_len++] = (char)pc;
-                }
+                timui_append_paste_bytes_(ui, ev.as.paste.ptr, ev.as.paste.len);
             } else if(ev.kind == TIMUI_EVENT_FOCUS){
                 if(focus_count < (int)(sizeof(focus_events) / sizeof(focus_events[0])))
                     focus_events[focus_count++] = ev;

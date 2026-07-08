@@ -188,6 +188,7 @@ int main(void){
         test_input_field_paste,
         test_input_field_paste_split,
         test_input_field_paste_drops_controls,
+        test_input_field_paste_invalid_utf8_replaced,
         test_paste_preserves_text_order,
         test_input_field_paste_enter_order,
         test_input_field_text_burst,

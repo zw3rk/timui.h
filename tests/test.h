@@ -199,6 +199,7 @@ void test_input_field_multi_submit(void);
 void test_input_field_paste(void);
 void test_input_field_paste_split(void);
 void test_input_field_paste_drops_controls(void);
+void test_input_field_paste_invalid_utf8_replaced(void);
 void test_paste_preserves_text_order(void);
 void test_input_field_paste_enter_order(void);
 void test_input_field_text_burst(void);
