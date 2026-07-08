@@ -60,6 +60,28 @@ TIMUI_TEST(test_button_click_press_release_same_frame){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_button_same_frame_release_outside_no_click){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiButtonResult b;
+    TimuiRect r = TIMUI_RECT(0, 0, 10, 3);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+
+    SETIN(&fake, "\x1b[<0;3;2M\x1b[<0;30;8m");
+    timui_begin(ui, &f);
+    b = timui_button(f, TIMUI_ID("ok"), r, TIMUI_STR_LIT("OK"));
+    timui_end(f);
+    TIMUI_CHECK(!b.clicked && !b.hovered);
+
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_button_outside_no_click){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;

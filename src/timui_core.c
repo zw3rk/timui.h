@@ -459,7 +459,6 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         TimuiEvent focus_events[sizeof(ui->events) / sizeof(ui->events[0])];
         int focus_count = 0;
         int saw_mouse_press = 0, saw_mouse_release = 0;
-        int press_x = 0, press_y = 0;
         while(timui_poll_event(ui, &ev)){
             if(ev.kind == TIMUI_EVENT_MOUSE){
                 int mx = ev.as.mouse.x - 1;
@@ -472,7 +471,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                                                   : (ev.as.mouse.button == 0 && ev.as.mouse.pressed);
                     timui_interact_set_mouse(&ui->ia, mx, my, down);
                     if(!ev.as.mouse.motion && ev.as.mouse.button == 0 && ev.as.mouse.pressed){
-                        saw_mouse_press = 1; press_x = mx; press_y = my; ui->mouse_clicked = 1;
+                        saw_mouse_press = 1;
+                        ui->mouse_click_x = mx;
+                        ui->mouse_click_y = my;
+                        ui->mouse_clicked = 1;
                     }
                     if(!ev.as.mouse.motion && ev.as.mouse.released) saw_mouse_release = 1;
                 }
@@ -534,12 +536,6 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
             int fi;
             ui->event_count = 0;
             for(fi = 0; fi < focus_count; fi++) ui->events[ui->event_count++] = focus_events[fi];
-        }
-        if(saw_mouse_press && saw_mouse_release)
-            timui_interact_set_mouse(&ui->ia, press_x, press_y, ui->ia.mouse_down);
-        if(saw_mouse_press){
-            ui->mouse_x = press_x;
-            ui->mouse_y = press_y;
         }
         timui_interact_begin(&ui->ia);
         if(saw_mouse_press) ui->ia.mouse_pressed = 1;
@@ -683,8 +679,8 @@ TIMUI_API void timui_force_image_protocol(Timui *ui, TimuiImageProtocol protocol
 TIMUI_API int timui_mouse_wheel(const TimuiFrame *f){ return (f && f->ui) ? f->ui->mouse_wheel : 0; }
 TIMUI_API int timui_mouse_clicked(const TimuiFrame *f, int *out_x, int *out_y){
     if(!f || !f->ui || !f->ui->mouse_clicked) return 0;
-    if(out_x) *out_x = f->ui->mouse_x;
-    if(out_y) *out_y = f->ui->mouse_y;
+    if(out_x) *out_x = f->ui->mouse_click_x;
+    if(out_y) *out_y = f->ui->mouse_click_y;
     return 1;
 }
 /* URL of the OSC 8 hyperlink under cell (x,y) in the frame just drawn, or NULL.

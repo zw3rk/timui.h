@@ -176,6 +176,7 @@ int main(void){
         test_stylesheet_clear_and_explicit_input_style,
         test_button_click,
         test_button_click_press_release_same_frame,
+        test_button_same_frame_release_outside_no_click,
         test_button_outside_no_click,
         test_button_label_clipped,
         test_checkbox_toggles,

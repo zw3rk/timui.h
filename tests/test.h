@@ -187,6 +187,7 @@ void test_stylesheet_explicit_label_ignores_sheet(void);
 void test_stylesheet_clear_and_explicit_input_style(void);
 void test_button_click(void);
 void test_button_click_press_release_same_frame(void);
+void test_button_same_frame_release_outside_no_click(void);
 void test_button_outside_no_click(void);
 void test_button_label_clipped(void);
 void test_checkbox_toggles(void);
