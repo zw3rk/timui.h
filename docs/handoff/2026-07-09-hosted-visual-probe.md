@@ -9,8 +9,11 @@ date: 2026-07-09
 ## Landing State
 
 - Branch: `hosted-visual-rerun-fix`
-- Integrated local master: `4ea5b51` (`ci: refine hosted visual runner setup`)
-- Remote push: `github master` pushed through `4ea5b51`
+- Integrated local master: `4dac663`
+  (`docs: record hosted visual probe results`)
+- Hosted-probe implementation inspected: `4ea5b51`
+  (`ci: refine hosted visual runner setup`)
+- Remote push: `github master` pushed through `4dac663`
 - GitHub workflow: `Hosted visual probes`
 - Latest run inspected: `28979373796`
 - Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28979373796`
