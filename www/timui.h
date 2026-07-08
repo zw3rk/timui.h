@@ -2645,6 +2645,12 @@ TIMUI_API void timui_arena_free(TimuiArena *a){
     a->base = NULL; a->cap = 0; a->off = 0; a->alloc = NULL;
 }
 
+static int timui_clamp_i64_to_int_(int64_t v){
+    if(v < (int64_t)INT_MIN) return INT_MIN;
+    if(v > (int64_t)INT_MAX) return INT_MAX;
+    return (int)v;
+}
+
 /* ---- rect layout (clamps to non-negative; never overflows the parent) -- */
 TIMUI_API TimuiRect timui_cut_top(TimuiRect *r, int h){
     TimuiRect out = {0, 0, 0, 0};
@@ -2661,7 +2667,10 @@ TIMUI_API TimuiRect timui_cut_bottom(TimuiRect *r, int h){
     if(h < 0) h = 0;
     if(h > r->h) h = r->h;
     r->h -= h;
-    out.x = r->x; out.y = r->y + r->h; out.w = r->w; out.h = h;
+    out.x = r->x;
+    out.y = timui_clamp_i64_to_int_((int64_t)r->y + (int64_t)r->h);
+    out.w = r->w;
+    out.h = h;
     return out;
 }
 TIMUI_API TimuiRect timui_cut_left(TimuiRect *r, int w){
@@ -2679,13 +2688,11 @@ TIMUI_API TimuiRect timui_cut_right(TimuiRect *r, int w){
     if(w < 0) w = 0;
     if(w > r->w) w = r->w;
     r->w -= w;
-    out.x = r->x + r->w; out.y = r->y; out.w = w; out.h = r->h;
+    out.x = timui_clamp_i64_to_int_((int64_t)r->x + (int64_t)r->w);
+    out.y = r->y;
+    out.w = w;
+    out.h = r->h;
     return out;
-}
-static int timui_clamp_i64_to_int_(int64_t v){
-    if(v < (int64_t)INT_MIN) return INT_MIN;
-    if(v > (int64_t)INT_MAX) return INT_MAX;
-    return (int)v;
 }
 TIMUI_API TimuiRect timui_inset(TimuiRect r, int n){
     int64_t shrink;

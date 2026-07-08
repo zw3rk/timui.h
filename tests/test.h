@@ -25,6 +25,7 @@ extern int timui_test_failures;
 /* Registry of unit tests — add one line per new test function. */
 void test_rect_cuts(void);
 void test_rect_cut_null_safe(void);
+void test_rect_cut_extreme_origin_safe(void);
 void test_rect_split(void);
 void test_rect_split_extreme_origin_safe(void);
 void test_rect_inset_clamp(void);

@@ -14,6 +14,7 @@ int main(void){
     test_fn tests[] = {
         test_rect_cuts,
         test_rect_cut_null_safe,
+        test_rect_cut_extreme_origin_safe,
         test_rect_split,
         test_rect_split_extreme_origin_safe,
         test_rect_inset_clamp,
