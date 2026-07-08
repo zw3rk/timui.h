@@ -162,6 +162,7 @@ void test_draw_wide_glyph_left_of_buffer_does_not_blank_edge(void);
 void test_render_black_vs_default(void);
 void test_render_cursor_visible(void);
 void test_render_cursor_hidden(void);
+void test_render_cursor_extreme_coords_safe(void);
 void test_frame_lifecycle(void);
 void test_frame_quit_flag(void);
 void test_events_dropped(void);

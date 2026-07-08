@@ -430,7 +430,7 @@ TIMUI_API void timui_render_diff(TimuiTransport *t, const TimuiCellBuffer *prev,
 TIMUI_API void timui_render_cursor(TimuiTransport *t, int x, int y, int visible){
     if(!t) return;
     if(visible){
-        if(x >= 0 && y >= 0) emit_cup(t, x, y);   /* L5: skip bogus CUP on negative coords */
+        if(x >= 0 && y >= 0 && x < INT_MAX && y < INT_MAX) emit_cup(t, x, y);
         R_EMIT(t, "\x1b[?25h");
     } else {
         R_EMIT(t, "\x1b[?25l");

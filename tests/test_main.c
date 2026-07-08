@@ -151,6 +151,7 @@ int main(void){
         test_render_black_vs_default,
         test_render_cursor_visible,
         test_render_cursor_hidden,
+        test_render_cursor_extreme_coords_safe,
         test_frame_lifecycle,
         test_frame_quit_flag,
         test_events_dropped,
