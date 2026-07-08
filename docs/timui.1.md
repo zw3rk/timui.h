@@ -77,7 +77,8 @@ The following `make` targets are the primary interface. Each is invoked as
 : Compile and run the unit test suite (`build/test_unit`).
 
 **check**
-: The build-plus-test gate: runs **build** then **test**.
+: The build-plus-test gate: runs **build**, **test**, no-image API coverage,
+  Win32 ConPTY compile seams, and static website license/link checks.
 
 **test-san** \[*SAN=address*]
 : Compile and run the unit tests under a sanitizer, e.g.
@@ -118,6 +119,34 @@ The following `make` targets are the primary interface. Each is invoked as
   `tests/drive/editor.in` and asserts the typed text renders. Timing-dependent,
   so it is deliberately outside **check**.
 
+## Operator smokes
+
+These targets exist to collect live evidence. They are intentionally outside
+**check**; headless pty captures prove byte streams and final cell text, not
+that a real terminal consumed an image protocol or that Windows ConPTY works in
+Windows Terminal.
+
+**check-image-smoke**
+: Headless sanity check for the image smoke harness. It forces protocol `none`,
+  drives `image_smoke` through a pty, and asserts the placeholder path renders.
+
+**smoke-image-live** \[*PROTO=auto|kitty|sixel|iterm2|none*]
+: Run `examples/image_smoke.c` in the current terminal. It draws a plain PNG,
+  raw RGBA image, and PNG+RGBA sidecar so an operator can verify the selected
+  terminal image protocol. Convenience aliases are **smoke-image-live-auto**,
+  **smoke-image-live-kitty**, **smoke-image-live-sixel**,
+  **smoke-image-live-iterm2**, and **smoke-image-live-none**.
+
+**check-conpty-win32-smoke-compile**
+: Cross-compile the Win32 ConPTY smoke runner when MinGW is available. This is
+  compile evidence only.
+
+**smoke-conpty-win32**
+: Run the Win32 ConPTY smoke runner inside Windows Terminal on Windows. It opens
+  the default shell via `timui_conpty_open`, writes an echo sentinel through the
+  transport, reads it back, resizes once, and closes twice. A non-Windows skip is
+  not Windows evidence.
+
 ## Release header
 
 **amalgamate**
@@ -125,6 +154,14 @@ The following `make` targets are the primary interface. Each is invoked as
 
 **release-check**
 : Regenerate the release header and verify it compiles standalone.
+
+**www**
+: Regenerate the amalgamated release header and refresh `www/timui.h` plus
+  `www/LICENSE` for the static website.
+
+**check-www**
+: Verify the static website and `llms.txt` expose the Apache-2.0 license link,
+  and that `www/LICENSE` matches the repository `LICENSE`.
 
 ## Recording, GIF/PNG capture (vt_gif)
 

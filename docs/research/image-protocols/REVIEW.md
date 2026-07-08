@@ -100,6 +100,13 @@ keeps PNG decoding out of the release header. The supplied RGBA dimensions are
 expected to match the PNG and drive source cropping. Built-in PNG-to-Sixel
 decode and real-terminal capture evidence remain open.
 
+Operator smoke state: `examples/image_smoke.c` is a small live-terminal harness
+with a valid embedded PNG, matching RGBA pixels, and PNG+RGBA sidecar. Run
+`make smoke-image-live PROTO=auto|kitty|sixel|iterm2|none` (or the convenience
+aliases) outside multiplexers to collect visual evidence. `make
+check-image-smoke` only proves the harness renders the placeholder path through
+a headless pty; it is not terminal image protocol evidence.
+
 Before claiming built-in plain-PNG Sixel support, choose and document the pixel
 source:
 

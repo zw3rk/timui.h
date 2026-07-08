@@ -131,8 +131,9 @@ int main(void) {
 
 ## License
 
-timui.h is released under Apache-2.0. The full license text is at
-https://timui.dev/LICENSE.
+timui.h is released under Apache-2.0. The downloadable release header carries
+`SPDX-License-Identifier: Apache-2.0` and the project copyright notice. The
+full license text is at https://timui.dev/LICENSE.
 
 ## Agent guidance
 

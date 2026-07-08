@@ -75,6 +75,10 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       - [x] PNG+RGBA sidecar constructor preserves PNG passthrough for
             Kitty/iTerm2 while giving Sixel caller-decoded pixels for emission
             and clipping, without adding a PNG decoder to the release header.
+      - [x] Operator smoke harnesses exist for live image protocols
+            (`make smoke-image-live PROTO=...`) and Windows ConPTY
+            (`make smoke-conpty-win32`); compile/headless harness checks are
+            wired, but live evidence is still pending.
       - [ ] Sixel terminal evidence plus built-in PNG decode for plain PNG
             images.
       - [ ] iTerm2 terminal evidence.

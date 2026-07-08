@@ -56,9 +56,10 @@ WORKSTREAM A - Windows ConPTY backend:
 - DONE: compile-only MinGW check where available via
   `make check-conpty-win32-compile`; it is also part of `make check` when the
   cross compiler is available.
-- PENDING: a real Windows Terminal smoke target/run recorded in docs before
-  claiming supported Windows operation; `make test` and sanitizers remain green
-  on POSIX.
+- DONE: `make smoke-conpty-win32` and
+  `make check-conpty-win32-smoke-compile` exist for operator evidence capture.
+- PENDING: a real Windows Terminal smoke run recorded in docs before claiming
+  supported Windows operation; `make test` and sanitizers remain green on POSIX.
 
 WORKSTREAM B - Widgets:
 - Textarea first. Add a result-returning controlled API, plus `_mut`
@@ -138,6 +139,9 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
 - DONE: `timui_image_from_png_rgba` preserves PNG bytes for Kitty/iTerm2 while
   giving Sixel caller-decoded pixels for emission and clipping, without
   promoting a PNG decoder into the release header.
+- DONE: `make smoke-image-live PROTO=...` exists for live Kitty/Sixel/iTerm2
+  visual evidence capture, and `make check-image-smoke` checks the harness
+  headlessly without claiming protocol evidence.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API has PNG, raw-RGBA, and PNG+RGBA sidecar constructors; Sixel does not
   imply built-in PNG decode for plain PNG images yet.

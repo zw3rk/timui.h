@@ -74,5 +74,12 @@ instead of creating a binary that fails to load.
 - `make check-conpty-win32-compile` cross-compiles an isolated ConPTY TU with
   MinGW when the dev shell provides `x86_64-w64-mingw32-gcc`; the target is part
   of `make check`.
-- This is compile evidence, not live Windows evidence. Do not claim supported
+- `make check-conpty-win32-smoke-compile` cross-compiles the operator smoke
+  runner (`tools/conpty_smoke_win32.c`) with MinGW. It opens the default shell,
+  resizes the pseudoconsole, writes an echo sentinel through the transport,
+  reads it back, and closes twice to exercise idempotent cleanup when run on
+  Windows.
+- `make smoke-conpty-win32` is the live Windows Terminal target. A non-Windows
+  skip or a MinGW compile is not live evidence.
+- These compile checks are not live Windows evidence. Do not claim supported
   Windows operation until a real Windows Terminal smoke run is captured.

@@ -133,7 +133,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www check-www amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n"
@@ -145,7 +145,7 @@ help: ## Show this help
 	  /^[a-zA-Z0-9_-]+:.*##/{if(!shown){printf "\n  $(C_BOLD)%s$(C_RESET)\n",sec;shown=1} \
 	                         printf "    $(C_GREEN)%-24s$(C_RESET) %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 	@printf "\n  $(C_BOLD)WILDCARDS$(C_RESET)\n"
-	@printf "    $(C_GREEN)%-24s$(C_RESET) %s\n" "run-<name>"   "run one example (editor procmon todo chat file_manager gallery irc)"
+	@printf "    $(C_GREEN)%-24s$(C_RESET) %s\n" "run-<name>"   "run one example (editor procmon todo chat file_manager gallery image_smoke irc)"
 	@printf "    $(C_GREEN)%-24s$(C_RESET) %s\n" "rec-<name>"   "record an interactive session -> recordings/<name>.cast"
 	@printf "    $(C_GREEN)%-24s$(C_RESET) %s\n" "drive-<name>" "drive headless w/ recordings/<name>.in -> .raw + .txt"
 
@@ -289,7 +289,7 @@ rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
 # 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
 # ============================================================================
 
-check: build test check-no-images check-conpty-win32-compile ## Build + test gate
+check: build test check-no-images check-conpty-win32-compile check-conpty-win32-smoke-compile check-www ## Build + test gate
 	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 test: $(TEST_BIN) ## Compile and run the unit tests
@@ -327,6 +327,16 @@ check-conpty-win32-compile: ## Cross-compile the isolated Win32 ConPTY backend w
 	@printf "$(C_CYAN)build$(C_RESET) isolated Win32 ConPTY compile seam\n"
 	@$(CONPTY_WIN_CC) $(CONPTY_WIN_CFLAGS) -I$(INCDIR) -c $(TSTDIR)/test_conpty_win32_compile.c -o $(BLDDIR)/test_conpty_win32_compile.o
 	@printf "$(C_GREEN)✓ Win32 ConPTY compile seam$(C_RESET)\n"
+
+check-conpty-win32-smoke-compile: ## Cross-compile the operator Win32 ConPTY smoke runner when mingw is available
+	@mkdir -p $(BLDDIR)
+	@if ! command -v $(CONPTY_WIN_CC) >/dev/null 2>&1; then \
+	  printf "$(C_YELL)SKIP$(C_RESET) $(CONPTY_WIN_CC) not found; install the nix dev shell cross compiler\n"; \
+	  exit 0; \
+	fi
+	@printf "$(C_CYAN)build$(C_RESET) Win32 ConPTY operator smoke runner\n"
+	@$(CONPTY_WIN_CC) $(CONPTY_WIN_CFLAGS) -I$(INCDIR) $(TOOLDIR)/conpty_smoke_win32.c -o $(BLDDIR)/conpty_smoke_win32.exe
+	@printf "$(C_GREEN)✓ Win32 ConPTY operator smoke runner compiles$(C_RESET)\n"
 
 check-conpty: check-conpty-posix check-conpty-win32-compile ## Run ConPTY POSIX helper + optional Win32 compile checks
 
@@ -604,6 +614,15 @@ smoke-gallery: $(BLDDIR)/gallery $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Head
 	  && printf "$(C_GREEN)✓ gallery$(C_RESET) headless smoke rendered a frame\n" \
 	  || { printf "$(C_YELL)✗ gallery$(C_RESET) smoke: dashboard not rendered\n"; exit 1; }
 
+check-image-smoke: $(BLDDIR)/image_smoke $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless image protocol smoke harness sanity check
+	@mkdir -p $(RECDIR)
+	@./$(BLDDIR)/pty_drive --cols 96 --rows 28 --run-ms 1000 --settle-ms 200 \
+	   --out "$(RECDIR)/image-smoke.raw" -- ./$(BLDDIR)/image_smoke --frames 4 --protocol none < /dev/null
+	@out=$$(./$(BLDDIR)/vt_render --cols 96 --rows 28 "$(RECDIR)/image-smoke.raw"); \
+	 echo "$$out" | grep -q 'image protocol smoke' && echo "$$out" | grep -q 'plain png' && echo "$$out" | grep -Fq '[img]' \
+	  && printf "$(C_GREEN)✓ image_smoke$(C_RESET) headless harness rendered placeholders\n" \
+	  || { printf "$(C_YELL)✗ image_smoke$(C_RESET) smoke: expected title/plain png/[img]\n"; echo "$$out"; exit 1; }
+
 # Headless IRC smoke: run the client's OFFLINE --demo path (canned transcript,
 # NO network) through a pty and assert the model+render pipeline works: the
 # #timui channel tab, a rendered PRIVMSG line ("morning"), and a nick (alice)
@@ -618,7 +637,36 @@ smoke-irc: $(BLDDIR)/irc $(BLDDIR)/pty_drive $(BLDDIR)/vt_render ## Headless IRC
 	  || { printf "$(C_YELL)✗ irc$(C_RESET) smoke: expected #timui/morning/alice\n"; echo "$$out"; exit 1; }
 
 # ============================================================================
-# 7. GIF / RECORDING — render the chat demo to GIF / WebP / MP4
+# 7. OPERATOR SMOKE — live terminal / Windows evidence
+# ============================================================================
+
+smoke-image-live: $(BLDDIR)/image_smoke ## Live terminal image smoke (PROTO=auto|kitty|sixel|iterm2|none)
+	@./$(BLDDIR)/image_smoke --protocol $(or $(PROTO),$(PROTOCOL),auto)
+
+smoke-image-live-auto: PROTO=auto
+smoke-image-live-auto: smoke-image-live ## Live image smoke with detected protocol
+
+smoke-image-live-kitty: PROTO=kitty
+smoke-image-live-kitty: smoke-image-live ## Live image smoke forcing Kitty graphics
+
+smoke-image-live-sixel: PROTO=sixel
+smoke-image-live-sixel: smoke-image-live ## Live image smoke forcing Sixel
+
+smoke-image-live-iterm2: PROTO=iterm2
+smoke-image-live-iterm2: smoke-image-live ## Live image smoke forcing iTerm2 inline images
+
+smoke-image-live-none: PROTO=none
+smoke-image-live-none: smoke-image-live ## Live image smoke forcing text placeholders
+
+smoke-conpty-win32: check-conpty-win32-smoke-compile ## Run the ConPTY smoke runner on Windows Terminal only
+	@if [ "$${OS:-}" = "Windows_NT" ]; then \
+	  ./$(BLDDIR)/conpty_smoke_win32.exe; \
+	else \
+	  printf "$(C_YELL)SKIP$(C_RESET) smoke-conpty-win32 must run inside Windows Terminal on Windows\n"; \
+	fi
+
+# ============================================================================
+# 8. GIF / RECORDING — render the chat demo to GIF / WebP / MP4
 # ============================================================================
 
 # Render the chat autoplay demo to an animated GIF *including* the Kitty images —
@@ -649,7 +697,7 @@ webp-chat-demo: gif-chat-demo ## chat demo -> recordings/chat-demo.{webp,mp4} (s
 	@printf "$(C_CYAN)wrote$(C_RESET) $(RECDIR)/chat-demo.{mp4,webp}\n"
 
 # ============================================================================
-# 8. ASSETS — regenerate vendored font / emoji / CJK headers
+# 9. ASSETS — regenerate vendored font / emoji / CJK headers
 # ============================================================================
 
 # Regenerate the subset TTF face header from DejaVu Sans Mono (via nix: fonttools).
@@ -665,7 +713,7 @@ gen-cjk: ## Regenerate tools/vendor/vt_font_cjk.h (Unifont CJK bitmaps, deflated
 	@nix-shell -p python3 unifont --run 'python3 tools/gen_cjk.py'
 
 # ============================================================================
-# 9. PACKAGING / MISC — amalgamate · release-check · man page · fmt · clean
+# 10. PACKAGING / MISC — amalgamate · release-check · man page · fmt · clean
 # ============================================================================
 
 amalgamate: $(BLDDIR)/amalgamate $(HEADER) $(LIB_SECTIONS) ## Regenerate the flat release single-header into release/
@@ -678,6 +726,16 @@ www: amalgamate ## Refresh static website assets under www/
 	@install -m 0644 $(RELDIR)/timui.h $(WWW_HEADER)
 	@install -m 0644 LICENSE $(WWW_LICENSE)
 	@printf "$(C_GREEN)✓ refreshed $(WWW_HEADER) and $(WWW_LICENSE)$(C_RESET)\n"
+
+check-www: ## Verify static website license and agent links
+	@grep -q '<h2>LICENSE</h2>' $(WWWDIR)/index.html
+	@grep -q 'href="LICENSE"' $(WWWDIR)/index.html
+	@grep -q 'Apache-2.0' $(WWWDIR)/index.html
+	@grep -q '^## License$$' $(WWWDIR)/llms.txt
+	@grep -q 'https://timui.dev/LICENSE' $(WWWDIR)/llms.txt
+	@grep -q 'SPDX-License-Identifier: Apache-2.0' $(WWW_HEADER)
+	@cmp -s LICENSE $(WWW_LICENSE)
+	@printf "$(C_GREEN)✓ website license links$(C_RESET)\n"
 
 $(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
 	@mkdir -p $(@D)

@@ -59,8 +59,17 @@ date: 2026-07-08
 - Win32 ConPTY is implemented behind `_WIN32`, runtime-probed for
   `CreatePseudoConsole`/`ResizePseudoConsole`/`ClosePseudoConsole`, and covered
   by POSIX fallback/helper tests plus a MinGW compile seam in `make check`.
+- Operator smoke harnesses now exist for the remaining live gates:
+  `make smoke-image-live PROTO=auto|kitty|sixel|iterm2|none` renders a valid
+  PNG, raw RGBA, and PNG+RGBA sidecar in a real terminal; `make
+  smoke-conpty-win32` runs the ConPTY sentinel round-trip inside Windows
+  Terminal. The matching compile/headless checks are deterministic, but they do
+  not count as live evidence.
 - `www/index.html` now includes a standalone `LICENSE` section, and
   `www/llms.txt` includes both the license URL and an explicit license section.
+- `make check` now includes `check-www`, which verifies the website license
+  section, `llms.txt` license URL, SPDX marker in `www/timui.h`, and that
+  `www/LICENSE` matches the repository `LICENSE`.
 - `www/timui.h` was refreshed by `nix develop -c make www`.
 
 ## Blockers And Pickup Points
@@ -69,7 +78,9 @@ date: 2026-07-08
   claim supported Windows operation until a real Windows Terminal smoke run is
   captured and recorded.
 - iTerm2 and Sixel have fake-transport wire tests, but no live terminal capture
-  evidence yet. Do not claim terminal evidence until captured.
+  evidence yet. Use `make smoke-image-live PROTO=sixel` and `make
+  smoke-image-live PROTO=iterm2` outside tmux/screen/zellij, then record the
+  terminal, command, terminal version, and outcome before claiming evidence.
 - Sixel parity remains open for built-in PNG-to-Sixel decode of plain PNG
   images. Caller-supplied PNG+RGBA sidecars cover PNG-backed Sixel emission and
   clipping without adding a PNG decoder to the release header.
@@ -96,6 +107,22 @@ date: 2026-07-08
   slice; Pillow emitted a deprecation warning in `tools/vtg_probe.py`.
 - `nix develop -c make test-san SAN=undefined` - passed after the PNG+RGBA
   sidecar slice, 304 tests, existing pty Esc sandbox skip.
+- `nix develop -c make check-image-smoke` - passed after adding the live image
+  smoke harness; this is a headless harness sanity check, not terminal image
+  evidence.
+- `nix develop -c make check-conpty-win32-smoke-compile` - passed after adding
+  the Win32 ConPTY smoke runner; this is compile evidence, not live Windows
+  evidence.
+- `nix develop -c make check-www` - passed after strengthening the website and
+  `llms.txt` license sections.
+- `nix develop -c make check` - passed after adding `check-www`: build, 304
+  tests, `check-no-images` (26 checks), both Win32 ConPTY compile seams, and
+  website license/link checks.
+- `nix develop -c make man` - passed after documenting `check-www`.
+- `nix develop -c make test` - passed while verifying the smoke-harness slice,
+  304 tests, existing pty Esc sandbox skip. A prior `make check` attempt hit
+  the known pty hello sandbox flake at `tests/test_images_pty.c:1513`, then
+  `make test` passed on rerun.
 - `nix develop -c make test` - passed, 295 tests, existing pty Esc sandbox skip.
 - `nix develop -c make check-conpty` - passed, including POSIX fallback/helper
   tests and the isolated MinGW Win32 ConPTY compile seam.
@@ -140,10 +167,12 @@ date: 2026-07-08
 ## Next Safe Move
 
 Use a Windows-capable worktree or CI worker to run a live Windows Terminal smoke
-against `timui_conpty_open`, transport read/write, resize, and close. Separately,
-capture live iTerm2 and Sixel terminal evidence before promoting image protocol
-support from fake-transport wire evidence to terminal evidence. For Sixel parity,
-built-in plain-PNG Sixel remains blocked on a public-library PNG decode
-dependency decision; `tools/vendor` currently contains dev-tooling-only `stb`
-use, not a release header dependency. PNG+RGBA sidecars are the current
-dependency-free path for applications that already have decoded pixels.
+with `make smoke-conpty-win32` and record the command, Windows build, Windows
+Terminal version, and output. Separately, run and record `make smoke-image-live
+PROTO=sixel` and `make smoke-image-live PROTO=iterm2` in real terminals before
+promoting image protocol support from fake-transport wire evidence to terminal
+evidence. For Sixel parity, built-in plain-PNG Sixel remains blocked on a
+public-library PNG decode dependency decision; `tools/vendor` currently contains
+dev-tooling-only `stb` use, not a release header dependency. PNG+RGBA sidecars
+are the current dependency-free path for applications that already have decoded
+pixels.
