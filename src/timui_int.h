@@ -79,6 +79,7 @@ struct Timui {
     int               cursor_x, cursor_y, cursor_visible, cursor_shown;
     int               events_dropped;
     int               w, h;
+    int               cell_px_w, cell_px_h;   /* 0 == terminal did not report pixel geometry */
     int               should_quit;
     /* One feed reads up to 256 bytes and can emit one event PER byte (e.g. a
      * drag-drop path typed as text), so the queue must hold a whole read plus a

@@ -171,12 +171,18 @@ TIMUI_API void timui_termios_destroy(TimuiTermios *t){
     t->have_saved = 0;
 }
 TIMUI_API TimuiResult timui_term_size(int fd, int *out_w, int *out_h){
+    return timui_term_size_pixels(fd, out_w, out_h, NULL, NULL);
+}
+TIMUI_API TimuiResult timui_term_size_pixels(int fd, int *out_w, int *out_h,
+                                             int *out_px_w, int *out_px_h){
     struct winsize ws;
     if(ioctl(fd, TIOCGWINSZ, &ws) != 0){
         return (errno == ENOTTY) ? TIMUI_ERR_NOT_A_TTY : TIMUI_ERR_OS;
     }
     if(out_w) *out_w = (int)ws.ws_col;
     if(out_h) *out_h = (int)ws.ws_row;
+    if(out_px_w) *out_px_w = (int)ws.ws_xpixel;
+    if(out_px_h) *out_px_h = (int)ws.ws_ypixel;
     return TIMUI_OK;
 }
 

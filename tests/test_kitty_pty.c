@@ -511,6 +511,67 @@ TIMUI_TEST(test_sixel_rgba_quantizer_preserves_exact_small_palette){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_sixel_rgba_scales_to_known_cell_pixels){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    unsigned char rgba[4] = { 0xff, 0x00, 0x00, 0xff };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    timui_set_cell_pixels_for_test(ui, 2, 3);
+    img = timui_image_from_rgba(ui, rgba, 1, 1, 4);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 4, 2));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\"1;1;8;6"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "#1~~~~~~~~"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_sixel_invalid_cell_pixels_fall_back_to_source_pixels){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    unsigned char rgba[2 * 2 * 4];
+    memset(rgba, 0xff, sizeof rgba);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    timui_set_cell_pixels_for_test(ui, 0, 3);
+    img = timui_image_from_rgba(ui, rgba, 2, 2, 2 * 4);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 4, 2));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\"1;1;2;2"));
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\"1;1;8;6"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_sixel_clipped_rgba_emits_cropped_dcs){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;

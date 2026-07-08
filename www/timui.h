@@ -204,6 +204,9 @@ TIMUI_API bool             timui_should_quit(const Timui *ui);
  * (no tty), so the frame/render path is unit-testable without a terminal. */
 TIMUI_API TimuiResult      timui_open_for_test(Timui **out_ui, TimuiTransport transport,
                                                int w, int h, const TimuiAllocator *alloc);
+/* Test seam: override cell pixel geometry for protocol-emission tests. Invalid
+ * dimensions clear the override and restore source-pixel Sixel emission. */
+TIMUI_API void             timui_set_cell_pixels_for_test(Timui *ui, int cell_w_px, int cell_h_px);
 
 /* ---- Widgets (immediate-mode; controlled default + _mut convenience) -- */
 typedef struct {
@@ -786,8 +789,11 @@ TIMUI_API void        timui_termios_fail_tcsetattr_for_test(int on);
 /* Query the terminal size (cols x rows) via TIOCGWINSZ. Applications that need
  * live resize handling should call this on the output fd and then call
  * timui_ui_resize(ui, w, h) when the size changes. Returns
- * TIMUI_ERR_NOT_A_TTY if fd is not a terminal. */
+ * TIMUI_ERR_NOT_A_TTY if fd is not a terminal. The _pixels variant also returns
+ * the terminal's total pixel dimensions when the platform reports them. */
 TIMUI_API TimuiResult timui_term_size(int fd, int *out_w, int *out_h);
+TIMUI_API TimuiResult timui_term_size_pixels(int fd, int *out_w, int *out_h,
+                                             int *out_px_w, int *out_px_h);
 
 /* ---- Capability detection --------------------------------------------- */
 typedef enum {
@@ -1431,6 +1437,7 @@ struct Timui {
     int               cursor_x, cursor_y, cursor_visible, cursor_shown;
     int               events_dropped;
     int               w, h;
+    int               cell_px_w, cell_px_h;   /* 0 == terminal did not report pixel geometry */
     int               should_quit;
     /* One feed reads up to 256 bytes and can emit one event PER byte (e.g. a
      * drag-drop path typed as text), so the queue must hold a whole read plus a
@@ -1628,6 +1635,26 @@ static TimuiResult timui_setup(Timui *ui, int w, int h){
     ui->frame.ui = ui;
     return TIMUI_OK;
 }
+
+static void timui_set_cell_pixels_(Timui *ui, int cell_w_px, int cell_h_px){
+    if(!ui) return;
+    if(cell_w_px > 0 && cell_h_px > 0){
+        ui->cell_px_w = cell_w_px;
+        ui->cell_px_h = cell_h_px;
+    }else{
+        ui->cell_px_w = 0;
+        ui->cell_px_h = 0;
+    }
+}
+
+static void timui_set_terminal_pixels_(Timui *ui, int cols, int rows, int px_w, int px_h){
+    if(!ui || cols <= 0 || rows <= 0 || px_w <= 0 || px_h <= 0){
+        timui_set_cell_pixels_(ui, 0, 0);
+        return;
+    }
+    timui_set_cell_pixels_(ui, px_w / cols, px_h / rows);
+}
+
 TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transport, int w, int h, const TimuiAllocator *alloc){
     Timui *ui;
     TimuiResult r;
@@ -1651,6 +1678,11 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     *out_ui = ui;
     return TIMUI_OK;
 }
+
+TIMUI_API void timui_set_cell_pixels_for_test(Timui *ui, int cell_w_px, int cell_h_px){
+    timui_set_cell_pixels_(ui, cell_w_px, cell_h_px);
+}
+
 /* ---- terminal restoration on signal (W6) ------------------------------ *
  * An external termination signal (SIGTERM/SIGHUP/SIGQUIT — kill, window
  * close, Ctrl-\) must not leave the terminal in raw mode. timui_open installs
@@ -1753,6 +1785,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     TimuiAllocator al;
     int input_flags;
     int w = 80, h = 24;
+    int px_w = 0, px_h = 0;
     TimuiResult r;
     if(!cfg || !out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
@@ -1785,7 +1818,9 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     ui->transport.ctx   = &ui->fd;
     ui->have_transport  = 1;
     timui_caps_detect(&ui->caps, getenv("TERM"), getenv("TERM_PROGRAM"), getenv("COLORTERM"));
-    if(timui_term_size(cfg->output_fd, &w, &h) != TIMUI_OK){ w = 80; h = 24; }
+    if(timui_term_size_pixels(cfg->output_fd, &w, &h, &px_w, &px_h) != TIMUI_OK){
+        w = 80; h = 24; px_w = 0; px_h = 0;
+    }
     ui->input_flags = input_flags;
     ui->input_flags_saved = 1;
     (void)fcntl(cfg->input_fd, F_SETFL, input_flags | O_NONBLOCK);
@@ -1806,6 +1841,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
         al.free(al.userdata, ui, sizeof *ui);
         return r;
     }
+    timui_set_terminal_pixels_(ui, w, h, px_w, px_h);
     *out_ui = ui;
     timui_install_sig_handlers(ui);   /* W6: restore the terminal on SIGTERM/SIGHUP/SIGQUIT */
     return TIMUI_OK;
@@ -3748,12 +3784,18 @@ TIMUI_API void timui_termios_destroy(TimuiTermios *t){
     t->have_saved = 0;
 }
 TIMUI_API TimuiResult timui_term_size(int fd, int *out_w, int *out_h){
+    return timui_term_size_pixels(fd, out_w, out_h, NULL, NULL);
+}
+TIMUI_API TimuiResult timui_term_size_pixels(int fd, int *out_w, int *out_h,
+                                             int *out_px_w, int *out_px_h){
     struct winsize ws;
     if(ioctl(fd, TIOCGWINSZ, &ws) != 0){
         return (errno == ENOTTY) ? TIMUI_ERR_NOT_A_TTY : TIMUI_ERR_OS;
     }
     if(out_w) *out_w = (int)ws.ws_col;
     if(out_h) *out_h = (int)ws.ws_row;
+    if(out_px_w) *out_px_w = (int)ws.ws_xpixel;
+    if(out_px_h) *out_px_h = (int)ws.ws_ypixel;
     return TIMUI_OK;
 }
 
@@ -7147,46 +7189,75 @@ static int sixel_palette_pixel_matches_(const SixelPalette_ *pal, int idx,
            c.b == pal->colors[idx].b;
 }
 
-static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r, TimuiRect full){
+static void sixel_target_size_(SixelCrop_ crop, TimuiRect r, int cell_px_w, int cell_px_h,
+                               int *out_w, int *out_h){
+    int w = crop.sw, h = crop.sh;
+    if(cell_px_w > 0 && cell_px_h > 0 &&
+       r.w > 0 && r.h > 0 &&
+       r.w <= INT_MAX / cell_px_w && r.h <= INT_MAX / cell_px_h){
+        w = r.w * cell_px_w;
+        h = r.h * cell_px_h;
+    }
+    if(out_w) *out_w = w;
+    if(out_h) *out_h = h;
+}
+
+static const unsigned char *sixel_sample_pixel_(const TimuiImage *img, SixelCrop_ crop,
+                                                int x, int y, int out_w, int out_h){
+    int sx, sy;
+    if(!img || out_w <= 0 || out_h <= 0) return NULL;
+    sx = crop.sx + (int)(((int64_t)x * (int64_t)crop.sw) / (int64_t)out_w);
+    sy = crop.sy + (int)(((int64_t)y * (int64_t)crop.sh) / (int64_t)out_h);
+    if(sx < crop.sx) sx = crop.sx;
+    if(sy < crop.sy) sy = crop.sy;
+    if(sx >= crop.sx + crop.sw) sx = crop.sx + crop.sw - 1;
+    if(sy >= crop.sy + crop.sh) sy = crop.sy + crop.sh - 1;
+    return img->data + (size_t)sy * (size_t)img->stride + (size_t)sx * 4u;
+}
+
+static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r, TimuiRect full,
+                       int cell_px_w, int cell_px_h){
     SixelPalette_ pal;
     SixelCrop_ crop;
     int ci, x, band;
+    int out_w, out_h;
     char b[64];
     int n;
     const char *p;
     if(!t || !t->write || !image_rect_emit_valid_(r)) return 0;
     if(!sixel_crop_(img, full, r, &crop)) return 0;
     if(!sixel_palette_crop_(img, crop, &pal)) return 0;
+    sixel_target_size_(crop, r, cell_px_w, cell_px_h, &out_w, &out_h);
+    if(out_w <= 0 || out_h <= 0) return 0;
     if(!image_cup_(t, r.x, r.y)) return 0;
     image_write_all_(t, "\x1bP0;1;0q", sizeof("\x1bP0;1;0q") - 1);
     n = 0;
     b[n++] = '"'; b[n++] = '1'; b[n++] = ';'; b[n++] = '1'; b[n++] = ';';
-    n += fmt_uint(b + n, (unsigned)crop.sw); b[n++] = ';';
-    n += fmt_uint(b + n, (unsigned)crop.sh);
+    n += fmt_uint(b + n, (unsigned)out_w); b[n++] = ';';
+    n += fmt_uint(b + n, (unsigned)out_h);
     image_write_all_(t, b, (size_t)n);
     for(ci = 0; ci < pal.count; ci++) sixel_emit_color_def_(t, ci, pal.colors[ci]);
-    for(band = 0; band < crop.sh; band += 6){
+    for(band = 0; band < out_h; band += 6){
         for(ci = 0; ci < pal.count; ci++){
             n = 0;
             b[n++] = '#';
             n += fmt_uint(b + n, (unsigned)(ci + 1));
             image_write_all_(t, b, (size_t)n);
-            for(x = 0; x < crop.sw; x++){
+            for(x = 0; x < out_w; x++){
                 int bit;
                 unsigned bits = 0;
                 for(bit = 0; bit < 6; bit++){
-                    int y = crop.sy + band + bit;
+                    int y = band + bit;
                     const unsigned char *px;
-                    if(y >= crop.sy + crop.sh) continue;
-                    px = img->data + (size_t)y * (size_t)img->stride +
-                         (size_t)(crop.sx + x) * 4u;
+                    if(y >= out_h) continue;
+                    px = sixel_sample_pixel_(img, crop, x, y, out_w, out_h);
                     if(sixel_palette_pixel_matches_(&pal, ci, px))
                         bits |= (1u << bit);
                 }
                 b[0] = (char)(0x3f + bits);
                 image_write_all_(t, b, 1);
             }
-            p = (ci + 1 < pal.count) ? "$" : ((band + 6 < crop.sh) ? "-" : "");
+            p = (ci + 1 < pal.count) ? "$" : ((band + 6 < out_h) ? "-" : "");
             if(*p) image_write_all_(t, p, 1);
         }
     }
@@ -7243,7 +7314,8 @@ void timui_images_flush_(Timui *ui){
     } else if(protocol == TIMUI_IMAGE_PROTOCOL_SIXEL){
         for(i = 0; i < ui->img_place_count; i++)
             emitted += sixel_emit_(&ui->transport, ui->img_place[i].img,
-                                   ui->img_place[i].rect, ui->img_place[i].full);
+                                   ui->img_place[i].rect, ui->img_place[i].full,
+                                   ui->cell_px_w, ui->cell_px_h);
     }
     ui->img_last_count = emitted;
     ui->img_last_protocol = emitted ? protocol : TIMUI_IMAGE_PROTOCOL_NONE;

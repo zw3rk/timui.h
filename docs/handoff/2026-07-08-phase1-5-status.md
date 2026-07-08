@@ -9,11 +9,12 @@ date: 2026-07-08
 ## Landing State
 
 - Branch: `phase1-5-impl`
-- Local master checkpoint: `a775e86` (`www: add license section`)
+- Local master checkpoint before this slice: `e61124d` (`images: quantize raw rgba sixel palettes`)
 - Merge status: `phase1-5-impl` fast-forwarded into local
   `/Users/angerman/Projects/zw3rk/timui.h-master`
 - Push status: not pushed
-- Remote state: local `master` is ahead of `github/master` by 15 commits
+- Remote state before this slice: local `master` is ahead of `github/master` by
+  18 commits
 
 ## Read First
 
@@ -36,7 +37,8 @@ date: 2026-07-08
 - Sixel emits DCS graphics for raw RGBA images with up to 16 opaque exact
   colours and deterministic 16-colour quantization beyond that cap; alpha below
   128 is transparent/background-preserving. Clipped raw-RGBA Sixel draws crop
-  and emit cropped DCS payloads.
+  source pixels, and raw-RGBA Sixel draws scale to the requested cell rectangle
+  when terminal cell-pixel geometry is known.
 - PNG images forced to Sixel, PNG/non-raw clipped Sixel draws, and clipped
   iTerm2 draws intentionally render `[img]`.
 - Win32 ConPTY is implemented behind `_WIN32`, runtime-probed for
@@ -53,8 +55,8 @@ date: 2026-07-08
   captured and recorded.
 - iTerm2 and Sixel have fake-transport wire tests, but no live terminal capture
   evidence yet. Do not claim terminal evidence until captured.
-- Sixel parity remains open: PNG-to-Sixel decode, scaling to cell geometry, and
-  non-raw clipped Sixel draws.
+- Sixel parity remains open: PNG-to-Sixel decode and non-raw clipped Sixel
+  draws.
 - AddressSanitizer did not complete locally: `nix develop -c make test-san
   SAN=address` hung in macOS ASAN runtime initialization before entering the
   test harness. A `sample` of the process showed `__asan::AsanInitInternal` /
@@ -62,28 +64,32 @@ date: 2026-07-08
 
 ## Verification Already Run
 
-- `nix develop -c make test` - passed, 291 tests, existing pty Esc sandbox skip.
+- `nix develop -c make test` - passed, 295 tests, existing pty Esc sandbox skip.
 - `nix develop -c make check-conpty` - passed, including POSIX fallback/helper
   tests and the isolated MinGW Win32 ConPTY compile seam.
-- `nix develop -c make check` - passed after the raw-RGBA Sixel quantization
-  change, including build, 291 tests,
-  and the MinGW ConPTY compile seam.
-- `nix develop -c make check-vt-gif-all` - passed after the image emission change.
-- `nix develop -c make release-check` - passed after Sixel/header changes.
-- `nix develop -c make test-san SAN=undefined` - passed, 291 tests, existing pty
-  Esc sandbox skip.
+- `nix develop -c make check` - passed after the raw-RGBA Sixel scaling change,
+  including build, 295 tests, and the MinGW ConPTY compile seam.
+- `nix develop -c make check-vt-gif-all` - passed after the raw-RGBA Sixel
+  scaling change.
+- `nix develop -c make release-check` - passed after the raw-RGBA Sixel scaling
+  header changes.
+- `nix develop -c make test-san SAN=undefined` - passed after the raw-RGBA Sixel
+  scaling change, 295 tests, existing pty Esc sandbox skip.
 - `nix flake check` - passed for the current system; Nix reported incompatible
   non-current systems omitted unless `--all-systems` is used.
 - Earlier in the same image sweep:
   `nix develop -c make build check-layout check-grid check-tabs
   check-chat-text check-chat-highlight release-check check-vt-gif-all
   smoke-gallery check-irc smoke-irc` - passed.
-- `nix develop -c make vt-test` - passed, 287 tests, existing pty Esc sandbox
-  skip.
+- `nix develop -c make vt-test` - passed after the raw-RGBA Sixel scaling
+  change, 303 tests, existing pty Esc sandbox skip.
 
 ## Next Safe Move
 
 Use a Windows-capable worktree or CI worker to run a live Windows Terminal smoke
 against `timui_conpty_open`, transport read/write, resize, and close. Separately,
 capture live iTerm2 and Sixel terminal evidence before promoting image protocol
-support from fake-transport wire evidence to terminal evidence.
+support from fake-transport wire evidence to terminal evidence. For Sixel parity,
+PNG-to-Sixel remains blocked on a public-library PNG decode dependency decision;
+`tools/vendor` currently contains dev-tooling-only `stb` use, not a release
+header dependency.

@@ -28,6 +28,8 @@ TimuiRect   timui_root(const TimuiFrame *frame);
 int         timui_width/height(const TimuiFrame *frame);
 TimuiResult timui_ui_resize(Timui *ui, int w, int h);
 TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
+TimuiResult timui_term_size_pixels(int fd, int *out_w, int *out_h,
+                                   int *out_px_w, int *out_px_h);
 ```
 
 `timui_open` enters raw mode + alternate screen (if a tty), detects
@@ -160,11 +162,14 @@ and iTerm2 inline images from PNG bytes supplied to `timui_image_from_png`, and
 Sixel from raw RGBA pixels supplied to `timui_image_from_rgba`. The Sixel path
 is intentionally narrow: exact colours are preserved up to 16 opaque colours,
 larger raw-RGBA palettes are quantized to a deterministic 16-colour terminal
-palette, alpha below 128 is transparent, and there is still no PNG decode or
-scaling to cell geometry. `timui_image_draw_clipped` crops Kitty placements and
-raw-RGBA Sixel source pixels. iTerm2 clipped draws and PNG images forced to
-Sixel fall back to `[img]`. `timui_force_image_protocol` is intended for tests
-and user overrides; unknown enum values clear image caps and select `NONE`.
+palette, alpha below 128 is transparent, and PNG decode is still not part of the
+library path. When the terminal reports total pixel dimensions via
+`TIOCGWINSZ`, raw-RGBA Sixel draws are nearest-neighbor scaled to the requested
+cell rectangle; otherwise they preserve source pixel dimensions.
+`timui_image_draw_clipped` crops Kitty placements and raw-RGBA Sixel source
+pixels. iTerm2 clipped draws and PNG images forced to Sixel fall back to
+`[img]`. `timui_force_image_protocol` is intended for tests and user overrides;
+unknown enum values clear image caps and select `NONE`.
 
 ### Text editing
 

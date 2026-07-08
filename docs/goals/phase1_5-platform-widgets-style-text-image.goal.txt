@@ -129,9 +129,12 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   DCS payloads; PNG/non-raw clipped Sixel draws still fall back.
 - DONE: raw-RGBA palettes above 16 opaque colours are quantized to a bounded
   deterministic 16-colour terminal palette instead of falling back.
+- DONE: raw-RGBA Sixel draws scale to the requested cell rectangle when terminal
+  cell-pixel geometry is known from `TIOCGWINSZ`; otherwise they preserve source
+  pixel dimensions.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API has PNG and raw-RGBA constructors; Sixel does not imply PNG decode,
-  scaling, or PNG/non-raw clipping parity yet.
+  or PNG/non-raw clipping parity yet.
 - Add capability selection for Kitty, Sixel, iTerm2 inline images, and none.
   Sixel should be prioritized before iTerm2 because it is useful for Windows
   Terminal and classic terminal compatibility.

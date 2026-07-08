@@ -203,6 +203,9 @@ TIMUI_API bool             timui_should_quit(const Timui *ui);
  * (no tty), so the frame/render path is unit-testable without a terminal. */
 TIMUI_API TimuiResult      timui_open_for_test(Timui **out_ui, TimuiTransport transport,
                                                int w, int h, const TimuiAllocator *alloc);
+/* Test seam: override cell pixel geometry for protocol-emission tests. Invalid
+ * dimensions clear the override and restore source-pixel Sixel emission. */
+TIMUI_API void             timui_set_cell_pixels_for_test(Timui *ui, int cell_w_px, int cell_h_px);
 
 /* ---- Widgets (immediate-mode; controlled default + _mut convenience) -- */
 typedef struct {
@@ -785,8 +788,11 @@ TIMUI_API void        timui_termios_fail_tcsetattr_for_test(int on);
 /* Query the terminal size (cols x rows) via TIOCGWINSZ. Applications that need
  * live resize handling should call this on the output fd and then call
  * timui_ui_resize(ui, w, h) when the size changes. Returns
- * TIMUI_ERR_NOT_A_TTY if fd is not a terminal. */
+ * TIMUI_ERR_NOT_A_TTY if fd is not a terminal. The _pixels variant also returns
+ * the terminal's total pixel dimensions when the platform reports them. */
 TIMUI_API TimuiResult timui_term_size(int fd, int *out_w, int *out_h);
+TIMUI_API TimuiResult timui_term_size_pixels(int fd, int *out_w, int *out_h,
+                                             int *out_px_w, int *out_px_h);
 
 /* ---- Capability detection --------------------------------------------- */
 typedef enum {

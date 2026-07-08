@@ -131,6 +131,26 @@ static TimuiResult timui_setup(Timui *ui, int w, int h){
     ui->frame.ui = ui;
     return TIMUI_OK;
 }
+
+static void timui_set_cell_pixels_(Timui *ui, int cell_w_px, int cell_h_px){
+    if(!ui) return;
+    if(cell_w_px > 0 && cell_h_px > 0){
+        ui->cell_px_w = cell_w_px;
+        ui->cell_px_h = cell_h_px;
+    }else{
+        ui->cell_px_w = 0;
+        ui->cell_px_h = 0;
+    }
+}
+
+static void timui_set_terminal_pixels_(Timui *ui, int cols, int rows, int px_w, int px_h){
+    if(!ui || cols <= 0 || rows <= 0 || px_w <= 0 || px_h <= 0){
+        timui_set_cell_pixels_(ui, 0, 0);
+        return;
+    }
+    timui_set_cell_pixels_(ui, px_w / cols, px_h / rows);
+}
+
 TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transport, int w, int h, const TimuiAllocator *alloc){
     Timui *ui;
     TimuiResult r;
@@ -154,6 +174,11 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     *out_ui = ui;
     return TIMUI_OK;
 }
+
+TIMUI_API void timui_set_cell_pixels_for_test(Timui *ui, int cell_w_px, int cell_h_px){
+    timui_set_cell_pixels_(ui, cell_w_px, cell_h_px);
+}
+
 /* ---- terminal restoration on signal (W6) ------------------------------ *
  * An external termination signal (SIGTERM/SIGHUP/SIGQUIT — kill, window
  * close, Ctrl-\) must not leave the terminal in raw mode. timui_open installs
@@ -256,6 +281,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     TimuiAllocator al;
     int input_flags;
     int w = 80, h = 24;
+    int px_w = 0, px_h = 0;
     TimuiResult r;
     if(!cfg || !out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
@@ -288,7 +314,9 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     ui->transport.ctx   = &ui->fd;
     ui->have_transport  = 1;
     timui_caps_detect(&ui->caps, getenv("TERM"), getenv("TERM_PROGRAM"), getenv("COLORTERM"));
-    if(timui_term_size(cfg->output_fd, &w, &h) != TIMUI_OK){ w = 80; h = 24; }
+    if(timui_term_size_pixels(cfg->output_fd, &w, &h, &px_w, &px_h) != TIMUI_OK){
+        w = 80; h = 24; px_w = 0; px_h = 0;
+    }
     ui->input_flags = input_flags;
     ui->input_flags_saved = 1;
     (void)fcntl(cfg->input_fd, F_SETFL, input_flags | O_NONBLOCK);
@@ -309,6 +337,7 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
         al.free(al.userdata, ui, sizeof *ui);
         return r;
     }
+    timui_set_terminal_pixels_(ui, w, h, px_w, px_h);
     *out_ui = ui;
     timui_install_sig_handlers(ui);   /* W6: restore the terminal on SIGTERM/SIGHUP/SIGQUIT */
     return TIMUI_OK;

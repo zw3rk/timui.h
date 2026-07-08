@@ -84,14 +84,16 @@ should avoid promoting `stb_image` into the public library for now: add a
 raw-RGBA image constructor, copy caller-owned pixel rows with strict
 dimension/stride/overflow validation, and emit Sixel only for that raw pixel
 kind. PNG images forced to Sixel should continue to draw `[img]` until PNG
-decode and scaling are deliberately designed.
+decode is deliberately designed.
 
 Implemented state: `timui_image_from_rgba` copies rows into tightly packed RGBA
 storage and the Sixel emitter handles raw RGBA images with up to 16 opaque exact
 colours, deterministic 16-colour terminal-palette quantization beyond that cap,
-and cropped raw-RGBA draws via `timui_image_draw_clipped`. Alpha below 128 is
-transparent/background-preserving. PNG-to-Sixel, scaling to cell geometry,
-non-raw clipped Sixel, and real-terminal capture evidence remain open.
+cropped raw-RGBA draws via `timui_image_draw_clipped`, and nearest-neighbor
+scaling to the requested cell rectangle when `TIOCGWINSZ` reports terminal
+pixel geometry. Alpha below 128 is transparent/background-preserving.
+PNG-to-Sixel, non-raw clipped Sixel, and real-terminal capture evidence remain
+open.
 
 Before claiming PNG-based Sixel support, choose and document the pixel source:
 
