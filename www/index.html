@@ -302,7 +302,7 @@ Make no mistakes. If mistakes occur, make them small and blame curses.</code></p
 
     <h2>TESTING</h2>
     <p>
-      The library is not a toy. It maintains 225 verified tests via <strong>make test</strong>. Continuous integration runs address, undefined, and thread sanitizers. Golden staleness checks and Tier A libvterm round-trip verification are enforced.
+      The library is not a toy. It maintains 287 verified tests via <strong>make test</strong>. Continuous integration runs address, undefined, and thread sanitizers. Golden staleness checks and Tier A libvterm round-trip verification are enforced.
     </p>
 
     <h2>BUGS AND LIMITATIONS</h2>
@@ -310,10 +310,16 @@ Make no mistakes. If mistakes occur, make them small and blame curses.</code></p
       The current implementation has known constraints:
     </p>
     <ul>
-      <li><strong>Windows Support</strong>: Win32 ConPTY is explicitly a stub returning unsupported. The POSIX raw-mode terminal backend is currently required.</li>
+      <li><strong>Windows Support</strong>: Win32 ConPTY is implemented, runtime-probed, and compile-checked, but live Windows Terminal smoke evidence is still pending. POSIX remains the verified backend.</li>
       <li><strong>Text Shaping</strong>: Contains CJK/emoji wide glyph rendering and useful Hebrew/Arabic approximation, but full UAX #9 bidi, complex grapheme clusters, and ZWJ emoji remain unimplemented.</li>
       <li><strong>API Stability</strong>: Currently version 0.2.0. The API is highly functional but not 1.0 stable.</li>
     </ul>
+
+    <h2>LICENSE</h2>
+    <p>
+      <strong>timui.h</strong> is released under the <a href="LICENSE">Apache License 2.0</a>.
+      Freedom, patent grant, no ncurses dependency clause because apparently that was not necessary.
+    </p>
 
     <h2>SEE ALSO</h2>
     <p>

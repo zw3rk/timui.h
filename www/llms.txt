@@ -109,16 +109,24 @@ int main(void) {
 - Input: `timui_key_pressed`, mouse support, SGR mouse, Kitty keyboard,
   bracketed paste, focus events, UTF-8 text.
 - Advanced terminal features: truecolor, synchronized output, OSC 8 hyperlinks,
-  and Kitty graphics where supported by the terminal.
+  Kitty graphics, iTerm2 inline images, and raw-RGBA Sixel where supported by
+  the terminal.
 - Async UI messages: `timui_post` lets worker threads post messages while the
   UI thread owns the terminal.
 
 ## Limitations
 
-- POSIX terminal backend is required. Win32 ConPTY is currently unsupported.
+- POSIX remains the verified backend. Win32 ConPTY is implemented,
+  runtime-probed, and compile-checked, but still needs a live Windows Terminal
+  smoke run before claiming supported Windows operation.
 - API version is 0.2.0 and not yet 1.0 stable.
 - The library includes useful CJK/emoji width handling and Hebrew/Arabic
   approximation, but not full complex shaping or full bidi.
+
+## License
+
+timui.h is released under Apache-2.0. The full license text is at
+https://timui.dev/LICENSE.
 
 ## Agent guidance
 
