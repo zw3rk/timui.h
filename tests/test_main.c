@@ -155,6 +155,7 @@ int main(void){
         test_begin_preserves_focus_events,
         test_interact_click,
         test_interact_hover_only,
+        test_interact_release_outside_does_not_click,
         test_interact_extreme_rect_hit_test,
         test_interact_tab_cycles,
         test_interact_keyboard_activate,

@@ -4576,7 +4576,7 @@ TIMUI_API TimuiInteractResult timui_interact_button(TimuiInteract *ia, TimuiId i
     res.active  = (ia->active == id);
     res.pressed = res.active && ia->mouse_down;
     if(res.active && ia->mouse_released){
-        res.clicked = 1;        /* released over the active widget */
+        res.clicked = hover;    /* click only if released over the active widget */
         ia->active = 0;
     }
     if(res.focused && ia->activate_pressed){

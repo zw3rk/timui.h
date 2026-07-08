@@ -166,6 +166,7 @@ void test_events_dropped(void);
 void test_begin_preserves_focus_events(void);
 void test_interact_click(void);
 void test_interact_hover_only(void);
+void test_interact_release_outside_does_not_click(void);
 void test_interact_extreme_rect_hit_test(void);
 void test_interact_tab_cycles(void);
 void test_interact_keyboard_activate(void);

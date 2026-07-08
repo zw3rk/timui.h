@@ -46,6 +46,28 @@ TIMUI_TEST(test_interact_hover_only){
     timui_interact_destroy(&ia);
 }
 
+TIMUI_TEST(test_interact_release_outside_does_not_click){
+    TimuiInteract ia;
+    TimuiAllocator al = timui_default_allocator();
+    TimuiRect r = TIMUI_RECT(0, 0, 10, 3);
+    TimuiInteractResult res;
+
+    timui_interact_init(&ia, &al);
+    timui_interact_set_mouse(&ia, 5, 1, 1);
+    timui_interact_begin(&ia);
+    res = timui_interact_button(&ia, TIMUI_ID("b"), r);
+    TIMUI_CHECK(res.pressed && !res.clicked);
+    timui_interact_end(&ia);
+
+    timui_interact_set_mouse(&ia, 30, 8, 0);
+    timui_interact_begin(&ia);
+    res = timui_interact_button(&ia, TIMUI_ID("b"), r);
+    TIMUI_CHECK(!res.hovered && !res.clicked);
+    TIMUI_CHECK(ia.active == 0);
+    timui_interact_end(&ia);
+    timui_interact_destroy(&ia);
+}
+
 TIMUI_TEST(test_interact_extreme_rect_hit_test){
     TimuiInteract ia;
     TimuiAllocator al = timui_default_allocator();
