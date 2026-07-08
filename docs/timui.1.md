@@ -29,8 +29,9 @@ In C, as a single-header drop-in:
 modern terminals (Ghostty, kitty, WezTerm, Alacritty, foot, Rio, …) with a
 safe ANSI fallback for everything else. It has a DOS / Midnight-Commander
 aesthetic and is functional / immutable by default, with `_mut` convenience
-wrappers. It does **not** use ncurses; a C99 compiler and libc are the only
-hard dependencies.
+wrappers. It does **not** use ncurses; a C99 compiler plus POSIX libc are
+required. The default thread-safe post queue also links pthreads; define
+`TIMUI_NO_THREADS` for a single-threaded build without pthread.
 
 The public drop-in library is delivered as an amalgamated `timui.h`: download
 `https://timui.dev/timui.h`, use `www/timui.h` from the website build, or

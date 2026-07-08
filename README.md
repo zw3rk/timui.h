@@ -35,7 +35,9 @@ Everything goes through the nix dev shell + Makefile:
     nix develop -c make check    # build examples + run tests
     nix develop -c make run      # build & run examples/hello
 
-A C99 compiler and libc are the only hard dependencies.
+A C99 compiler plus POSIX libc are required. The default thread-safe post queue
+also links pthreads; define `TIMUI_NO_THREADS` for a single-threaded build
+without pthread.
 
 ## Single-header drop-in
 
