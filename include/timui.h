@@ -194,10 +194,13 @@ TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
  * NULL ui / non-positive size, or TIMUI_ERR_OUT_OF_MEMORY if a buffer can't grow
  * (dimensions are left unchanged in that case — see V10 rollback). */
 TIMUI_API TimuiResult      timui_ui_resize(Timui *ui, int w, int h);
+/* Advanced raw-event polling. timui_begin consumes key/text/mouse/paste into
+ * frame aggregators (timui_text_input, key flags, mouse helpers). Events left
+ * after begin are for out-of-band cases such as focus changes. */
 TIMUI_API int              timui_poll_event(Timui *ui, TimuiEvent *out_event);
-/* G7: returns the count of events dropped this frame (queue holds 16) and
- * resets the counter. Call after timui_begin to detect a burst that exceeded
- * the queue (large paste, high-rate mouse drag). */
+/* G7: returns the count of events dropped this frame and resets the counter.
+ * The raw queue holds 512 slots; paste/text frame buffers can still truncate
+ * very large bursts. Call after timui_begin to detect loss. */
 TIMUI_API int              timui_events_dropped(Timui *ui);
 TIMUI_API void             timui_quit(Timui *ui);
 TIMUI_API bool             timui_should_quit(const Timui *ui);
