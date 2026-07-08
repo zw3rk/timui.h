@@ -9,6 +9,8 @@
 #include <string.h>
 
 #define SETIN(fake, lit) timui_fake_set_input((fake), (lit), sizeof(lit) - 1)
+#define WAVE_SKIN "\xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD" /* waving hand + skin tone */
+#define HEART_VS  "\xE2\x9D\xA4\xEF\xB8\x8F"         /* heavy black heart + VS16 */
 
 TIMUI_TEST(test_input_types_and_submits){
     TimuiAllocator al = timui_default_allocator();
@@ -123,6 +125,32 @@ TIMUI_TEST(test_input_line_utf8_backspace){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_line_grapheme_backspace){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    char buf[16] = {0};
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 1);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    SETIN(&fake, "\x1b[<0;2;1M");
+    timui_begin(ui, &f); timui_input_line_buf(f, TIMUI_ID("ug"), r, buf, sizeof buf); timui_end(f);
+    SETIN(&fake, "\x1b[<0;2;1m");
+    timui_begin(ui, &f); timui_input_line_buf(f, TIMUI_ID("ug"), r, buf, sizeof buf); timui_end(f);
+
+    SETIN(&fake, WAVE_SKIN);
+    timui_begin(ui, &f); timui_input_line_buf(f, TIMUI_ID("ug"), r, buf, sizeof buf); timui_end(f);
+    TIMUI_CHECK(strcmp(buf, WAVE_SKIN) == 0);
+    SETIN(&fake, "\x7f");
+    timui_begin(ui, &f); timui_input_line_buf(f, TIMUI_ID("ug"), r, buf, sizeof buf); timui_end(f);
+    TIMUI_CHECK(strcmp(buf, "") == 0);
+    timui_close(ui);
+}
+
 /* F1.5: input_field — in-line cursor editing (single line). */
 TIMUI_TEST(test_input_field_edit){
     TimuiAllocator al = timui_default_allocator();
@@ -154,6 +182,34 @@ TIMUI_TEST(test_input_field_edit){
     SETIN(&fake, "\r"); IF_FRAME();                 /* Enter submits */
     TIMUI_CHECK(submitted);
 #undef IF_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_input_field_grapheme_edit){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 5, &al);
+#define GF_FRAME() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("gf"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); GF_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); GF_FRAME();
+    SETIN(&fake, "a" WAVE_SKIN "b"); GF_FRAME();
+    TIMUI_CHECK(strcmp(text, "a" WAVE_SKIN "b") == 0 && is.cursor == 10);
+    SETIN(&fake, "\x1b[D"); GF_FRAME();             /* LEFT past b */
+    TIMUI_CHECK(is.cursor == 9);
+    SETIN(&fake, "\x1b[D"); GF_FRAME();             /* LEFT past whole emoji cluster */
+    TIMUI_CHECK(is.cursor == 1);
+    SETIN(&fake, "\x1b[3~"); GF_FRAME();            /* DELETE whole 👋🏽 */
+    TIMUI_CHECK(strcmp(text, "ab") == 0 && is.cursor == 1);
+    SETIN(&fake, HEART_VS); GF_FRAME();
+    TIMUI_CHECK(strcmp(text, "a" HEART_VS "b") == 0 && is.cursor == 7);
+    SETIN(&fake, "\x7f"); GF_FRAME();               /* backspace removes whole VS16 cluster */
+    TIMUI_CHECK(strcmp(text, "ab") == 0 && is.cursor == 1);
+#undef GF_FRAME
     timui_close(ui);
 }
 

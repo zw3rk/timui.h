@@ -195,11 +195,11 @@ TIMUI_API void timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text){
     timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
     timui_draw_text(&ui->curr, r.x, r.y, text, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
 }
-/* ---- UTF-8 codepoint helpers (shared with timui_text_area) ------------- *
+/* ---- UTF-8 / grapheme edit helpers (shared with timui_text_area) -------- *
  * text_in carries UTF-8 (since the G8 fix), so text inputs must append and
- * delete whole codepoints — a byte-wise append splits a multibyte char at the
- * cap boundary, and a 1-byte backspace leaves a dangling lead byte. Both
- * corrupt the buffer into permanently invalid UTF-8. */
+ * delete whole clusters — a byte-wise append can split a multibyte char at the
+ * cap boundary, and a codepoint-wise backspace can leave a dangling skin-tone
+ * modifier, variation selector, or joiner sequence. */
 
 /* byte length of a well-formed UTF-8 sequence starting at lead byte b (1..4),
  * or 0 if b is not a lead. */
@@ -210,26 +210,20 @@ static int utf8_lead_len(unsigned char b){
     if((b & 0xF8) == 0xF0) return 4;
     return 0;
 }
-/* New length after removing one complete UTF-8 codepoint from the end of
- * buf[0..len): walk back over trailing continuation bytes (0x80-0xBF) to the
- * lead byte, then drop the lead. */
+/* New length after removing one complete grapheme cluster from the end of
+ * buf[0..len). The state structs keep byte cursors, so callers still pass and
+ * receive byte offsets. */
 static size_t utf8_drop_last(const char *buf, size_t len){
-    size_t i = len;
-    while(i > 0 && ((unsigned char)buf[i - 1] & 0xC0) == 0x80) i--;
-    if(i > 0) i--;
-    return i;
+    return timui_grapheme_prev(buf, len, len);
 }
 /* ---- in-line editing primitives (F1.2) --------------------------------- *
  * All operate on a NUL-terminated buffer; utf8_drop_last(buf, cursor) already
- * gives the previous codepoint boundary (Left / Backspace). */
+ * gives the previous grapheme boundary (Left / Backspace). */
 
-/* Byte offset after the codepoint at `cursor`, clamped to len (Right / Delete). */
+/* Byte offset after the grapheme at `cursor`, clamped to len (Right / Delete). */
 static size_t utf8_next_(const char *buf, size_t cursor, size_t len){
-    size_t step;
     if(cursor >= len) return len;
-    step = (size_t)utf8_lead_len((unsigned char)buf[cursor]);
-    if(step == 0) step = 1;                       /* stray byte: advance one */
-    return (cursor + step > len) ? len : cursor + step;
+    return timui_grapheme_next(buf, len, cursor);
 }
 /* Start of the line containing `pos` (after the preceding \n/\r, or 0). */
 static size_t line_start_(const char *buf, size_t pos){
@@ -244,7 +238,7 @@ static size_t line_end_(const char *buf, size_t pos){
 }
 /* Insert `n` bytes at byte offset `at`. Returns 1 on success, 0 if it won't fit
  * (len + n + 1 > cap). The tail (incl. the NUL) is shifted right. Callers pass
- * whole codepoints so nothing is split at the cap boundary. */
+ * whole codepoints so nothing is split at the UTF-8 byte boundary. */
 static int text_insert_(char *buf, size_t cap, size_t at, const char *bytes, size_t n){
     size_t len = strlen(buf);
     if(at > len) at = len;
@@ -286,7 +280,7 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
             }
             buf[len] = '\0';
             if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && len > 0){
-                len = utf8_drop_last(buf, len);         /* delete a whole codepoint */
+                len = utf8_drop_last(buf, len);         /* delete a whole cluster */
                 buf[len] = '\0';
             }
             if(submit) submitted = true;
@@ -299,17 +293,17 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
     timui_draw_text(&ui->curr, r.x, r.y, timui_str_from_cstr(buf), st);
     return submitted;
 }
-/* Display column of the cursor: sum of glyph widths over buf[0..upto) (F1.5). */
+/* Display column of the cursor: sum of grapheme widths over buf[0..upto) (F1.5). */
 static int display_col_(const char *buf, size_t upto){
     size_t i = 0, len = strlen(buf);
     int col = 0;
     if(upto > len) upto = len;
     while(i < upto){
-        uint32_t cp = 0;
-        int adv = timui_utf8_decode(buf + i, len - i, &cp);
-        if(adv <= 0) adv = 1;
-        col += timui_utf8_width(cp);
-        i += (size_t)adv;
+        size_t n = timui_grapheme_next(buf, len, i);
+        if(n <= i) n = i + 1;
+        if(n > upto) n = upto;
+        col += timui_grapheme_width(buf + i, n - i);
+        i = n;
     }
     return col;
 }
@@ -370,7 +364,7 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
                 (void)text_erase_(st->text, st->cursor, nxt);
             }
             if(ui->key_in & TIMUI_KEYIN_KILL_EOL){          /* Ctrl-K: cursor..end */
-                st->text[st->cursor] = '\0';                /* cursor is a codepoint boundary */
+                st->text[st->cursor] = '\0';                /* cursor is a cluster boundary */
             }
             if(ui->key_in & TIMUI_KEYIN_KILL_BOL){          /* Ctrl-U: start..cursor */
                 size_t rest = strlen(st->text + st->cursor);

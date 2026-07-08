@@ -87,12 +87,12 @@ cursor; int scroll_x; }` / `TimuiTextAreaState`.
 ### Text editing
 
 `timui_input_field` (single line) and `timui_text_area` (multi-line) support
-full in-line cursor editing when focused: Left/Right move by whole codepoints,
-Home/End jump to the line bounds, Backspace/Delete remove the codepoint
+full in-line cursor editing when focused: Left/Right move by whole grapheme
+clusters, Home/End jump to the line bounds, Backspace/Delete remove the cluster
 before/at the cursor, and typing inserts mid-string. The focused field shows a
 hardware cursor at the edit position; `input_field` scrolls horizontally to keep
 it visible. `timui_input_line_buf` remains the append-only convenience with no
-cursor.
+cursor, but its Backspace also deletes one whole cluster.
 
 ## Styling & themes
 

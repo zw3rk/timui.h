@@ -9,6 +9,8 @@
 #include <string.h>
 
 #define SETIN(fake, lit) timui_fake_set_input((fake), (lit), sizeof(lit) - 1)
+#define WAVE_SKIN "\xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD" /* waving hand + skin tone */
+#define HEART_VS  "\xE2\x9D\xA4\xEF\xB8\x8F"         /* heavy black heart + VS16 */
 
 /* ---- snapshot testing (#53) ---- */
 TIMUI_TEST(test_snapshot_row_eq){
@@ -146,6 +148,34 @@ TIMUI_TEST(test_text_area_cursor_utf8){
     SETIN(&fake, "\x1b[3~"); TA_FRAME();            /* DELETE whole é -> "ab" */
     TIMUI_CHECK(strcmp(text, "ab") == 0 && tas.cursor == 1);
 #undef TA_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_grapheme_edit){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define TAG_FRAME() do{ timui_begin(ui,&f); timui_text_area(f, TIMUI_ID("tg"), r, &tas); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TAG_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TAG_FRAME();
+    SETIN(&fake, "a" WAVE_SKIN "b"); TAG_FRAME();
+    TIMUI_CHECK(strcmp(text, "a" WAVE_SKIN "b") == 0 && tas.cursor == 10);
+    SETIN(&fake, "\x1b[D"); TAG_FRAME();
+    TIMUI_CHECK(tas.cursor == 9);
+    SETIN(&fake, "\x1b[D"); TAG_FRAME();
+    TIMUI_CHECK(tas.cursor == 1);
+    SETIN(&fake, "\x1b[3~"); TAG_FRAME();
+    TIMUI_CHECK(strcmp(text, "ab") == 0 && tas.cursor == 1);
+    SETIN(&fake, HEART_VS); TAG_FRAME();
+    TIMUI_CHECK(strcmp(text, "a" HEART_VS "b") == 0 && tas.cursor == 7);
+    SETIN(&fake, "\x7f"); TAG_FRAME();
+    TIMUI_CHECK(strcmp(text, "ab") == 0 && tas.cursor == 1);
+#undef TAG_FRAME
     timui_close(ui);
 }
 

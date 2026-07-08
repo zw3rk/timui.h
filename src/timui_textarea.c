@@ -1,6 +1,6 @@
 /* ---- text-area widget (v0.2) ------------------------------------------ *
- * A multi-line text editor. Click to focus, type to insert, backspace deletes.
- * Lines are split on '\n'. (Cursor movement beyond append-at-end is future.) */
+ * A multi-line text editor. Click to focus, type to insert, Backspace/Delete
+ * remove whole grapheme clusters. Lines are split on '\n'. */
 TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *st){
     Timui *ui;
     TimuiInteractResult ir;
@@ -13,8 +13,9 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
     ir = timui_interact_button(&ui->ia, id, r);
     if(ir.focused){
         int j = 0;
-        /* insert typed codepoints AT the cursor (mid-string, F1.3), whole
-         * codepoints only; stop when one won't fit (text_insert_ is cap-bounded).
+        /* Insert typed codepoints at the cursor. Deletion/movement below is
+         * grapheme-aware; insertion remains codepoint-by-codepoint and
+         * cap-bounded, so invalid partial UTF-8 is not created.
          * The edit helpers live in the widgets section, in scope via the unity
          * build. */
         while(j < ui->text_in_len){
@@ -30,7 +31,7 @@ TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiText
         if(ui->key_in & TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, strlen(st->text));
         if(ui->key_in & TIMUI_KEYIN_HOME)  st->cursor = line_start_(st->text, st->cursor);
         if(ui->key_in & TIMUI_KEYIN_END)   st->cursor = line_end_(st->text, st->cursor);
-        /* deletion: backspace removes the codepoint before the cursor, DELETE
+        /* deletion: backspace removes the cluster before the cursor, DELETE
          * the one at the cursor. */
         if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st->cursor > 0){
             size_t prev = utf8_drop_last(st->text, st->cursor);
