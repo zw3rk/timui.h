@@ -33,17 +33,18 @@ What `timui.h` speaks on the wire, and where it falls back.
 - **Alternate screen** (`CSI ? 1049 h/l`), title (`OSC 0 ; … BEL`).
 - **OSC 8 hyperlinks**: emitted when `TIMUI_CAP_OSC8_HYPERLINKS` is set, with
   cell-level link tracking for hit-testing.
-- **Terminal images**: `timui_image_*` accepts PNG bytes and raw RGBA pixels.
+- **Terminal images**: `timui_image_*` accepts PNG bytes, raw RGBA pixels, and
+  PNG+RGBA sidecar images where the caller supplies decoded pixels.
   Protocol selection is exposed via `timui_caps_image_protocol` /
   `timui_image_protocol`, with Kitty preferred when available, then Sixel, then
   iTerm2. This release emits Kitty graphics, iTerm2 inline images
-  (`OSC 1337;File=...`) for unclipped PNG draws, and Sixel DCS for raw RGBA
-  images with exact palettes or bounded 16-colour quantization, including
-  cropped raw-RGBA draws and scaling to known cell-pixel geometry. PNG images
-  forced to Sixel, clipped iTerm2 draws, and unsupported paths deliberately fall
-  back to the same text placeholder instead of emitting unsupported or lossy
-  escapes. Builds with `TIMUI_NO_IMAGES` keep the API but force this placeholder
-  path for every draw.
+  (`OSC 1337;File=...`) for unclipped PNG-backed draws, and Sixel DCS for raw
+  RGBA pixels or PNG+RGBA sidecars with exact palettes or bounded 16-colour
+  quantization, including cropped Sixel draws and scaling to known cell-pixel
+  geometry. Plain PNG images forced to Sixel, clipped iTerm2 draws, and
+  unsupported paths deliberately fall back to the same text placeholder instead
+  of emitting unsupported or lossy escapes. Builds with `TIMUI_NO_IMAGES` keep
+  the API but force this placeholder path for every draw.
 
 ## Capability gating
 
@@ -64,7 +65,9 @@ after detection and force masks; protocol selection always returns
   belongs below the protocol layer, not as a graphics abstraction. Live Windows
   Terminal smoke evidence is still pending before claiming supported Windows
   operation.
-- **Sixel parity**: the raw-RGBA emitter is implemented with exact palettes,
-  bounded 16-colour quantization, raw-RGBA clipping, and scaling when terminal
-  cell-pixel geometry is known. Deferred work: PNG-to-Sixel decode, non-raw
-  Sixel clipping, and real-terminal evidence.
+- **Sixel parity**: the RGBA emitter is implemented with exact palettes,
+  bounded 16-colour quantization, clipping, and scaling when terminal
+  cell-pixel geometry is known. `timui_image_from_png_rgba` lets applications
+  provide decoded pixels for PNG-backed Sixel without promoting a PNG decoder
+  into the release header. Deferred work: built-in PNG-to-Sixel decode and
+  real-terminal evidence.

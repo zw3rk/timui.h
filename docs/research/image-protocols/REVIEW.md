@@ -83,25 +83,31 @@ Keep Sixel as the next image emitter slice. The smallest honest implementation
 should avoid promoting `stb_image` into the public library for now: add a
 raw-RGBA image constructor, copy caller-owned pixel rows with strict
 dimension/stride/overflow validation, and emit Sixel only for that raw pixel
-kind. PNG images forced to Sixel should continue to draw `[img]` until PNG
-decode is deliberately designed.
+kind. Plain PNG images forced to Sixel should continue to draw `[img]` until
+PNG decode is deliberately designed.
 
 Implemented state: `timui_image_from_rgba` copies rows into tightly packed RGBA
 storage and the Sixel emitter handles raw RGBA images with up to 16 opaque exact
 colours, deterministic 16-colour terminal-palette quantization beyond that cap,
-cropped raw-RGBA draws via `timui_image_draw_clipped`, and nearest-neighbor
-scaling to the requested cell rectangle when `TIOCGWINSZ` reports terminal
-pixel geometry. Alpha below 128 is transparent/background-preserving.
-PNG-to-Sixel, non-raw clipped Sixel, and real-terminal capture evidence remain
-open.
+cropped Sixel draws via `timui_image_draw_clipped`, and nearest-neighbor scaling
+to the requested cell rectangle when `TIOCGWINSZ` reports terminal pixel
+geometry. Alpha below 128 is transparent/background-preserving.
 
-Before claiming PNG-based Sixel support, choose and document the pixel source:
+Follow-up state: `timui_image_from_png_rgba` copies original PNG bytes plus
+caller-supplied decoded RGBA rows. Kitty and iTerm2 continue to transmit the PNG
+bytes; Sixel uses the RGBA sidecar for emission and clipping. This deliberately
+keeps PNG decoding out of the release header. The supplied RGBA dimensions are
+expected to match the PNG and drive source cropping. Built-in PNG-to-Sixel
+decode and real-terminal capture evidence remain open.
+
+Before claiming built-in plain-PNG Sixel support, choose and document the pixel
+source:
 
 - promote vendored `stb_image.h` into the library/release header as PNG-only,
   with strict byte/pixel limits and updated NOTICE/documentation; or
 - add a different PNG decoder dependency and accept that timui is no longer
   pure single-header/no-external-library for Sixel; or
-- add a new raw-RGBA image constructor and keep PNG-based Sixel unsupported
-  until decode is solved.
+- keep requiring caller-supplied RGBA sidecars for PNG-backed Sixel and leave
+  plain PNG images on the placeholder fallback until decode is solved.
 
 Do not claim Sixel support from only the protocol enum or placeholder fallback.

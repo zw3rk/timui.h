@@ -145,6 +145,8 @@ void timui_force_image_protocol(Timui *, TimuiImageProtocol);
 TimuiImage *timui_image_from_png(Timui *, const void *data, size_t size);
 TimuiImage *timui_image_from_rgba(Timui *, const void *rgba,
                                   int w, int h, int stride);
+TimuiImage *timui_image_from_png_rgba(Timui *, const void *png, size_t png_size,
+                                      const void *rgba, int w, int h, int stride);
 void timui_image_draw(TimuiFrame *, TimuiImage *, TimuiRect);
 void timui_image_draw_clipped(TimuiFrame *, TimuiImage *,
                               TimuiRect full, TimuiRect visible);
@@ -158,18 +160,23 @@ the application explicitly forces them. Image protocol selection returns
 Kitty wins, then Sixel, then iTerm2.
 
 The image API is protocol-neutral at the draw call. v0.2 emits Kitty graphics
-and iTerm2 inline images from PNG bytes supplied to `timui_image_from_png`, and
-Sixel from raw RGBA pixels supplied to `timui_image_from_rgba`. The Sixel path
-is intentionally narrow: exact colours are preserved up to 16 opaque colours,
-larger raw-RGBA palettes are quantized to a deterministic 16-colour terminal
-palette, alpha below 128 is transparent, and PNG decode is still not part of the
-library path. When the terminal reports total pixel dimensions via
-`TIOCGWINSZ`, raw-RGBA Sixel draws are nearest-neighbor scaled to the requested
-cell rectangle; otherwise they preserve source pixel dimensions.
-`timui_image_draw_clipped` crops Kitty placements and raw-RGBA Sixel source
-pixels. iTerm2 clipped draws and PNG images forced to Sixel fall back to
-`[img]`. `timui_force_image_protocol` is intended for tests and user overrides;
-unknown enum values clear image caps and select `NONE`.
+and iTerm2 inline images from PNG bytes supplied to `timui_image_from_png` or
+`timui_image_from_png_rgba`, and Sixel from raw RGBA pixels supplied to
+`timui_image_from_rgba` or the RGBA sidecar supplied to
+`timui_image_from_png_rgba`. The sidecar constructor copies the original PNG
+bytes and caller-decoded RGBA rows; timui does not decode PNG internally, and
+the supplied RGBA dimensions are expected to match the PNG because they drive
+Sixel source pixels and cropping. The Sixel path is intentionally narrow: exact
+colours are preserved up to 16 opaque colours, larger raw-RGBA palettes are
+quantized to a deterministic 16-colour terminal palette, and alpha below 128 is
+transparent. When the terminal reports total pixel dimensions via `TIOCGWINSZ`,
+Sixel draws are nearest-neighbor scaled to the requested cell rectangle;
+otherwise they preserve source pixel dimensions. `timui_image_draw_clipped`
+crops Kitty placements and Sixel source pixels when RGBA pixels are available.
+Plain PNG images forced to Sixel, clipped iTerm2 draws, and unsupported
+protocol/data pairs fall back to `[img]`. `timui_force_image_protocol` is
+intended for tests and user overrides; unknown enum values clear image caps and
+select `NONE`.
 
 Defining `TIMUI_NO_IMAGES` keeps this API available but disables terminal image
 protocol emission. `timui_caps_image_protocol` / `timui_image_protocol` return

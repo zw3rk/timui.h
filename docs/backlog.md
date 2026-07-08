@@ -72,8 +72,11 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       - [x] Raw-RGBA Sixel scaling to known terminal cell-pixel geometry.
       - [x] `TIMUI_NO_IMAGES` build mode keeps the image API available while
             stripping image caps/escapes and rendering `[img]` placeholders.
-      - [ ] Sixel terminal evidence plus PNG decode and non-raw clipped draw
-            parity.
+      - [x] PNG+RGBA sidecar constructor preserves PNG passthrough for
+            Kitty/iTerm2 while giving Sixel caller-decoded pixels for emission
+            and clipping, without adding a PNG decoder to the release header.
+      - [ ] Sixel terminal evidence plus built-in PNG decode for plain PNG
+            images.
       - [ ] iTerm2 terminal evidence.
 
 ## Phase 2 backlog - architecture and applications

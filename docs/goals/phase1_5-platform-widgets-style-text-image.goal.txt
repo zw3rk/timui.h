@@ -125,8 +125,8 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   iTerm2 and placeholder fallback for clipped iTerm2 draws.
 - DONE: Sixel emission is implemented for raw RGBA images with an exact
   16-colour palette cap and alpha thresholding.
-- DONE: raw-RGBA Sixel clipped draws crop the source pixels and emit cropped
-  DCS payloads; PNG/non-raw clipped Sixel draws still fall back.
+- DONE: RGBA Sixel clipped draws crop the source pixels and emit cropped DCS
+  payloads; plain PNG clipped Sixel draws still fall back.
 - DONE: raw-RGBA palettes above 16 opaque colours are quantized to a bounded
   deterministic 16-colour terminal palette instead of falling back.
 - DONE: raw-RGBA Sixel draws scale to the requested cell rectangle when terminal
@@ -135,9 +135,12 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
 - DONE: `TIMUI_NO_IMAGES` is active as an API-preserving no-image-emission mode:
   image caps/protocol forcing select `NONE`, and image draws render `[img]`
   without terminal image escapes.
+- DONE: `timui_image_from_png_rgba` preserves PNG bytes for Kitty/iTerm2 while
+  giving Sixel caller-decoded pixels for emission and clipping, without
+  promoting a PNG decoder into the release header.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
-  API has PNG and raw-RGBA constructors; Sixel does not imply PNG decode,
-  or PNG/non-raw clipping parity yet.
+  API has PNG, raw-RGBA, and PNG+RGBA sidecar constructors; Sixel does not
+  imply built-in PNG decode for plain PNG images yet.
 - Add capability selection for Kitty, Sixel, iTerm2 inline images, and none.
   Sixel should be prioritized before iTerm2 because it is useful for Windows
   Terminal and classic terminal compatibility.

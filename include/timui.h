@@ -1210,22 +1210,34 @@ TIMUI_API int    timui_conpty_size_valid_for_test(int cols, int rows);
  * by it. Kitty transmits once by `id` and places by rect; iTerm2 emits an
  * inline File payload per draw. The caller reserves the region (draws its own
  * background and no text there). This release emits Kitty graphics and iTerm2
- * inline PNG images, plus Sixel for raw RGBA images with exact palettes or
- * bounded 16-colour quantization and raw-RGBA clipped draws. Unsupported
- * protocols and unsupported clipped draws render a "[img]" cell placeholder.
- * With TIMUI_NO_IMAGES, the same API stays available but always uses that
- * placeholder path and emits no terminal image escape sequences. */
+ * inline PNG-backed images, plus Sixel for raw RGBA pixels or PNG+RGBA
+ * sidecars with exact palettes or bounded 16-colour quantization and clipped
+ * Sixel draws. Unsupported protocols/data pairs and unsupported clipped draws
+ * render a "[img]" cell placeholder. With TIMUI_NO_IMAGES, the same API stays
+ * available but always uses that placeholder path and emits no terminal image
+ * escape sequences. */
 typedef enum {
     TIMUI_IMAGE_KIND_PNG = 0,
-    TIMUI_IMAGE_KIND_RGBA
+    TIMUI_IMAGE_KIND_RGBA,
+    TIMUI_IMAGE_KIND_PNG_RGBA
 } TimuiImageKind;
 
-typedef struct TimuiImage { unsigned char *data; size_t len; uint32_t id;
+typedef struct TimuiImage { unsigned char *data; size_t len;
+                            unsigned char *rgba; size_t rgba_len;
+                            uint32_t id;
                             int px_w, px_h; TimuiImageKind kind;
-                            int stride; } TimuiImage;   /* RGBA stride, or 0 for PNG bytes */
+                            int stride; } TimuiImage;   /* tight RGBA stride, or 0 without pixels */
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
 TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba,
                                             int w, int h, int stride);
+/* Original PNG bytes plus caller-supplied decoded RGBA pixels. timui does not
+ * decode PNG internally; this lets apps keep PNG passthrough for Kitty/iTerm2
+ * while giving Sixel exact pixels for emission and clipping. The supplied
+ * RGBA dimensions are expected to match the PNG and drive source cropping. */
+TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
+                                                size_t png_size,
+                                                const void *rgba,
+                                                int w, int h, int stride);
 TIMUI_API void        timui_image_free(Timui *ui, TimuiImage *img);
 TIMUI_API void        timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r);
 /* Draw only the part of `img` (which maps to cell rect `full`) that lands inside

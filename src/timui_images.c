@@ -1,6 +1,6 @@
 /* ---- Terminal images (v0.2) ------------------------------------------- *
- * Accept PNG bytes; Kitty terminals get APC graphics, iTerm2 gets OSC 1337,
- * and unsupported paths draw a "[img]" placeholder. */
+ * Accept PNG bytes and raw RGBA pixels; unsupported protocol/data pairs draw
+ * a "[img]" placeholder instead of guessing. */
 
 /* Write all len bytes, looping past short writes. A real fd transport may
  * deliver fewer bytes than requested; without this a graphics chunk can split
@@ -42,6 +42,8 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     if(!img->data){ al.free(al.userdata, img, sizeof *img); return NULL; }
     memcpy(img->data, data, size);
     img->len = size;
+    img->rgba = NULL;
+    img->rgba_len = 0;
     img->kind = TIMUI_IMAGE_KIND_PNG;
     img->stride = 0;
     img->id = 0;                 /* assigned on first transmit (timui_images_flush_) */
@@ -57,32 +59,82 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     }
     return img;
 }
+
+static int image_rgba_size_(int w, int h, int stride, size_t *out_row, size_t *out_total){
+    size_t row;
+    if(w <= 0 || h <= 0) return 0;
+    if(w > INT_MAX / 4) return 0;
+    row = (size_t)w * 4u;
+    if(stride < (int)row) return 0;
+    if((size_t)h > SIZE_MAX / row) return 0;
+    if(out_row) *out_row = row;
+    if(out_total) *out_total = row * (size_t)h;
+    return 1;
+}
+
+static void image_copy_rows_(unsigned char *dst, const unsigned char *src,
+                             int h, size_t row, int stride){
+    int y;
+    for(y = 0; y < h; y++)
+        memcpy(dst + (size_t)y * row, src + (size_t)y * (size_t)stride, row);
+}
+
 TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba, int w, int h, int stride){
     TimuiImage *img;
     TimuiAllocator al;
-    size_t row, total;
+    size_t row = 0, total = 0;
     const unsigned char *src;
-    int y;
     (void)ui;
-    if(!rgba || w <= 0 || h <= 0) return NULL;
-    if(w > INT_MAX / 4) return NULL;
-    row = (size_t)w * 4u;
-    if(stride < (int)row) return NULL;
-    if((size_t)h > SIZE_MAX / row) return NULL;
-    total = row * (size_t)h;
+    if(!rgba || !image_rgba_size_(w, h, stride, &row, &total)) return NULL;
     al = timui_default_allocator();
     img = (TimuiImage *)al.alloc(al.userdata, sizeof(TimuiImage));
     if(!img) return NULL;
     img->data = (unsigned char *)al.alloc(al.userdata, total);
     if(!img->data){ al.free(al.userdata, img, sizeof *img); return NULL; }
     src = (const unsigned char *)rgba;
-    for(y = 0; y < h; y++)
-        memcpy(img->data + (size_t)y * row, src + (size_t)y * (size_t)stride, row);
+    image_copy_rows_(img->data, src, h, row, stride);
     img->len = total;
+    img->rgba = img->data;
+    img->rgba_len = total;
     img->id = 0;
     img->px_w = w;
     img->px_h = h;
     img->kind = TIMUI_IMAGE_KIND_RGBA;
+    img->stride = (int)row;
+    return img;
+}
+TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
+                                                size_t png_size,
+                                                const void *rgba,
+                                                int w, int h, int stride){
+    TimuiImage *img;
+    TimuiAllocator al;
+    size_t row = 0, total = 0;
+    const unsigned char *src;
+    (void)ui;
+    if(!png || png_size == 0 || !rgba || !image_rgba_size_(w, h, stride, &row, &total))
+        return NULL;
+    al = timui_default_allocator();
+    img = (TimuiImage *)al.alloc(al.userdata, sizeof(TimuiImage));
+    if(!img) return NULL;
+    memset(img, 0, sizeof *img);
+    img->data = (unsigned char *)al.alloc(al.userdata, png_size);
+    if(!img->data){ al.free(al.userdata, img, sizeof *img); return NULL; }
+    img->rgba = (unsigned char *)al.alloc(al.userdata, total);
+    if(!img->rgba){
+        al.free(al.userdata, img->data, png_size);
+        al.free(al.userdata, img, sizeof *img);
+        return NULL;
+    }
+    memcpy(img->data, png, png_size);
+    src = (const unsigned char *)rgba;
+    image_copy_rows_(img->rgba, src, h, row, stride);
+    img->len = png_size;
+    img->rgba_len = total;
+    img->id = 0;
+    img->px_w = w;
+    img->px_h = h;
+    img->kind = TIMUI_IMAGE_KIND_PNG_RGBA;
     img->stride = (int)row;
     return img;
 }
@@ -91,6 +143,7 @@ TIMUI_API void timui_image_free(Timui *ui, TimuiImage *img){
     (void)ui;
     if(!img) return;
     al = timui_default_allocator();
+    if(img->rgba && img->rgba != img->data) al.free(al.userdata, img->rgba, img->rgba_len);
     if(img->data) al.free(al.userdata, img->data, img->len);
     al.free(al.userdata, img, sizeof *img);
 }
@@ -226,10 +279,34 @@ typedef struct {
 static int image_rect_emit_valid_(TimuiRect r);
 static int image_rect_contains_(TimuiRect outer, TimuiRect inner);
 
+static int image_has_png_(const TimuiImage *img){
+    return img && img->data && img->len > 0 &&
+           (img->kind == TIMUI_IMAGE_KIND_PNG || img->kind == TIMUI_IMAGE_KIND_PNG_RGBA);
+}
+
+static const unsigned char *image_rgba_(const TimuiImage *img){
+    if(!img) return NULL;
+    return img->rgba ? img->rgba :
+           ((img->kind == TIMUI_IMAGE_KIND_RGBA) ? img->data : NULL);
+}
+
+static size_t image_rgba_len_(const TimuiImage *img){
+    if(!img) return 0;
+    if(img->rgba) return img->rgba_len;
+    return (img->kind == TIMUI_IMAGE_KIND_RGBA) ? img->len : 0;
+}
+
 static int sixel_is_rgba_(const TimuiImage *img){
-    return img && img->kind == TIMUI_IMAGE_KIND_RGBA && img->data &&
-           img->px_w > 0 && img->px_h > 0 && img->px_w <= INT_MAX / 4 &&
-           (size_t)img->stride >= (size_t)img->px_w * 4u;
+    size_t row, stride, need;
+    if(!img || !image_rgba_(img)) return 0;
+    if(img->px_w <= 0 || img->px_h <= 0 || img->px_w > INT_MAX / 4) return 0;
+    if(img->stride <= 0) return 0;
+    row = (size_t)img->px_w * 4u;
+    stride = (size_t)img->stride;
+    if(stride < row) return 0;
+    if((size_t)(img->px_h - 1) > (SIZE_MAX - row) / stride) return 0;
+    need = (size_t)(img->px_h - 1) * stride + row;
+    return image_rgba_len_(img) >= need;
 }
 
 static int sixel_palette_index_(const SixelColor_ *pal, int count,
@@ -309,7 +386,7 @@ static int sixel_palette_crop_(const TimuiImage *img, SixelCrop_ crop, SixelPale
     if(crop.sw > img->px_w - crop.sx || crop.sh > img->px_h - crop.sy) return 0;
     memset(pal, 0, sizeof *pal);
     for(y = crop.sy; y < crop.sy + crop.sh; y++){
-        const unsigned char *row = img->data + (size_t)y * (size_t)img->stride;
+        const unsigned char *row = image_rgba_(img) + (size_t)y * (size_t)img->stride;
         for(x = crop.sx; x < crop.sx + crop.sw; x++){
             const unsigned char *px = row + (size_t)x * 4u;
             if(px[3] < 128) continue;
@@ -328,7 +405,7 @@ quantize:
     memset(pal, 0, sizeof *pal);
     pal->quantized = 1;
     for(y = crop.sy; y < crop.sy + crop.sh; y++){
-        const unsigned char *row = img->data + (size_t)y * (size_t)img->stride;
+        const unsigned char *row = image_rgba_(img) + (size_t)y * (size_t)img->stride;
         for(x = crop.sx; x < crop.sx + crop.sw; x++){
             const unsigned char *px = row + (size_t)x * 4u;
             SixelColor_ q;
@@ -411,7 +488,7 @@ static const unsigned char *sixel_sample_pixel_(const TimuiImage *img, SixelCrop
     if(sy < crop.sy) sy = crop.sy;
     if(sx >= crop.sx + crop.sw) sx = crop.sx + crop.sw - 1;
     if(sy >= crop.sy + crop.sh) sy = crop.sy + crop.sh - 1;
-    return img->data + (size_t)sy * (size_t)img->stride + (size_t)sx * 4u;
+    return image_rgba_(img) + (size_t)sy * (size_t)img->stride + (size_t)sx * 4u;
 }
 
 static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r, TimuiRect full,
@@ -481,7 +558,7 @@ void timui_images_flush_(Timui *ui){
             TimuiRect r    = ui->img_place[i].rect;   /* visible sub-rect */
             TimuiRect full = ui->img_place[i].full;   /* uncropped rect   */
             int sx = 0, sy = 0, sw = 0, sh = 0;
-            if(!img) continue;
+            if(!image_has_png_(img)) continue;
             if(r.x < 0 || r.y < 0 || r.x == INT_MAX || r.y == INT_MAX) continue;
             /* If the visible rect is a vertical sub-slice of `full`, crop the source
              * pixels to match, so the image clips smoothly at a pane edge. */
@@ -555,8 +632,8 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
         return;
     }
     protocol = timui_image_protocol(ui);
-    if(protocol == TIMUI_IMAGE_PROTOCOL_KITTY ||
-       (protocol == TIMUI_IMAGE_PROTOCOL_ITERM2 && image_rect_same_(visible, full)) ||
+    if((protocol == TIMUI_IMAGE_PROTOCOL_KITTY && image_has_png_(img)) ||
+       (protocol == TIMUI_IMAGE_PROTOCOL_ITERM2 && image_has_png_(img) && image_rect_same_(visible, full)) ||
        (protocol == TIMUI_IMAGE_PROTOCOL_SIXEL &&
         ((image_rect_same_(visible, full) && sixel_image_supported_(img)) ||
          (!image_rect_same_(visible, full) && sixel_image_supported_at_(img, full, visible))))){
