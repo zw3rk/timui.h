@@ -53,7 +53,6 @@ These are known limitations promoted into the next planned follow-up. See
   lifecycle, resize path, close semantics, VT mode setup, and `size_t` to
   `DWORD` chunking remain to be implemented. Do not claim Windows support until
   compile checks and a real Windows smoke run are green.
-- **Medium widgets** still missing: split/resizable panes.
 - **Stylesheet widget application** is missing. A TCSS-like parser/resolver now
   exists, but built-in widgets still draw from themes and explicit style
   overrides rather than resolved stylesheet queries.

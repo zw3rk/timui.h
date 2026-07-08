@@ -75,6 +75,8 @@ void              timui_text_area(..., TimuiTextAreaState *st);       /* compati
 TimuiComboboxResult timui_combobox(..., const TimuiStr *options, int count, TimuiComboboxState state);
 TimuiComboboxResult timui_combobox_mut(..., const TimuiStr *options, int count, TimuiComboboxState *state);
 TimuiToastResult timui_toasts(..., const TimuiToast *toasts, int count, uint64_t now_ms);
+TimuiSplitPaneResult timui_split_pane(..., TimuiAxis axis, TimuiSplitPaneState state);
+TimuiSplitPaneResult timui_split_pane_mut(..., TimuiAxis axis, TimuiSplitPaneState *state);
 TimuiListResult   timui_listbox(...);    TimuiListResult timui_listbox_mut(..., TimuiListState *);
 TimuiTreeResult   timui_tree(...);       TimuiTreeResult timui_tree_mut(..., int *selected);
 TimuiTableResult  timui_table(...);      TimuiTableResult timui_table_mut(..., TimuiTableState *);
@@ -99,6 +101,11 @@ caller-owned data. Toasts carry title, message, severity, creation time, TTL,
 and a caller-owned dismissed flag. The widget mutates nothing; it reports the
 original array index clicked for dismissal and the count drawn inside the
 supplied rectangle.
+
+`timui_split_pane` lays out a resizable two-pane region over an existing
+rectangle. `TIMUI_AXIS_H` returns left/divider/right panes; `TIMUI_AXIS_V`
+returns top/divider/bottom panes. State is caller-owned (`ratio`, `min_first`,
+`min_second`), and `_mut` writes back only while the divider is dragged.
 
 ### Text editing
 

@@ -82,6 +82,7 @@ int main(int argc, char **argv){
     TimuiBarState   bars = {{0}, 0};
     char combo_query[32] = "ga";
     TimuiComboboxState combo = { combo_query, sizeof combo_query, 2, 0, 1, 0, 0 };
+    TimuiSplitPaneState code_split = {0.72f, 4, 3};
 
     { int i; for(i = 1; i < argc; i++)
         if(!strcmp(argv[i], "--frames") && i + 1 < argc) max_frames = atoi(argv[++i]); }
@@ -171,9 +172,19 @@ int main(int argc, char **argv){
                   }
               } }
 
-            /* right column: syntax-highlighted code viewer */
+            /* right column: syntax-highlighted code viewer + resizable note */
             { TimuiRect in = timui_border(f, cols[2], TIMUI_BOX_ROUNDED, TIMUI_STR_LIT(" code "), border_st);
-              timui_code(f, in, CODE_SRC, (int)(sizeof CODE_SRC - 1), "c", &code_scroll); }
+              if(in.h >= 8){
+                  TimuiSplitPaneResult sp = timui_split_pane_mut(f, TIMUI_ID("code-split"), in,
+                                                                 TIMUI_AXIS_V, &code_split);
+                  timui_code(f, sp.first, CODE_SRC, (int)(sizeof CODE_SRC - 1), "c", &code_scroll);
+                  timui_label(f, sp.second.x, sp.second.y,
+                              TIMUI_STR_LIT("split pane"), timui_style_make(dim, bg, 0));
+                  timui_label(f, sp.second.x, sp.second.y + 1,
+                              TIMUI_STR_LIT("drag the divider"), timui_style_make(dim, bg, 0));
+              } else {
+                  timui_code(f, in, CODE_SRC, (int)(sizeof CODE_SRC - 1), "c", &code_scroll);
+              } }
 
             /* status */
             timui_label(f, rows[3].x + 1, rows[3].y,

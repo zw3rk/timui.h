@@ -374,6 +374,130 @@ TIMUI_TEST(test_toast_guards){
     timui_close(ui);
 }
 
+/* ---- split / resizable panes (Phase 1.5) ---- */
+TIMUI_TEST(test_split_pane_horizontal_drag_clamps_minmax){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiSplitPaneState st = { 0.5f, 10, 20 };
+    TimuiSplitPaneResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 100, 5);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 120, 8, &al);
+
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(!res.changed && !res.dragging);
+    TIMUI_CHECK(res.first.w == 50 && res.divider.x == 50 && res.second.w == 49);
+    timui_end(f);
+
+    SETIN(&fake, "\x1b[<0;51;3M");      /* press the divider at x=50, y=2 */
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(res.dragging && !res.changed);
+    timui_end(f);
+
+    SETIN(&fake, "\x1b[<32;86;3M");     /* drag to x=85, clamped by min_second=20 */
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(res.changed && res.dragging);
+    TIMUI_CHECK(res.first.w == 79 && res.divider.x == 79 && res.second.w == 20);
+    TIMUI_CHECK(st.ratio > 0.79f && st.ratio < 0.81f);
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_split_pane_vertical_geometry_and_guards){
+    TimuiSplitPaneState st = { 0.25f, 2, 3 };
+    TimuiSplitPaneResult res;
+    res = timui_split_pane(NULL, TIMUI_ID("split"), TIMUI_RECT(0, 0, 10, 20),
+                           TIMUI_AXIS_V, st);
+    TIMUI_CHECK(!res.changed && !res.dragging);
+    TIMUI_CHECK(res.first.h == 5 && res.divider.y == 5 && res.second.h == 14);
+    TIMUI_CHECK(res.first.w == 10 && res.divider.w == 10 && res.second.w == 10);
+
+    st.ratio = -10.0f; st.min_first = -1; st.min_second = -2;
+    res = timui_split_pane(NULL, TIMUI_ID("split"), TIMUI_RECT(0, 0, 8, 4),
+                           TIMUI_AXIS_H, st);
+    TIMUI_CHECK(res.first.w == 0 && res.divider.w == 1 && res.second.w == 7);
+
+    st.ratio = 0.5f; st.min_first = 10; st.min_second = 10;
+    res = timui_split_pane(NULL, TIMUI_ID("split"), TIMUI_RECT(0, 0, 5, 4),
+                           TIMUI_AXIS_H, st);
+    TIMUI_CHECK(res.first.w >= 0 && res.second.w >= 0 && res.divider.w == 1);
+    TIMUI_CHECK(res.first.w + res.divider.w + res.second.w == 5);
+}
+
+TIMUI_TEST(test_split_pane_mut_writeback_only_on_drag){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiSplitPaneState st = { 0.25f, 0, 0 };
+    TimuiSplitPaneResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 4);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 60, 6, &al);
+
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(!res.changed && st.ratio == 0.25f);
+    timui_end(f);
+
+    SETIN(&fake, "\x1b[<0;11;2M");
+    timui_begin(ui, &f);
+    (void)timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    timui_end(f);
+
+    SETIN(&fake, "\x1b[<32;21;2M");
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(res.changed && st.ratio > 0.49f && st.ratio < 0.53f);
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_split_pane_drag_requires_divider_press){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiSplitPaneState st = { 0.25f, 0, 0 };
+    TimuiSplitPaneResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 4);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 60, 6, &al);
+
+    SETIN(&fake, "\x1b[<0;2;2M");       /* press inside first pane, not divider */
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(!res.dragging && !res.changed && st.ratio == 0.25f);
+    timui_end(f);
+
+    SETIN(&fake, "\x1b[<32;11;2M");     /* move over divider while still down */
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(!res.dragging && !res.changed && st.ratio == 0.25f);
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_split_pane_wheel_does_not_drag){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiSplitPaneState st = { 0.5f, 0, 0 };
+    TimuiSplitPaneResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 4);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 60, 6, &al);
+
+    SETIN(&fake, "\x1b[<64;20;2M");
+    timui_begin(ui, &f);
+    res = timui_split_pane_mut(f, TIMUI_ID("split"), r, TIMUI_AXIS_H, &st);
+    TIMUI_CHECK(!res.dragging && !res.changed && st.ratio == 0.5f);
+    timui_end(f);
+    timui_close(ui);
+}
+
 /* Z26: the controlled (value) form never touches caller memory, and the _mut
  * twin writes back only on a real change — a pure out-of-range clamp is NOT
  * written back (fixes the old unconditional-write-back aliasing surprise). */

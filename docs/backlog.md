@@ -41,7 +41,7 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       empty-list behavior, and cap-limited query tests.
 - [x] **Toast / notification** - immediate-mode renderer over caller-owned
       notification data: severity, TTL, stacking, clipping, and manual dismiss.
-- [ ] **Split / resizable panes** - build on `timui_split`/`timui_split_ex` with
+- [x] **Split / resizable panes** - build on `timui_split`/`timui_split_ex` with
       caller-owned split state and a local divider-drag interaction. Full global
       drag/hover architecture remains Phase 2.
 - [x] **CSS-like stylesheet parser/resolver foundation** - a small

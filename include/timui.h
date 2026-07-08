@@ -470,6 +470,29 @@ TIMUI_API int timui_grid(TimuiRect area, const TimuiConstraint *rows, int nr,
 TIMUI_API int timui_grid_ex(TimuiRect area, const TimuiConstraint *rows, int nr,
                             const TimuiConstraint *cols, int nc, TimuiLayoutOpts opts, TimuiRect *out);
 
+/* Caller-owned two-pane splitter: TIMUI_AXIS_H gives left/divider/right,
+ * TIMUI_AXIS_V gives top/divider/bottom. The controlled form returns updated
+ * state without writing caller memory; the _mut form writes back only while the
+ * divider is dragged. */
+typedef struct {
+    float ratio;        /* first pane share of available space, clamped 0..1 */
+    int min_first;      /* minimum cells for the first pane */
+    int min_second;     /* minimum cells for the second pane */
+} TimuiSplitPaneState;
+typedef struct {
+    TimuiSplitPaneState state;
+    TimuiRect first;
+    TimuiRect divider;
+    TimuiRect second;
+    bool changed;
+    bool hovered;
+    bool dragging;
+} TimuiSplitPaneResult;
+TIMUI_API TimuiSplitPaneResult timui_split_pane(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                TimuiAxis axis, TimuiSplitPaneState state);
+TIMUI_API TimuiSplitPaneResult timui_split_pane_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                    TimuiAxis axis, TimuiSplitPaneState *state);
+
 /* ---- Box frame (line-drawing border) + colour lerp -------------------- *
  * timui_border strokes a 1-cell frame around `r` in the chosen line style with
  * an optional `title` embedded in the top edge, and returns the inner content
@@ -1309,6 +1332,7 @@ TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int l
 #include "../src/timui_cmdpal.c"
 #include "../src/timui_combobox.c"
 #include "../src/timui_toast.c"
+#include "../src/timui_splitpane.c"
 #include "../src/timui_snapshot.c"
 #include "../src/timui_textarea.c"
 #include "../src/timui_conpty.c"

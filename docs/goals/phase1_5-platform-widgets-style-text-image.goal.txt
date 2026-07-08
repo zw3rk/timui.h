@@ -160,7 +160,7 @@ TEST NAMES TO START FROM:
 - `test_combobox_filter_select_activate`
 - `test_combobox_no_match_and_clamp`
 - `test_toast_order_timeout_dismiss`
-- `test_splitter_drag_clamps_minmax`
+- `test_split_pane_horizontal_drag_clamps_minmax`
 - `test_stylesheet_parse_specificity_states`
 - `test_grapheme_delete_move_fit_combining_zwj`
 - `test_image_protocol_selects_kitty_sixel_iterm2`
