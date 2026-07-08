@@ -9,11 +9,11 @@ date: 2026-07-08
 ## Landing State
 
 - Branch: `phase1-5-impl`
-- Local master checkpoint: `4a3767d` (`images: add raw rgba sixel output`)
+- Local master checkpoint: `a775e86` (`www: add license section`)
 - Merge status: `phase1-5-impl` fast-forwarded into local
   `/Users/angerman/Projects/zw3rk/timui.h-master`
 - Push status: not pushed
-- Remote state: local `master` is ahead of `github/master`
+- Remote state: local `master` is ahead of `github/master` by 15 commits
 
 ## Read First
 
@@ -23,6 +23,7 @@ date: 2026-07-08
 - `docs/API.md`
 - `docs/TERMINAL_PROTOCOLS.md`
 - `docs/research/image-protocols/REVIEW.md`
+- `docs/research/conpty/REVIEW.md`
 
 ## Accepted State
 
@@ -36,14 +37,18 @@ date: 2026-07-08
   colours; alpha below 128 is transparent/background-preserving.
 - PNG images forced to Sixel, over-palette Sixel images, clipped Sixel draws,
   and clipped iTerm2 draws intentionally render `[img]`.
+- Win32 ConPTY is implemented behind `_WIN32`, runtime-probed for
+  `CreatePseudoConsole`/`ResizePseudoConsole`/`ClosePseudoConsole`, and covered
+  by POSIX fallback/helper tests plus a MinGW compile seam in `make check`.
+- `www/index.html` now includes a standalone `LICENSE` section, and
+  `www/llms.txt` includes both the license URL and an explicit license section.
 - `www/timui.h` was refreshed by `nix develop -c make www`.
 
 ## Blockers And Pickup Points
 
-- Windows ConPTY remains unsupported at runtime. There is no current Makefile or
-  flake target for mingw/Windows compile checks in this repo, and this session
-  ran on macOS. Do not claim Windows support until a `_WIN32` build and a real
-  Windows Terminal smoke run pass.
+- Windows ConPTY has compile evidence only. This session ran on macOS; do not
+  claim supported Windows operation until a real Windows Terminal smoke run is
+  captured and recorded.
 - iTerm2 and Sixel have fake-transport wire tests, but no live terminal capture
   evidence yet. Do not claim terminal evidence until captured.
 - Sixel parity remains open: PNG-to-Sixel decode, palette quantization, scaling
@@ -55,10 +60,17 @@ date: 2026-07-08
 
 ## Verification Already Run
 
-- `nix develop -c make test` - passed, 286 tests, existing pty Esc sandbox skip.
+- `nix develop -c make test` - passed, 287 tests, existing pty Esc sandbox skip.
+- `nix develop -c make check-conpty` - passed, including POSIX fallback/helper
+  tests and the isolated MinGW Win32 ConPTY compile seam.
+- `nix develop -c make check` - passed after rebase, including build, 287 tests,
+  and the MinGW ConPTY compile seam.
 - `nix develop -c make build release-check check-vt-gif-all` - passed.
-- `nix develop -c make test-san SAN=undefined` - passed, 286 tests, existing pty
+- `nix develop -c make release-check` - passed after ConPTY/header changes.
+- `nix develop -c make test-san SAN=undefined` - passed, 287 tests, existing pty
   Esc sandbox skip.
+- `nix flake check` - passed for the current system; Nix reported incompatible
+  non-current systems omitted unless `--all-systems` is used.
 - Earlier in the same image sweep:
   `nix develop -c make build check-layout check-grid check-tabs
   check-chat-text check-chat-highlight release-check check-vt-gif-all
@@ -68,7 +80,7 @@ date: 2026-07-08
 
 ## Next Safe Move
 
-Use a Windows-capable worktree or CI worker. First add compile-only seams/tests
-for the `_WIN32` ConPTY implementation, then implement the handle lifecycle and
-transport chunking, then record a real Windows Terminal smoke run before moving
-the Windows backlog item out of "blocked".
+Use a Windows-capable worktree or CI worker to run a live Windows Terminal smoke
+against `timui_conpty_open`, transport read/write, resize, and close. Separately,
+capture live iTerm2 and Sixel terminal evidence before promoting image protocol
+support from fake-transport wire evidence to terminal evidence.
