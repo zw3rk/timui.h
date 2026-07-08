@@ -201,6 +201,7 @@ void test_paste_preserves_text_order(void);
 void test_input_field_paste_enter_order(void);
 void test_input_field_text_burst(void);
 void test_input_field_kitty_csi_u_printable(void);
+void test_input_field_kitty_csi_u_shifted_printable(void);
 void test_input_field_emacs(void);
 void test_input_field_styled(void);
 void test_mouse_click_hyperlink(void);
