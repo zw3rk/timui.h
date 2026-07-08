@@ -261,6 +261,119 @@ TIMUI_TEST(test_combobox_accept_cap_limited){
     timui_close(ui);
 }
 
+/* ---- toast / notification (Phase 1.5) ---- */
+TIMUI_TEST(test_toast_order_timeout_dismiss){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiToast toasts[3];
+    TimuiToastResult res;
+    TimuiCellBuffer *buf;
+    TimuiTheme th = timui_theme_builtin(TIMUI_THEME_DOS_BLUE);
+    TimuiStyle success = timui_theme_style(&th, TIMUI_SLOT_SUCCESS);
+    TimuiStyle error = timui_theme_style(&th, TIMUI_SLOT_ERROR);
+    memset(toasts, 0, sizeof toasts);
+    toasts[0].title = TIMUI_STR_LIT("Saved");
+    toasts[0].message = TIMUI_STR_LIT("File written");
+    toasts[0].severity = TIMUI_TOAST_SUCCESS;
+    toasts[0].created_ms = 100;
+    toasts[0].ttl_ms = 1000;
+    toasts[1].title = TIMUI_STR_LIT("Old");
+    toasts[1].message = TIMUI_STR_LIT("Expired");
+    toasts[1].severity = TIMUI_TOAST_WARNING;
+    toasts[1].created_ms = 0;
+    toasts[1].ttl_ms = 10;
+    toasts[2].title = TIMUI_STR_LIT("Network");
+    toasts[2].message = TIMUI_STR_LIT("Offline");
+    toasts[2].severity = TIMUI_TOAST_ERROR;
+    toasts[2].created_ms = 100;
+    toasts[2].ttl_ms = 0;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 30, 8), toasts, 3, 200);
+    TIMUI_CHECK(res.visible_count == 2 && res.dismissed == -1);
+    TIMUI_CHECK(timui_cells_get(buf, 2, 0)->codepoint == 'S');
+    TIMUI_CHECK(timui_cells_get(buf, 2, 3)->codepoint == 'N');
+    TIMUI_CHECK(timui_cells_get(buf, 2, 0)->fg == success.fg);
+    TIMUI_CHECK(timui_cells_get(buf, 2, 3)->fg == error.fg);
+    timui_end(f);
+    SETIN(&fake, "\x1b[<0;2;4M");  /* click second visible toast, original index 2 */
+    timui_begin(ui, &f); res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 30, 8), toasts, 3, 200); timui_end(f);
+    SETIN(&fake, "\x1b[<0;2;4m");
+    timui_begin(ui, &f); res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 30, 8), toasts, 3, 200); timui_end(f);
+    TIMUI_CHECK(res.dismissed == 2);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_toast_clips_stack){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiToast toasts[3];
+    TimuiToastResult res;
+    TimuiCellBuffer *buf;
+    memset(toasts, 0, sizeof toasts);
+    toasts[0].title = TIMUI_STR_LIT("OneVeryLongTitle"); toasts[0].message = TIMUI_STR_LIT("MessageLongerThanBox");
+    toasts[1].title = TIMUI_STR_LIT("Two");   toasts[1].message = TIMUI_STR_LIT("B");
+    toasts[2].title = TIMUI_STR_LIT("Three"); toasts[2].message = TIMUI_STR_LIT("C");
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 8, &al);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(2, 0, 10, 4), toasts, 3, 1);
+    TIMUI_CHECK(res.visible_count == 1);
+    TIMUI_CHECK(timui_cells_get(buf, 4, 0)->codepoint == 'O');
+    TIMUI_CHECK(timui_cells_get(buf, 4, 3)->codepoint != 'T');
+    TIMUI_CHECK(timui_cells_get(buf, 12, 0)->codepoint == 0);
+    TIMUI_CHECK(timui_cells_get(buf, 12, 1)->codepoint == 0);
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_toast_guards){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    TimuiToast toasts[3];
+    TimuiToastResult res;
+    res = timui_toasts(NULL, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 10, 3), NULL, 0, 0);
+    TIMUI_CHECK(res.visible_count == 0 && res.dismissed == -1);
+    res = timui_toasts(NULL, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 10, 3), NULL, -1, 0);
+    TIMUI_CHECK(res.visible_count == 0 && res.dismissed == -1);
+    memset(toasts, 0, sizeof toasts);
+    toasts[0].title = TIMUI_STR_LIT("Gone");
+    toasts[0].message = TIMUI_STR_LIT("dismissed");
+    toasts[0].ttl_ms = 0;
+    toasts[0].dismissed = 1;
+    toasts[1].title = TIMUI_STR_LIT("Exact");
+    toasts[1].message = TIMUI_STR_LIT("expired at equality");
+    toasts[1].created_ms = 90;
+    toasts[1].ttl_ms = 10;
+    toasts[2].title = TIMUI_STR_LIT("Future");
+    toasts[2].message = TIMUI_STR_LIT("clock skew");
+    toasts[2].created_ms = 200;
+    toasts[2].ttl_ms = 10;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 6, &al);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 20, 6), NULL, 1, 100);
+    TIMUI_CHECK(res.visible_count == 0 && res.dismissed == -1);
+    res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 0, 6), toasts, 3, 100);
+    TIMUI_CHECK(res.visible_count == 0 && res.dismissed == -1);
+    res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 20, 6), toasts, 0, 100);
+    TIMUI_CHECK(res.visible_count == 0 && res.dismissed == -1);
+    res = timui_toasts(f, TIMUI_ID("toast"), TIMUI_RECT(0, 0, 20, 6), toasts, 3, 100);
+    TIMUI_CHECK(res.visible_count == 1 && res.dismissed == -1);
+    TIMUI_CHECK(timui_cells_get(buf, 2, 0)->codepoint == 'F');
+    TIMUI_CHECK(timui_cells_get(buf, 2, 3)->codepoint == 0);
+    timui_end(f);
+    timui_close(ui);
+}
+
 /* Z26: the controlled (value) form never touches caller memory, and the _mut
  * twin writes back only on a real change — a pure out-of-range clamp is NOT
  * written back (fixes the old unconditional-write-back aliasing surprise). */

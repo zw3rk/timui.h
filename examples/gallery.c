@@ -4,8 +4,9 @@
  * Lays out (via the constraint solver timui_split) a set of bordered panels,
  * each demonstrating one library widget on canned data: the tab bar, the virtual
  * multi-column table, the scrollable tree, the spectrum bar chart, the
- * gauge/meter/progress indicators + spinner, combobox autocomplete, and the
- * syntax-highlighted code viewer. Everything is static/animated-by-tick so the screen is deterministic;
+ * gauge/meter/progress indicators + spinner, combobox autocomplete, toast
+ * notifications, and the syntax-highlighted code viewer. Everything is
+ * static/animated-by-tick so the screen is deterministic;
  * `--frames N` renders N frames and quits (for a headless smoke through a pty).
  *
  * Run:  nix develop -c make run-gallery      Smoke: make smoke-gallery
@@ -178,6 +179,20 @@ int main(int argc, char **argv){
             timui_label(f, rows[3].x + 1, rows[3].y,
                         TIMUI_STR_LIT("Tab/click widgets · arrows scroll · Esc/F10 quit"),
                         timui_style_make(dim, bg, 0));
+            if(root.w >= 20 && root.h >= 9){
+                const TimuiToast demo_toasts[2] = {
+                    { TIMUI_STR_LIT("Styles loaded"), TIMUI_STR_LIT("Still no runtime circus"),
+                      TIMUI_TOAST_SUCCESS, 0, 0, 0 },
+                    { TIMUI_STR_LIT("Reminder"), TIMUI_STR_LIT("Curse curses, kindly"),
+                      TIMUI_TOAST_INFO, 0, 0, 0 }
+                };
+                int tw = root.w > 36 ? 32 : root.w - 2;
+                int tx = root.x + root.w - tw - 1;
+                if(tw >= 18)
+                    (void)timui_toasts(f, TIMUI_ID("gallery-toasts"),
+                                       TIMUI_RECT(tx, root.y + 2, tw, 6),
+                                       demo_toasts, 2, (uint64_t)tick * 100u);
+            }
             (void)text;
           }
 

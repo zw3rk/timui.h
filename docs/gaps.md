@@ -53,15 +53,10 @@ These are known limitations promoted into the next planned follow-up. See
   lifecycle, resize path, close semantics, VT mode setup, and `size_t` to
   `DWORD` chunking remain to be implemented. Do not claim Windows support until
   compile checks and a real Windows smoke run are green.
-- **Medium widgets** still missing: toast/notification and split/resizable
-  panes.
+- **Medium widgets** still missing: split/resizable panes.
 - **Stylesheet widget application** is missing. A TCSS-like parser/resolver now
   exists, but built-in widgets still draw from themes and explicit style
   overrides rather than resolved stylesheet queries.
-- **Grapheme clustering** remains incomplete. Width and bidi coverage are useful,
-  but editing/truncation/rendering can still split ZWJ emoji, skin-tone emoji,
-  flags/regional indicators, combining marks, variation selectors, and related
-  extended grapheme clusters.
 - **Image protocols** are Kitty-only. Sixel and iTerm2 inline images should be
   added through a protocol-neutral image layer; ConPTY should stay a transport,
   not a Windows-specific graphics abstraction.
@@ -74,6 +69,9 @@ These are known limitations promoted into the next planned follow-up. See
   gap · L8 cmdpal matched_idx[256] cap · L9 poll non-EINTR errors swallowed ·
   L11 127-byte title buffer truncation · L12 kitty partial-frame silent abort ·
   L13 async_scan recv size discipline · L15 MPSC destroy-vs-post contract.
+- **Unicode parity:** the Phase 1.5 grapheme foundation covers the terminal
+  clusters currently exercised by editing and truncation, but full generated
+  UAX #29 grapheme tables remain future work.
 
 Round 6 (user-directed, all fixed): G6 id_stack_push returns TimuiResult (OOM
 is detectable; the caller skips the paired pop, so a failing grow no longer

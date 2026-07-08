@@ -1070,6 +1070,28 @@ TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRec
 TIMUI_API TimuiComboboxResult timui_combobox_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *options, int count, TimuiComboboxState *state);
 
+typedef enum {
+    TIMUI_TOAST_INFO = 0,
+    TIMUI_TOAST_SUCCESS,
+    TIMUI_TOAST_WARNING,
+    TIMUI_TOAST_ERROR
+} TimuiToastSeverity;
+typedef struct {
+    TimuiStr title;
+    TimuiStr message;
+    TimuiToastSeverity severity;
+    uint64_t created_ms;
+    uint64_t ttl_ms;      /* 0 = sticky until caller dismisses */
+    int dismissed;
+} TimuiToast;
+typedef struct {
+    int dismissed;        /* original toast index, or -1 */
+    int visible_count;    /* number drawn inside the supplied rect */
+} TimuiToastResult;
+TIMUI_API TimuiToastResult timui_toasts(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                        const TimuiToast *toasts, int count,
+                                        uint64_t now_ms);
+
 /* ---- Tab bar (W2) ------------------------------------------------------ *
  * A single-row bar of labeled tabs. timui_tabs highlights *selected as a boxed,
  * radio.c-style active tab, moves the selection on Left/Right (when focused) and
@@ -1286,6 +1308,7 @@ TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int l
 #include "../src/timui_tree.c"
 #include "../src/timui_cmdpal.c"
 #include "../src/timui_combobox.c"
+#include "../src/timui_toast.c"
 #include "../src/timui_snapshot.c"
 #include "../src/timui_textarea.c"
 #include "../src/timui_conpty.c"

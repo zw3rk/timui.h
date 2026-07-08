@@ -39,7 +39,7 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
 - [x] **Autocomplete / combobox** - field-attached popup selection over
       caller-owned options/state, with keyboard, mouse, clipping, UTF-8 labels,
       empty-list behavior, and cap-limited query tests.
-- [ ] **Toast / notification** - immediate-mode renderer over caller-owned
+- [x] **Toast / notification** - immediate-mode renderer over caller-owned
       notification data: severity, TTL, stacking, clipping, and manual dismiss.
 - [ ] **Split / resizable panes** - build on `timui_split`/`timui_split_ex` with
       caller-owned split state and a local divider-drag interaction. Full global
@@ -51,10 +51,9 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
 - [ ] **Stylesheet widget application** - thread resolved stylesheet values into
       visible widgets without removing existing theme APIs or explicit style
       override paths.
-- [ ] **Grapheme clustering** - generated Unicode grapheme data and helpers for
-      next/prev/width, integrated into editing, truncation, and rendering so ZWJ
-      emoji, skin tones, regional indicators, combining marks, VS16, and CRLF
-      are not split incorrectly.
+- [x] **Grapheme clustering foundation** - next/prev/width helpers integrated
+      into editing and truncation for ZWJ emoji, skin tones, regional
+      indicators, combining marks, VS16, and CRLF.
 - [ ] **Protocol-neutral image layer + Sixel + iTerm2** - keep Kitty support,
       but refactor image emission behind protocol capabilities. Add Sixel first
       (including Windows Terminal usefulness), then iTerm2 inline images, with
@@ -111,6 +110,9 @@ capabilities, and grapheme-aware editing.
       a clearer semantic widget model first.
 - [ ] **Broader snapshots** - snapshot testing exists (`drive/` + goldens);
       broaden it as new widgets/protocols land.
+- [ ] **Full generated UAX #29 grapheme tables** - the Phase 1.5 foundation
+      covers the terminal clusters timui currently needs; full Unicode table
+      generation remains useful parity work.
 
 ## Tooling
 

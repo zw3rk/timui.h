@@ -74,6 +74,7 @@ TimuiTextAreaResult timui_text_area_mut(..., TimuiTextAreaState *st, uint32_t fl
 void              timui_text_area(..., TimuiTextAreaState *st);       /* compatibility wrapper */
 TimuiComboboxResult timui_combobox(..., const TimuiStr *options, int count, TimuiComboboxState state);
 TimuiComboboxResult timui_combobox_mut(..., const TimuiStr *options, int count, TimuiComboboxState *state);
+TimuiToastResult timui_toasts(..., const TimuiToast *toasts, int count, uint64_t now_ms);
 TimuiListResult   timui_listbox(...);    TimuiListResult timui_listbox_mut(..., TimuiListState *);
 TimuiTreeResult   timui_tree(...);       TimuiTreeResult timui_tree_mut(..., int *selected);
 TimuiTableResult  timui_table(...);      TimuiTableResult timui_table_mut(..., TimuiTableState *);
@@ -92,6 +93,12 @@ cursor; int scroll_x; }` / `TimuiTextAreaState`.
 caller-owned query buffer; remaining rows show the filtered popup while open.
 Results report `activated` and `selected` as original option indices, with
 `match_count` for empty/no-match handling.
+
+`timui_toasts` renders a top-to-bottom stack of 3-row notification cards over
+caller-owned data. Toasts carry title, message, severity, creation time, TTL,
+and a caller-owned dismissed flag. The widget mutates nothing; it reports the
+original array index clicked for dismissal and the count drawn inside the
+supplied rectangle.
 
 ### Text editing
 
