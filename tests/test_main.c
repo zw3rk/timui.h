@@ -80,6 +80,7 @@ int main(void){
         test_paste_cross_feed_three_fragments,
         test_paste_empty_no_event,
         test_input_utf8_overlong_rejected,
+        test_input_utf8_invalid_lead_immediate,
         test_input_esc_mid_csi_restarts,
         test_input_truncated_csi_ss3_timeout_resyncs,
         test_input_csi_subparam_ignored,

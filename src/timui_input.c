@@ -133,9 +133,9 @@ static uint32_t decode_kitty_mods(int param){
 }
 /* UTF-8 lead byte: continuation count (1..3), or -1 if not a valid lead. */
 static int utf8_lead(unsigned char b, uint32_t *cp){
-    if((b & 0xE0) == 0xC0){ *cp = (uint32_t)(b & 0x1F); return 1; }
+    if(b >= 0xC2 && (b & 0xE0) == 0xC0){ *cp = (uint32_t)(b & 0x1F); return 1; }
     if((b & 0xF0) == 0xE0){ *cp = (uint32_t)(b & 0x0F); return 2; }
-    if((b & 0xF8) == 0xF0){ *cp = (uint32_t)(b & 0x07); return 3; }
+    if(b <= 0xF4 && (b & 0xF8) == 0xF0){ *cp = (uint32_t)(b & 0x07); return 3; }
     return -1;
 }
 TIMUI_API void timui_input_init(TimuiInputParser *p){
@@ -269,7 +269,20 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             {   /* UTF-8 multibyte lead (c >= 0x80) */
                 uint32_t cp = 0;
                 int need = utf8_lead(c, &cp);
-                if(need < 0){ emit_text(cb, ctx, (const char *)&b[i], 1, 0xFFFD); count++; break; }
+                if(need < 0){
+                    size_t bad_len = 1;
+                    if(c >= 0xC0 && c <= 0xC1 && i + 1 < len && (b[i + 1] & 0xC0) == 0x80){
+                        bad_len = 2;
+                    } else if(c >= 0xF5 && c <= 0xF7){
+                        size_t j;
+                        for(j = 1; j < 4 && i + j < len && (b[i + j] & 0xC0) == 0x80; j++){}
+                        bad_len = j;
+                    }
+                    emit_text(cb, ctx, (const char *)&b[i], bad_len, 0xFFFD);
+                    count++;
+                    i += bad_len - 1;
+                    break;
+                }
                 p->utf8_cp = cp; p->utf8_need = need; p->utf8_len = need + 1;
                 p->utf8_ptr = (const char *)&b[i];
                 p->state = 4;

@@ -256,6 +256,25 @@ TIMUI_TEST(test_input_utf8_overlong_rejected){
       TIMUI_CHECK(s.n == 1 && s.ev[0].as.text.codepoint == 0xE9); }
 }
 
+TIMUI_TEST(test_input_utf8_invalid_lead_immediate){
+    TimuiInputParser p;
+    Sink s;
+    static const unsigned char bad_two_byte[] = { 0xC0 };
+    static const unsigned char bad_four_byte[] = { 0xF5 };
+
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, bad_two_byte, sizeof bad_two_byte, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == 0xFFFD);
+
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, bad_four_byte, sizeof bad_four_byte, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == 0xFFFD);
+}
+
 /* Z3: an ESC arriving mid-sequence must abort the pending CSI/SS3 and begin a
  * fresh escape (ECMA-48), not resync to ground and leak the interrupted
  * sequence's tail as injected text. */

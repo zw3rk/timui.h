@@ -91,6 +91,7 @@ void test_input_nul_ignored(void);
 void test_paste_cross_feed_three_fragments(void);
 void test_paste_empty_no_event(void);
 void test_input_utf8_overlong_rejected(void);
+void test_input_utf8_invalid_lead_immediate(void);
 void test_input_esc_mid_csi_restarts(void);
 void test_input_truncated_csi_ss3_timeout_resyncs(void);
 void test_input_csi_subparam_ignored(void);
