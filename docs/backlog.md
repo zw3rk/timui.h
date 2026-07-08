@@ -32,7 +32,7 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       VT input/output modes, short-write/read handling, and `DWORD` chunking.
       Do not promise graphics as part of ConPTY itself; graphics are selected by
       terminal image protocol capability above the transport.
-- [ ] **Submit-capable multi-line text area** - add a result-returning,
+- [x] **Submit-capable multi-line text area** - add a result-returning,
       controlled API plus `_mut` convenience wrapper, preserving the current
       void `timui_text_area` compatibility wrapper. Refactor `examples/chat.c`
       and `examples/irc.c` to use it instead of local composer workarounds.

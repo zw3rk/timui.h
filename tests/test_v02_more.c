@@ -179,6 +179,172 @@ TIMUI_TEST(test_text_area_grapheme_edit){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_text_area_submit_plain_enter){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiTextAreaResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define TAS_FRAME() do{ timui_begin(ui,&f); res = timui_text_area_mut(f, TIMUI_ID("ts"), r, &tas, TIMUI_TEXT_AREA_ENTER_SUBMITS); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TAS_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TAS_FRAME();
+    SETIN(&fake, "hello"); TAS_FRAME();
+    TIMUI_CHECK(res.changed && !res.submitted && strcmp(text, "hello") == 0 && tas.cursor == 5);
+    SETIN(&fake, "\r"); TAS_FRAME();
+    TIMUI_CHECK(res.submitted && !res.changed && strcmp(text, "hello") == 0 && tas.cursor == 5);
+#undef TAS_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_ex_returns_state){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[16] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiTextAreaResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    SETIN(&fake, "\x1b[<0;2;1M");
+    timui_begin(ui, &f); res = timui_text_area_ex(f, TIMUI_ID("tx"), r, tas, 0); timui_end(f);
+    SETIN(&fake, "\x1b[<0;2;1m");
+    timui_begin(ui, &f); res = timui_text_area_ex(f, TIMUI_ID("tx"), r, res.state, 0); timui_end(f);
+    SETIN(&fake, "x");
+    timui_begin(ui, &f); res = timui_text_area_ex(f, TIMUI_ID("tx"), r, tas, 0); timui_end(f);
+    TIMUI_CHECK(res.changed && strcmp(text, "x") == 0);
+    TIMUI_CHECK(tas.cursor == 0 && res.state.cursor == 1);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_shift_enter_inserts_newline){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiTextAreaResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define TAN_FRAME() do{ timui_begin(ui,&f); res = timui_text_area_mut(f, TIMUI_ID("tn"), r, &tas, TIMUI_TEXT_AREA_ENTER_SUBMITS); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TAN_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TAN_FRAME();
+    SETIN(&fake, "a\x1b[13;2u""b"); TAN_FRAME();
+    TIMUI_CHECK(res.changed && !res.submitted);
+    TIMUI_CHECK(strcmp(text, "a\nb") == 0 && tas.cursor == 3);
+#undef TAN_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_multi_enter_segments){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    char got[32] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiTextAreaResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define TAM_FRAME() do{ timui_begin(ui,&f); \
+        res = timui_text_area_mut(f, TIMUI_ID("tm"), r, &tas, TIMUI_TEXT_AREA_ENTER_SUBMITS); \
+        if(res.submitted){ strcpy(got, text); text[0] = '\0'; tas.cursor = 0; tas.scroll_y = 0; } \
+        timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TAM_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TAM_FRAME();
+    SETIN(&fake, "one\rtwo\r"); TAM_FRAME();
+    TIMUI_CHECK(res.submitted && strcmp(got, "one") == 0);
+    TAM_FRAME();
+    TIMUI_CHECK(res.submitted && strcmp(got, "two") == 0);
+    TAM_FRAME();
+    TIMUI_CHECK(!res.submitted && strcmp(text, "") == 0);
+#undef TAM_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_paste_preserves_newlines){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[64] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiTextAreaResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define TAP_FRAME() do{ timui_begin(ui,&f); res = timui_text_area_mut(f, TIMUI_ID("tp"), r, &tas, TIMUI_TEXT_AREA_ENTER_SUBMITS); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TAP_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TAP_FRAME();
+    SETIN(&fake, "\x1b[200~hello\nworld\x1b[201~"); TAP_FRAME();
+    TIMUI_CHECK(res.changed && !res.submitted);
+    TIMUI_CHECK(strcmp(text, "hello\nworld") == 0 && tas.cursor == 11);
+#undef TAP_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_submit_unfocused_noop){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = "seed";
+    TimuiTextAreaState tas = { text, sizeof text, 4, 0 };
+    TimuiTextAreaResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    SETIN(&fake, "ignored\r");
+    timui_begin(ui, &f);
+    res = timui_text_area_mut(f, TIMUI_ID("tu-noop"), r, &tas, TIMUI_TEXT_AREA_ENTER_SUBMITS);
+    timui_end(f);
+    TIMUI_CHECK(!res.focused && !res.changed && !res.submitted);
+    TIMUI_CHECK(strcmp(text, "seed") == 0 && tas.cursor == 4);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_shift_enter_then_plain_enter){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[32] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiTextAreaResult res;
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define TASM_FRAME() do{ timui_begin(ui,&f); res = timui_text_area_mut(f, TIMUI_ID("tsm"), r, &tas, TIMUI_TEXT_AREA_ENTER_SUBMITS); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TASM_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TASM_FRAME();
+    SETIN(&fake, "a\x1b[13;2u""b\r"); TASM_FRAME();
+    TIMUI_CHECK(res.changed && res.submitted);
+    TIMUI_CHECK(strcmp(text, "a\nb") == 0 && tas.cursor == 3);
+#undef TASM_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_wrapper_enter_inserts_newline){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[16] = {0};
+    TimuiTextAreaState tas = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+#define TAW_FRAME() do{ timui_begin(ui,&f); timui_text_area(f, TIMUI_ID("tw"), r, &tas); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TAW_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TAW_FRAME();
+    SETIN(&fake, "a\rb"); TAW_FRAME();
+    TIMUI_CHECK(strcmp(text, "a\nb") == 0 && tas.cursor == 3);
+#undef TAW_FRAME
+    timui_close(ui);
+}
+
 /* Pass-3: cap==0 with a focused text_area must not write past the buffer
  * (the guard mirrors input_line_buf's cap==0 check). */
 TIMUI_TEST(test_text_area_zero_cap_safe){

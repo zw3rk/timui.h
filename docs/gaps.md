@@ -53,9 +53,6 @@ These are known limitations promoted into the next planned follow-up. See
   lifecycle, resize path, close semantics, VT mode setup, and `size_t` to
   `DWORD` chunking remain to be implemented. Do not claim Windows support until
   compile checks and a real Windows smoke run are green.
-- **Text-area submit semantics** are missing. `timui_text_area` edits multi-line
-  text, but it has no result-returning submit event, so `examples/chat.c` and
-  `examples/irc.c` currently carry composer workarounds.
 - **Medium widgets** still missing: autocomplete/combobox, toast/notification,
   and split/resizable panes.
 - **Declarative styling** is missing. The layout solver, borders, themes, and

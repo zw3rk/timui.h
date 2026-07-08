@@ -366,7 +366,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         int pe;
         memcpy(ui->text_in, ui->pending_in, (size_t)ui->pending_in_len);
         ui->text_in_len = ui->pending_in_len;
-        for(pe = 0; pe < ui->pending_enter_count; pe++) ui->enter_at[pe] = ui->pending_enter_at[pe];
+        for(pe = 0; pe < ui->pending_enter_count; pe++){
+            ui->enter_at[pe] = ui->pending_enter_at[pe];
+            ui->enter_mods[pe] = ui->pending_enter_mods[pe];
+        }
         ui->enter_count = ui->pending_enter_count;
         ui->pending_in_len = 0;
         ui->pending_enter_count = 0;
@@ -395,8 +398,11 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                     timui_interact_set_keys(&ui->ia, 0, 1);
                     /* record the Enter's position in the text stream (input_field
                      * segments submits on these; excess past the cap just merges). */
-                    if(ui->enter_count < (int)(sizeof(ui->enter_at)/sizeof(ui->enter_at[0])))
-                        ui->enter_at[ui->enter_count++] = ui->text_in_len;
+                    if(ui->enter_count < (int)(sizeof(ui->enter_at)/sizeof(ui->enter_at[0]))){
+                        ui->enter_at[ui->enter_count] = ui->text_in_len;
+                        ui->enter_mods[ui->enter_count] = ev.as.key.mods;
+                        ui->enter_count++;
+                    }
                 }
                 else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
                 else if(ev.as.key.key == TIMUI_KEY_LEFT)   ui->key_in |= TIMUI_KEYIN_LEFT;
@@ -435,7 +441,8 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 size_t pk;
                 for(pk = 0; pk < ev.as.paste.len && ui->text_in_len < (int)sizeof(ui->text_in); pk++){
                     unsigned char pc = (unsigned char)ev.as.paste.ptr[pk];
-                    if(pc >= 0x20 && pc != 0x7f) ui->text_in[ui->text_in_len++] = (char)pc;
+                    if((pc >= 0x20 && pc != 0x7f) || pc == '\n' || pc == '\r' || pc == '\t')
+                        ui->text_in[ui->text_in_len++] = (char)pc;
                 }
             }
         }

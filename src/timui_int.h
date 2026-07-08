@@ -59,10 +59,12 @@ struct Timui {
      * frame ("a\rb\r" -> "a" then "b") instead of merging; the post-first-Enter
      * tail is stashed in pending_* and re-injected by timui_begin next frame. */
     int               enter_at[32];
+    uint32_t          enter_mods[32];
     int               enter_count;
     char              pending_in[256];
     int               pending_in_len;
     int               pending_enter_at[32];
+    uint32_t          pending_enter_mods[32];
     int               pending_enter_count;
     unsigned          key_in;
     TimuiKey          key_pressed;

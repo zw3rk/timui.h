@@ -733,21 +733,21 @@ static int demo_load(const char *path, DemoStep *out, int max){
 
 /* Overlay markdown styling on the composer as you type: bold/italic/code on the
  * marked spans, KEEPING the markers (dim) so the display width — and thus the
- * input field's cursor — stay exact. Redraws over the field's plain text. */
-static void draw_compose_styled(TimuiFrame *f, TimuiRect r, const char *s, int scroll_x,
+ * textarea cursor — stays exact. Redraws over the editor's plain text. */
+static void draw_compose_styled(TimuiFrame *f, TimuiRect r, const char *s, int scroll_y,
                                 uint32_t fg, uint32_t bg, uint32_t code_fg, uint32_t dim_fg){
     size_t i = 0, len = strlen(s);
     uint32_t attrs = 0;
     int code = 0, col = 0, row = 0;
     while(s[i]){
-        int x = r.x + col - (row == 0 ? scroll_x : 0), y = r.y + row;
+        int x = r.x + col, y = r.y + row - scroll_y;
         if(s[i] == '\n'){                                       /* Shift+Enter line break */
             row++; col = 0; attrs = 0; code = 0; i++;
-            if(row >= r.h) break;
+            if(row - scroll_y >= r.h) break;
             continue;
         }
         if(s[i] == '*' || s[i] == '_' || s[i] == '`'){          /* marker: keep it, dim */
-            if(x >= r.x && x < r.x + r.w){
+            if(y >= r.y && y < r.y + r.h && x >= r.x && x < r.x + r.w){
                 char m[2]; m[0] = s[i]; m[1] = '\0';
                 timui_label(f, x, y, timui_str_from_cstr(m), timui_style_make(dim_fg, bg, 0));
             }
@@ -759,7 +759,7 @@ static void draw_compose_styled(TimuiFrame *f, TimuiRect r, const char *s, int s
         { uint32_t cp; int adv = timui_utf8_decode(s + i, len - i, &cp);
           int w = timui_utf8_width(cp);
           if(adv <= 0) adv = 1;
-          if(x >= r.x && x < r.x + r.w){
+          if(y >= r.y && y < r.y + r.h && x >= r.x && x < r.x + r.w){
               TimuiStr ch; ch.ptr = s + i; ch.len = (size_t)adv;
               timui_label(f, x, y, ch, timui_style_make(code ? code_fg : fg, bg, attrs));
           }
@@ -816,10 +816,10 @@ int main(int argc, char **argv){
           if(strcmp(argv[a], "--demo") == 0 && a + 1 < argc) demo_file = argv[++a]; }
 
     /* UI-thread-owned model: the transcript (static — ~1 MB ring, off the stack)
-     * and the compose buffer. The input state persists across frames. */
+     * and the compose buffer. The textarea state persists across frames. */
     static Transcript transcript;
     char compose[MSG_MAX] = {0};
-    TimuiInputState compose_state = { compose, sizeof compose, 0, 0 };
+    TimuiTextAreaState compose_state = { compose, sizeof compose, 0, 0 };
 
     /* Sent-message history: Up/Down recall previous inputs (shell-style).
      * hist_pos == hist_count means "editing a fresh line". */
@@ -1077,7 +1077,7 @@ int main(int argc, char **argv){
             }
         }
 
-        /* ❯ prompt (a distinct accent) + the editable input field, focused by
+        /* ❯ prompt (a distinct accent) + the editable textarea, focused by
          * default so you can type from the first frame. On Enter, append + snap. */
         if(timui_focus(f) == 0) timui_set_focus(f, TIMUI_ID("compose"));
         /* Plain ↑/↓ recall sent-message history into the composer (shell-style). */
@@ -1086,7 +1086,7 @@ int main(int argc, char **argv){
            hist_count > 0 && hist_pos > 0){
             hist_pos--;
             snprintf(compose, sizeof compose, "%s", history[hist_pos]);
-            compose_state.cursor = strlen(compose); compose_state.scroll_x = 0;
+            compose_state.cursor = strlen(compose); compose_state.scroll_y = 0;
         }
         if(timui_key_pressed(f, TIMUI_KEY_DOWN) &&
            !timui_key_pressed_mods(f, TIMUI_KEY_DOWN, TIMUI_MOD_SHIFT) &&
@@ -1095,24 +1095,19 @@ int main(int argc, char **argv){
             if(hist_pos == hist_count){ compose[0] = '\0'; compose_state.cursor = 0; }
             else { snprintf(compose, sizeof compose, "%s", history[hist_pos]);
                    compose_state.cursor = strlen(compose); }
-            compose_state.scroll_x = 0;
+            compose_state.scroll_y = 0;
         }
         /* Shift+Enter inserts a newline for a multi-line message; plain Enter sends.
          * Only terminals with the Kitty keyboard protocol (e.g. Ghostty) tell the
          * two apart — elsewhere Shift+Enter reads as Enter and just sends. */
-        { int se = timui_key_pressed_mods(f, TIMUI_KEY_ENTER, TIMUI_MOD_SHIFT);
-          TimuiRect ifr;
-          if(se){ size_t clen = strlen(compose); int cur = compose_state.cursor;
-              if(clen + 1 < sizeof compose && cur >= 0 && cur <= (int)clen){
-                  memmove(compose + cur + 1, compose + cur, clen - cur + 1);
-                  compose[cur] = '\n'; compose_state.cursor = cur + 1; } }
+        {
+          TimuiTextAreaResult compose_res;
           prompt = timui_cut_left(&input, 2);
           timui_label(f, prompt.x, prompt.y, TIMUI_STR_LIT("\xE2\x9D\xAF "),   /* ❯ on line 0 */
                       timui_style_make(link_fg, panel.bg, TIMUI_ATTR_BOLD));
-          /* Editing runs on the first row; draw_compose_styled paints all rows. */
-          ifr = input; ifr.h = 1;
-          if(timui_input_field_styled(f, TIMUI_ID("compose"), ifr, &compose_state,
-                                      timui_style_make(text_fg, panel.bg, 0)) && !se){
+          compose_res = timui_text_area_mut(f, TIMUI_ID("compose"), input, &compose_state,
+                                            TIMUI_TEXT_AREA_ENTER_SUBMITS);
+          if(compose_res.submitted){
               { size_t L = strlen(compose);   /* trim trailing space/tab (not \n) */
                 while(L > 0 && (compose[L-1] == ' ' || compose[L-1] == '\t')) compose[--L] = '\0'; }
               if(compose[0] != '\0'){
@@ -1131,16 +1126,14 @@ int main(int argc, char **argv){
               hist_pos = hist_count;         /* back to a fresh line */
               compose[0] = '\0';
               compose_state.cursor = 0;
-              compose_state.scroll_x = 0;
+              compose_state.scroll_y = 0;
               scroll = 0;
           }
         }
-        /* Live markdown styling over what you're typing (bold/italic/code). For a
-         * multi-line compose the single-line input_field paints only row 0, so clear
-         * the area first and let draw_compose_styled repaint every line (no scroll). */
-        { int multi = strchr(compose, '\n') != NULL;
-          if(multi) timui_draw_fill(timui_frame_buffer(f), input, panel);
-          draw_compose_styled(f, input, compose, multi ? 0 : compose_state.scroll_x,
+        /* Live markdown styling over what you're typing (bold/italic/code). */
+        {
+          timui_draw_fill(timui_frame_buffer(f), input, panel);
+          draw_compose_styled(f, input, compose, compose_state.scroll_y,
                               text_fg, panel.bg, code_fg, sys_fg); }
 
         /* Dim hint line — deliberately NOT the green status bar, so the composer

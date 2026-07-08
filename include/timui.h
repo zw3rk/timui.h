@@ -1016,6 +1016,20 @@ TIMUI_API int   timui_grid_eq(const TimuiCellBuffer *a, const TimuiCellBuffer *b
                               char *diff_out, size_t diff_cap);
 
 typedef struct { char *text; size_t cap; size_t cursor; int scroll_y; } TimuiTextAreaState;
+typedef enum {
+    TIMUI_TEXT_AREA_DEFAULT = 0,
+    TIMUI_TEXT_AREA_ENTER_SUBMITS = 1u << 0
+} TimuiTextAreaFlags;
+typedef struct {
+    TimuiTextAreaState state;
+    int changed;
+    int submitted;
+    int focused;
+} TimuiTextAreaResult;
+TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                 TimuiTextAreaState state, uint32_t flags);
+TIMUI_API TimuiTextAreaResult timui_text_area_mut(TimuiFrame *f, TimuiId id, TimuiRect r,
+                                                  TimuiTextAreaState *state, uint32_t flags);
 TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *state);
 
 TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);

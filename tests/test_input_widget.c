@@ -289,6 +289,24 @@ TIMUI_TEST(test_input_field_paste_split){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_field_paste_drops_controls){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[64] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 50, 5, &al);
+#define PCF() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PCF();
+    SETIN(&fake, "\x1b[<0;2;1m"); PCF();
+    SETIN(&fake, "\x1b[200~a\nb\rc\t\x1b[201~"); PCF();
+    TIMUI_CHECK(strcmp(text, "abc") == 0);
+#undef PCF
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_paste_preserves_text_order){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake; TimuiTransport t;

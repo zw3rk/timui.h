@@ -37,6 +37,11 @@ wrappers (`timui_checkbox_mut`, `timui_input_line_buf`) are convenience for
 quick tools. App state is immutable by convention; framework internals are
 mutable only behind documented contracts.
 
+Text editing follows the same rule. `timui_text_area_ex` returns a
+`TimuiTextAreaResult` with the next state and intent bits; `timui_text_area_mut`
+writes that state back for compact tools; the legacy `timui_text_area` wrapper
+keeps editor-style Enter-as-newline behavior.
+
 ## Frame lifecycle
 
 `timui_open` wires the fd transport, enters raw mode + alternate screen,

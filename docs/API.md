@@ -69,7 +69,9 @@ TimuiBoolEdit     timui_checkbox(...);   bool timui_checkbox_mut(..., bool *valu
 TimuiBoolEdit     timui_radio(...);
 bool              timui_input_line_buf(..., char *buf, size_t cap);   /* append-only, true on submit */
 bool              timui_input_field(..., TimuiInputState *st);        /* in-line cursor editing */
-void              timui_text_area(..., TimuiTextAreaState *st);       /* multi-line editor */
+TimuiTextAreaResult timui_text_area_ex(..., TimuiTextAreaState state, uint32_t flags);
+TimuiTextAreaResult timui_text_area_mut(..., TimuiTextAreaState *st, uint32_t flags);
+void              timui_text_area(..., TimuiTextAreaState *st);       /* compatibility wrapper */
 TimuiListResult   timui_listbox(...);    TimuiListResult timui_listbox_mut(..., TimuiListState *);
 TimuiTreeResult   timui_tree(...);       TimuiTreeResult timui_tree_mut(..., int *selected);
 TimuiTableResult  timui_table(...);      TimuiTableResult timui_table_mut(..., TimuiTableState *);
@@ -93,6 +95,14 @@ before/at the cursor, and typing inserts mid-string. The focused field shows a
 hardware cursor at the edit position; `input_field` scrolls horizontally to keep
 it visible. `timui_input_line_buf` remains the append-only convenience with no
 cursor, but its Backspace also deletes one whole cluster.
+
+`timui_text_area_ex` and `timui_text_area_mut` return
+`TimuiTextAreaResult { state, changed, submitted, focused }`. The default
+`timui_text_area` wrapper preserves editor semantics: Enter inserts a newline.
+Pass `TIMUI_TEXT_AREA_ENTER_SUBMITS` to opt into chat/IRC composer semantics:
+plain Enter submits without inserting a newline, Shift+Enter inserts `\n` when
+the terminal reports modifiers, and bracketed-paste newlines are preserved as
+text rather than treated as submits.
 
 ## Styling & themes
 

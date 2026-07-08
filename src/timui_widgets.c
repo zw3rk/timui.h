@@ -210,6 +210,9 @@ static int utf8_lead_len(unsigned char b){
     if((b & 0xF8) == 0xF0) return 4;
     return 0;
 }
+static int single_line_text_byte_(unsigned char b){
+    return b >= 0x20 && b != 0x7f;
+}
 /* New length after removing one complete grapheme cluster from the end of
  * buf[0..len). The state structs keep byte cursors, so callers still pass and
  * receive byte offsets. */
@@ -274,6 +277,7 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
             /* append whole UTF-8 codepoints; skip one that won't fit intact */
             while(i < ui->text_in_len){
                 size_t m = (size_t)utf8_lead_len((unsigned char)ui->text_in[i]);
+                if(!single_line_text_byte_((unsigned char)ui->text_in[i])){ i++; continue; }
                 if(m == 0) m = 1;                       /* defensive: stray byte */
                 if(len + m >= cap) break;               /* no room for the codepoint + NUL */
                 while(m-- > 0 && i < ui->text_in_len) buf[len++] = ui->text_in[i++];
@@ -346,6 +350,7 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
             while(j < upto){
                 int n = utf8_lead_len((unsigned char)ui->text_in[j]);
                 size_t m = (size_t)(n > 0 ? n : 1);
+                if(!single_line_text_byte_((unsigned char)ui->text_in[j])){ j++; continue; }
                 if(j + (int)m > upto) m = (size_t)(upto - j);
                 if(!text_insert_(st->text, st->cap, st->cursor, ui->text_in + j, m)) break;
                 st->cursor += m; j += (int)m;
@@ -386,8 +391,10 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
                 memcpy(ui->pending_in, ui->text_in + upto, (size_t)tail);
                 ui->pending_in_len = tail;
                 ui->pending_enter_count = ui->enter_count - 1;
-                for(k = 0; k < ui->pending_enter_count; k++)
+                for(k = 0; k < ui->pending_enter_count; k++){
                     ui->pending_enter_at[k] = ui->enter_at[k + 1] - upto;
+                    ui->pending_enter_mods[k] = ui->enter_mods[k + 1];
+                }
             }
             ui->text_in_len = 0;
             ui->enter_count = 0;

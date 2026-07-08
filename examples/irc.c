@@ -660,7 +660,7 @@ int main(int argc, char **argv){
     const char *host = NULL, *nick = "timui", *channel = "#timui", *replay = NULL;
     int port = 6667, demo = 0, max_frames = 0, frames = 0, a;
     char compose[IRC_MSG_MAX] = {0};
-    TimuiInputState compose_state = { compose, sizeof compose, 0, 0 };
+    TimuiTextAreaState compose_state = { compose, sizeof compose, 0, 0 };
     static char history[64][IRC_MSG_MAX];      /* sent lines, for ↑/↓ recall (static: off-stack) */
     int hist_count = 0, hist_pos = 0;
 
@@ -792,10 +792,10 @@ int main(int argc, char **argv){
             }
           }
 
-          /* composer: a single-line editor (Enter submits) framed like a prompt.
-           * The single-line field is submit-capable (text_area has no submit
-           * event). Shift+←/→ switch channels; ↑/↓ recall sent lines; /connect
-           * starts the worker on demand; other /commands go through irc_submit. */
+          /* composer: a one-row textarea (plain Enter submits; Shift+Enter inserts
+           * a newline where the terminal reports modifiers). Shift+←/→ switch
+           * channels; ↑/↓ recall sent lines; /connect starts the worker on demand;
+           * other /commands go through irc_submit. */
           { TimuiRect in = timui_border(f, rows[3], TIMUI_BOX_ROUNDED,
                 TIMUI_STR_LIT(" /connect /join /part /msg /nick /me /quit \xC2\xB7 \xE2\x86\x91\xE2\x86\x93 history \xC2\xB7 Shift+\xE2\x86\x90\xE2\x86\x92 channel "),
                 border_st);
@@ -823,7 +823,7 @@ int main(int argc, char **argv){
                hist_count > 0 && hist_pos > 0){
                 hist_pos--;
                 snprintf(compose, sizeof compose, "%s", history[hist_pos]);
-                compose_state.cursor = strlen(compose); compose_state.scroll_x = 0;
+                compose_state.cursor = strlen(compose); compose_state.scroll_y = 0;
             }
             if(timui_key_pressed(f, TIMUI_KEY_DOWN) &&
                !timui_key_pressed_mods(f, TIMUI_KEY_DOWN, TIMUI_MOD_SHIFT) &&
@@ -832,11 +832,13 @@ int main(int argc, char **argv){
                 if(hist_pos == hist_count){ compose[0] = '\0'; compose_state.cursor = 0; }
                 else { snprintf(compose, sizeof compose, "%s", history[hist_pos]);
                        compose_state.cursor = strlen(compose); }
-                compose_state.scroll_x = 0;
+                compose_state.scroll_y = 0;
             }
 
-            if(timui_input_field_styled(f, TIMUI_ID("compose"), fld, &compose_state,
-                                        timui_style_make(text_fg, panel.bg, 0))){
+            { TimuiTextAreaResult compose_res =
+                  timui_text_area_mut(f, TIMUI_ID("compose"), fld, &compose_state,
+                                      TIMUI_TEXT_AREA_ENTER_SUBMITS);
+              if(compose_res.submitted){
                 if(compose[0] && hist_count < (int)(sizeof history / sizeof history[0]))
                     snprintf(history[hist_count++], IRC_MSG_MAX, "%s", compose);   /* record for ↑/↓ */
                 hist_pos = hist_count;
@@ -871,8 +873,14 @@ int main(int argc, char **argv){
                     irc_submit(&client, worker_started ? &net : NULL, compose);
                     if(irc_ieq_(compose, "/quit")) timui_quit(ui);
                 }
-                compose[0] = '\0'; compose_state.cursor = 0; compose_state.scroll_x = 0;
+                compose[0] = '\0'; compose_state.cursor = 0; compose_state.scroll_y = 0;
                 client.bufs[client.active].scroll = 0;        /* snap to newest on send */
+              }
+              timui_draw_fill(timui_frame_buffer(f), fld, panel);
+              timui_push_clip(f, fld);
+              timui_label(f, fld.x, fld.y, timui_str_from_cstr(compose),
+                          timui_style_make(text_fg, panel.bg, 0));
+              timui_pop_clip(f);
             }
             (void)title_st; (void)host;
           }
