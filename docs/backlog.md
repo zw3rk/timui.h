@@ -1,103 +1,114 @@
-# timui.h — backlog
+# timui.h - backlog
 
-Ideas parked for later. Not scheduled; no commitment implied. Add a date + a
-line of rationale when you pick one up.
+Ideas parked for later. Not scheduled unless a section explicitly says so. Add a
+date and a line of rationale when you pick one up.
 
-**Shipped 2026-07-07** (four-additions goal): the **radio player** (`examples/radio.c`),
-the **SQLite TUI** (`examples/sqlite_tui.c`), the **man page** (`docs/timui.1.md` +
-`make man`), and **full UAX #9 bidi** via vendored SheenBidi (opt-in `WITH_SHEENBIDI=1`).
-Checked off below.
+## Recently shipped
 
-**Shipped 2026-07-07** (layout + widget sweep goal): a **constraint layout engine**
-(`timui_split`/`timui_grid`, LEN/PCT/FLEX/MIN/MAX) + **borders/gradient**
-(`timui_border`, `timui_lerp_rgb`), a **virtual multi-column table** + **scrollable
-tree**, **tabs**, **barchart/sparkline/gauge/meter/progress/spinner**, and a
-**code viewer** (`timui_code`) — all first-class library widgets, showcased by
-`examples/gallery.c`. Checked off below.
+**Shipped 2026-07-07** (four-additions goal): the radio player
+(`examples/radio.c`), the SQLite TUI (`examples/sqlite_tui.c`), the man page
+(`docs/timui.1.md` + `make man`), and full UAX #9 bidi via vendored SheenBidi
+(opt-in `WITH_SHEENBIDI=1`).
 
-## Applications to build on timui.h
-These are *demos/examples* that would stress the library and prove it out.
+**Shipped 2026-07-07** (layout + widget sweep goal): a constraint layout engine
+(`timui_split`/`timui_grid`, LEN/PCT/FLEX/MIN/MAX), borders/gradient
+(`timui_border`, `timui_lerp_rgb`), a virtual multi-column table, scrollable
+tree, tabs, barchart/sparkline/gauge/meter/progress/spinner, and a code viewer
+(`timui_code`), showcased by `examples/gallery.c`.
 
-- [x] **Terminal internet-radio player** (the @kmdrfx UI —
-      <https://nitter.net/kmdrfx/status/2074279530882093523>): a URL bar + 5
-      station-preset tabs (FIP / WFMU / NPO / NPR / Dance Wave), a live **spectrum
-      analyzer** (8 gradient bars 63 Hz–16 kHz with peak-hold caps), **PEAK/RMS
-      meters**, a **stream-telemetry** key/value panel (state, buffer progress bar,
-      decoded/played frames, underruns, reconnects, volume/pan), and a controls
-      hint bar. Needs: minimp3 + miniaudio (both permissive single-header) + a small
-      FFT (kissfft / pocketfft) for the spectrum, over timui panels/tabs/bar-chart/
-      meters/table. A superb forcing function for the **bar-chart + gauge** widgets
-      in the gaps below.
-- [x] **IRC client** — the natural next step after `chat.c`: a real protocol
-      (RFC 1459/2812) over a socket, channels/tabs, nick list, `/commands`,
-      scrollback per buffer. Mostly reuses the chat transcript + composer.
-      Shipped 2026-07-07: `examples/irc.c` (824 lines) over the pure parser
-      `examples/irc_proto.h` (unit-tested via `make check-irc`). A worker thread
-      owns a plaintext TCP socket (getaddrinfo/connect/poll/read, PING→PONG,
-      bounded reconnect backoff) and posts raw lines to the UI via `timui_post`;
-      the separable `irc_feed` handler drives the model for BOTH the socket and
-      the offline `--demo`/`--replay` paths. 3-pane `timui_split` UI (tabs /
-      scrollback + nick `timui_table` / composer) + `/join /part /msg /nick /me
-      /quit`. Headless `make smoke-irc` (canned transcript, no network).
-- [ ] **Matrix client** — much bigger: HTTP long-poll/sync (`/sync`), E2E crypto
-      (Olm/Megolm — **must** come from a vetted lib, never hand-rolled per the
-      crypto policy), rooms, threads, reactions, media. A good test of async +
-      the threading model; likely needs a JSON + HTTP dependency.
-- [ ] **SimpleX Chat client** — no identifiers/servers-of-record; needs the SimpleX
-      messaging protocol + queue model + crypto (again: vetted lib only). Research
-      the reference client first; heaviest of the three chat apps.
-- [ ] **Pi-style agent harness** with **Chez Scheme** as the self-modification
-      language — a TUI over an agent loop where the agent rewrites its own Scheme.
-      Needs an embedded Chez (or a subprocess bridge), a transcript/tool-call view,
-      a diff/apply pane. Big; scope a spike first (embed Chez + eval a snippet).
-- [x] **SQLite TUI** — the most tractable. `sqlite3` (amalgamation, single .c) for
-      the engine; a schema tree + a results **table widget** (see gaps) + a query
-      editor (reuse the multi-line composer + the code highlighter). Good forcing
-      function for the table + tree widgets we lack.
+**Shipped 2026-07-07** (applications/examples): `examples/irc.c` provides a
+plaintext IRC client over the reusable `examples/irc_proto.h` parser, with tabs,
+nick table, scrollback, `/join /part /msg /nick /me /quit`, worker-thread socket
+I/O via `timui_post`, offline `--demo`/`--replay`, `make check-irc`, and
+`make smoke-irc`.
 
-## Framework parity — what other TUI frameworks have that we don't (yet)
-Surveyed: bubbletea/lipgloss (Go), ratatui (Rust), Textual (Python), Ink/blessed
-(TS), notcurses/FTXUI (C/C++). timui already has: immediate-mode cells, threading
-(MPSC), theme, Kitty graphics, hyperlinks, scroll, a widget set (button/input/
-listbox/dialog/menu/modal/cmdpal), synchronized-update, and now (in the chat
-example) word-wrap, a small bidi, and syntax-highlighted code. Missing:
+## Phase 1.5 selected follow-up
 
-**Widgets**
-- [x] **Table / data grid** (columns, sort, scroll, selection) — the highest-value gap.
-- [x] **Tree view** (expand/collapse) — file trees, JSON, schemas.
-- [x] **Tabs / tab bar** (`timui_tabs`) — split / resizable panes still pending.
-- [x] **Progress bar · spinner · throbber**.
-- [x] **Sparkline / bar chart / plot** (ratatui has a charts module).
-- [x] a reusable **code viewer** (`timui_code` + `timui_highlight`) — a **Markdown viewer** is still pending.
-- [ ] **Autocomplete / combobox**, **text area** (promote the chat's multi-line composer), **toast/notification**.
+This is the next planned sweep. It is library/platform work, not a large app
+push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt`.
 
-**Layout & styling**
-- [x] **Flexbox / grid / constraint layout** (ratatui `Layout`, Textual CSS grid, lipgloss).
-- [x] rounded/double/thick **borders** (`timui_border`) + **gradients** (`timui_lerp_rgb`) — a **CSS-like stylesheet** (Textual TCSS) is still pending.
+- [ ] **Windows ConPTY backend** - replace the unsupported stub with a real
+      `CreatePseudoConsole` transport: pipes, process lifetime, resize, close,
+      VT input/output modes, short-write/read handling, and `DWORD` chunking.
+      Do not promise graphics as part of ConPTY itself; graphics are selected by
+      terminal image protocol capability above the transport.
+- [ ] **Submit-capable multi-line text area** - add a result-returning,
+      controlled API plus `_mut` convenience wrapper, preserving the current
+      void `timui_text_area` compatibility wrapper. Refactor `examples/chat.c`
+      and `examples/irc.c` to use it instead of local composer workarounds.
+- [ ] **Autocomplete / combobox** - field-attached popup selection over
+      caller-owned options/state, with keyboard, mouse, clipping, UTF-8 labels,
+      empty-list behavior, and cap-limited query tests.
+- [ ] **Toast / notification** - immediate-mode renderer over caller-owned
+      notification data: severity, TTL, stacking, clipping, and manual dismiss.
+- [ ] **Split / resizable panes** - build on `timui_split`/`timui_split_ex` with
+      caller-owned split state and a local divider-drag interaction. Full global
+      drag/hover architecture remains Phase 2.
+- [ ] **CSS-like stylesheet** - a small Textual-TCSS-inspired parser/resolver
+      over existing styles: widget/id/class/state selectors, simple specificity,
+      source order, and properties for fg/bg/attrs/border/padding/gap/gradient.
+- [ ] **Grapheme clustering** - generated Unicode grapheme data and helpers for
+      next/prev/width, integrated into editing, truncation, and rendering so ZWJ
+      emoji, skin tones, regional indicators, combining marks, VS16, and CRLF
+      are not split incorrectly.
+- [ ] **Protocol-neutral image layer + Sixel + iTerm2** - keep Kitty support,
+      but refactor image emission behind protocol capabilities. Add Sixel first
+      (including Windows Terminal usefulness), then iTerm2 inline images, with
+      fallback placeholders preserved.
 
-**Architecture & interaction**
-- [ ] **Elm-style component model** (Model/Update/View + Cmd/Sub) as an optional layer over immediate mode.
-- [ ] **Focus traversal / tab order**, **keybinding maps / vim modes**, richer **mouse** (drag, hover).
+## Phase 2 backlog - architecture and applications
 
-**Text / i18n / images**
-- [x] **Full Unicode bidi** — ship it as an OPTIONAL opt-in, keeping our 2-level
-      approximation as the always-on default. Library choice is a licensing call:
-    - **SheenBidi** (Apache-2.0) — best fit: a small, self-contained UAX #9 C lib we
-      can *vendor* like stb/msf_gif. No system dependency, license matches ours.
-    - **FriBidi** is **LGPL-2.1+, NOT GPL** — linking it does *not* make timui GPL
-      (LGPL explicitly permits linking without copyleft on the caller). A dynamic-
-      link opt-in is clean; static linking adds only a relink obligation. But it is
-      a system dependency, not vendorable.
-    - **ICU** (permissive Unicode license) — fully correct but very large.
-    Also **grapheme clustering** (ZWJ / skin-tone emoji, combining marks).
-- [ ] **Sixel + iTerm2** image protocols (we have Kitty only).
+These are intentionally deferred. They become easier and less churn-heavy once
+Phase 1.5 stabilizes widget result shapes, stylesheet application, image
+capabilities, and grapheme-aware editing.
 
-**Dev experience**
-- [ ] **Devtools / inspector** (Textual's console) + **hot reload**.
-- [ ] **Accessibility** (screen-reader hints).
-- [ ] Snapshot testing exists (`drive/` + goldens); broaden it.
+### Architecture & interaction
+
+- [ ] **Elm-style component model** - optional layer over immediate mode, not a
+      replacement. The repo already has the smaller `TimuiApp`/`timui_run`
+      runner; pending work is a fuller `Model` / `Update` / `View` plus
+      `Cmd`/`Sub` layer for async work. It should wrap stable widget APIs after
+      Phase 1.5 rather than force a framework shape while widgets are still
+      moving.
+- [ ] **Focus traversal / tab order** - explicit focus graph, scoped focus
+      groups, reverse traversal, disabled/hidden widgets, and deterministic
+      behavior across panels, dialogs, menus, comboboxes, and split panes.
+- [ ] **Keybinding maps / vim modes** - layered keymaps with mode names,
+      conflict reporting, discoverability hooks, command dispatch, and example
+      vi-like navigation. Build after focus semantics are explicit.
+- [ ] **Richer mouse** - global pointer capture, drag lifecycle, hover intent,
+      release-outside behavior, and scroll/drag routing. Phase 1.5 may add local
+      splitter drag only; the general interaction contract belongs here.
+
+### Applications
+
+- [ ] **Matrix client** - large app proof, not core library scope. Needs HTTP
+      long-poll/sync (`/sync`), rooms, threads, reactions, media, JSON/HTTP
+      dependencies, async model stress, and E2E crypto (Olm/Megolm) from vetted
+      libraries only. Write research docs and dependency/licensing notes before
+      implementation.
+- [ ] **SimpleX Chat client** - heavier than Matrix from a protocol/provenance
+      standpoint. Research the SimpleX reference client, queue model, transport,
+      and crypto boundaries first. Crypto comes only from vetted libraries.
+- [ ] **Pi-style agent harness with Chez Scheme** - TUI over an agent loop where
+      the agent rewrites Scheme. Scope a spike first: embedded Chez vs subprocess
+      bridge, transcript/tool-call view, diff/apply pane, and a safe persistence
+      model.
+
+## Later / unscheduled parity
+
+- [ ] **Markdown viewer** - a reusable library widget, likely built from the
+      code/rich-text and hyperlink machinery once stylesheets settle.
+- [ ] **Devtools / inspector** - Textual-style tree/box/style inspector and
+      event log. Useful, but it depends on a stable style/component story.
+- [ ] **Hot reload** - useful for stylesheets and examples after the stylesheet
+      parser exists.
+- [ ] **Accessibility** - screen-reader hints and alternate descriptions. Needs
+      a clearer semantic widget model first.
+- [ ] **Broader snapshots** - snapshot testing exists (`drive/` + goldens);
+      broaden it as new widgets/protocols land.
 
 ## Tooling
-- [x] **Man page** — `docs/timui.1.md` (Markdown) → roff via **pandoc**
-      (`pandoc -s -t man docs/timui.1.md -o build/timui.1`), wired as `make man`
-      + a `make install-man`. Small; good first pickup.
+
+- [x] **Man page** - `docs/timui.1.md` (Markdown) to roff via pandoc, wired as
+      `make man` and `make install-man`.

@@ -1,0 +1,175 @@
+Goal: Phase 1.5 for timui.h - complete the next library/platform sweep: Windows
+ConPTY backend; submit-capable textarea; autocomplete/combobox; toast/
+notification; split/resizable panes; TCSS-like stylesheet; grapheme clustering;
+and protocol-neutral images with Sixel + iTerm2, while keeping the larger
+architecture/app work as Phase 2 backlog only.
+
+READ FIRST:
+- AGENTS.md / CLAUDE.md project rules. Work only through `nix develop -c make <target>`.
+- `docs/backlog.md` Phase 1.5 and Phase 2 sections.
+- `docs/gaps.md` "Selected for Phase 1.5".
+- `docs/TERMINAL_PROTOCOLS.md`, `docs/API.md`, `docs/DESIGN.md`.
+- Existing goal context: `docs/goals/widgets-layout.goal.txt`,
+  `docs/goals/chat-multiline.goal.txt`, and `docs/goals/vt-gif-v2.goal.txt`.
+
+NON-GOALS FOR THIS PHASE:
+- Do not build Matrix, SimpleX, or the Chez/Pi agent harness.
+- Do not introduce an Elm/component framework yet.
+- Do not build global keybinding/vim-mode infrastructure yet.
+- Do not make broad focus traversal or global mouse-drag architecture the scope.
+  Local splitter drag is allowed only as much as resizable panes require.
+- Do not claim Windows graphics support as a ConPTY feature. ConPTY is a
+  transport/backend; graphics are chosen by terminal image protocol capability.
+- Do not hand-roll crypto. This phase should not need crypto at all.
+
+RECOMMENDED ORDER:
+- ConPTY can proceed independently if a Windows-capable environment is
+  available; otherwise capture the blocked smoke gate and continue with the
+  portable work.
+- Do grapheme clustering before text-heavy widgets. It affects textarea
+  cursor/delete, input fields, combobox filtering, cell fitting/truncation,
+  table/tabs/code rendering, snapshots, and vt_gif parity.
+- Define the stylesheet parser/resolver before finalizing the new visible
+  widgets, so comboboxes, toasts, and splitters do not bake in hard-coded style
+  choices that the style layer immediately has to undo.
+- Promote `timui_text_area` after grapheme semantics are clear. Then build
+  autocomplete/combobox on input-field/listbox/command-palette machinery.
+- Add toast/notification after the style layer has severity/state conventions.
+- Add split/resizable panes once the minimal local drag path is defined.
+- Generalize the image backend before adding Sixel/iTerm2 emitters; Kitty stays
+  the known-good path throughout.
+
+WORKSTREAM A - Windows ConPTY backend:
+- Red tests/compile seams first. Preserve non-Windows behavior: unsupported
+  return, no accidental Windows-only type leakage.
+- Replace the `_WIN32` stub in `src/timui_conpty.c` with a real backend around
+  `CreatePipe`, `CreatePseudoConsole`, `STARTUPINFOEX`,
+  `PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE`, child process lifetime, resize, close,
+  and transport read/write callbacks.
+- Handle short writes/reads and chunk `size_t` buffers into `DWORD`-bounded
+  writes. Close must be idempotent and must not leak handles on partial failure.
+- Enable/restore VT processing and VT input where the backend touches a real
+  console mode.
+- Acceptance: compile-only Windows or mingw check where available; a real
+  Windows Terminal smoke target/run recorded in docs before claiming supported
+  Windows operation; `make test` and sanitizers remain green on POSIX.
+
+WORKSTREAM B - Widgets:
+- Textarea first. Add a result-returning controlled API, plus `_mut`
+  convenience, while keeping the current `timui_text_area` wrapper compatible.
+  Return at least changed/submitted/focused state. Define Enter vs newline
+  semantics explicitly. Shift+Enter is only reliable when the terminal reports
+  modifiers, so document fallback behavior. Preserve paste newlines; if the
+  current paste sanitization drops them before widgets see them, fix that with a
+  failing regression test first. Refactor `examples/chat.c` and `examples/irc.c`
+  to use the library submit event.
+- Autocomplete/combobox. Caller owns options and state. Support query editing,
+  open/closed state, selected row, scroll, keyboard navigation/accept/cancel,
+  mouse accept, clipping, UTF-8 labels, empty list, duplicate labels, and
+  cap-limited query buffers.
+- Toast/notification. Keep immediate-mode: caller owns notification data. Draw
+  severity, TTL/expiry, stacking, clipping, and manual dismiss. No hidden global
+  notification manager.
+- Split/resizable panes. Build on `timui_split`/`timui_split_ex`, with
+  caller-owned split state and local divider drag. Test min/max/ratio clamp,
+  release-outside behavior if implemented locally, and degenerate rectangles.
+- Acceptance: positive + negative/adversarial tests for every widget; gallery
+  demonstrates the new widgets; chat/IRC composer workarounds are gone.
+
+WORKSTREAM C - Declarative style layer:
+- Add a small TCSS-like parser/resolver over existing `TimuiStyle` and theme
+  slots. Keep it optional; existing theme APIs continue to work.
+- Initial selector scope: widget kind, `#id`, `.class`, and states such as
+  `:focused`, `:hovered`, `:active`, `:disabled` if supported.
+- Initial properties: `fg`, `bg`, attrs (`bold`, `dim`, `reverse`), `border`,
+  `padding`, `gap`, and gradient endpoints where they map cleanly to existing
+  drawing primitives.
+- Implement deterministic cascade: simple specificity and source order. Avoid
+  full CSS inheritance, layout reflow semantics, imports, or units beyond what
+  the current layout/style system can defend.
+- Acceptance: parser positive/negative tests, malformed input tests, unknown
+  property behavior, specificity/order tests, OOM tests, and snapshot examples
+  applying styles to real widgets.
+
+WORKSTREAM D - Grapheme clustering:
+- Implement generated Unicode grapheme-break data/helpers rather than ad hoc
+  string slicing. Add helpers for next/prev cluster and cluster display width.
+- Integrate into input field, textarea cursor/delete, `timui_fit_cell`, table
+  truncation, code/rich text paths, and snapshot/rendering width decisions where
+  applicable.
+- Test ZWJ emoji, skin tones, flags/regional indicators, combining marks, VS16,
+  CRLF, malformed UTF-8, empty strings, cap boundaries, and truncation with an
+  ellipsis.
+- Acceptance: no widget cursor/delete/truncation path splits an extended
+  grapheme cluster in the covered vectors; existing width/bidi tests remain
+  green. Replace any codepoint-width invariant that no longer holds with an
+  explicit cluster-width invariant.
+
+WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
+- Refactor `src/timui_kitty.c` into a protocol-neutral image layer while keeping
+  the public `timui_image_*` API stable unless a breaking change is explicitly
+  justified pre-1.0.
+- Preserve Kitty behavior and fallback placeholder behavior. The public image
+  API is already generic PNG-in/draw-out; Kitty is the only implemented terminal
+  wire backend today.
+- Add capability selection for Kitty, Sixel, iTerm2 inline images, and none.
+  Sixel should be prioritized before iTerm2 because it is useful for Windows
+  Terminal and classic terminal compatibility.
+- Research and record any encoder dependency and license before vendoring or
+  linking it. Do not casually add a large dependency. Decide whether the
+  currently reserved `TIMUI_NO_IMAGES` macro becomes active before adding
+  multiple protocol backends.
+- Acceptance: protocol emission tests, fallback tests, clipping/placement tests,
+  no regression in `make check-vt-gif-all`, and docs that state exactly which
+  protocol is supported where.
+
+DOCUMENTATION:
+- Keep `docs/backlog.md` Phase 1.5 and Phase 2 sections current.
+- Update `docs/gaps.md` as each selected gap is closed.
+- Update `docs/API.md`, `docs/TERMINAL_PROTOCOLS.md`, `docs/website-product-brief.md`,
+  and the website copy only when behavior is actually implemented.
+- Add handoff docs under `docs/handoff/` if Windows smoke evidence, protocol
+  evidence, or dependency/licensing research remains incomplete.
+
+VERIFICATION GATES:
+- `nix develop -c make test`
+- `nix develop -c make build`
+- `nix develop -c make check-layout`
+- `nix develop -c make check-grid`
+- `nix develop -c make check-tabs`
+- `nix develop -c make check-chat-text`
+- `nix develop -c make check-chat-highlight`
+- `nix develop -c make test-san SAN=address`
+- `nix develop -c make test-san SAN=undefined`
+- `nix develop -c make vt-test` where libvterm is available
+- `nix develop -c make release-check`
+- `nix develop -c make check-vt-gif-all`
+- `nix develop -c make smoke-gallery`
+- `nix develop -c make check-irc`
+- `nix develop -c make smoke-irc`
+- Any new dedicated widget/style/grapheme/image/ConPTY checks added for this
+  phase.
+- Windows support is not accepted until there is a real Windows smoke result or
+  the remaining Windows gate is explicitly documented as blocked/best-effort.
+
+TEST NAMES TO START FROM:
+- `test_text_area_submit_plain_enter`
+- `test_text_area_shift_enter_inserts_newline`
+- `test_text_area_multi_enter_segments`
+- `test_text_area_paste_preserves_newlines`
+- `test_combobox_filter_select_activate`
+- `test_combobox_no_match_and_clamp`
+- `test_toast_order_timeout_dismiss`
+- `test_splitter_drag_clamps_minmax`
+- `test_stylesheet_parse_specificity_states`
+- `test_grapheme_delete_move_fit_combining_zwj`
+- `test_image_protocol_selects_kitty_sixel_iterm2`
+- Protocol negative tests for malformed, oversized, or unsupported image
+  payloads.
+
+COMMIT DISCIPLINE:
+- Use a feature worktree and small commits by concern.
+- TDD is mandatory: positive and negative tests before implementation; named
+  regression tests before bug fixes.
+- Re-run relevant gates after rebases.
+- Do not push unless explicitly asked.

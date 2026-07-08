@@ -9,7 +9,8 @@ the Y-series ([round 4](reports/2026-07-03-deep-review-pass4.md)); rounds 5–6
 were user-directed (round 5: W6/W11/W12/W14/V24; round 6: G6/G7/G13). Round 7
 (2026-07-05) fanned six independent lenses and filed the **Z-series**
 ([round 7](reports/2026-07-05-deep-review-pass7.md)). Most of all sets are
-fixed; this file tracks what remains.
+fixed; this file tracks what remains. The Phase 1.5 planning pass now marks the
+next selected library/platform gaps separately from lower-priority residuals.
 
 ## Resolved (fixed in tree)
 
@@ -41,11 +42,34 @@ URI-change re-emit (cache the URI, not the per-frame id) · W10 panel content
 clip · L5 cursor bounds · L6 snapshot size-query · L10 non-vacuous fuzz · L14
 reserved-macro comment · V23 kitty write-all loop.
 
-## Still open (lower priority — documented limitations)
+## Selected for Phase 1.5
 
-- **W13** ConPTY `(DWORD)n` truncation for >4 GiB writes (latent behind the
-  UNSUPPORTED stub).
-- **G10** ConPTY backend is a stub (returns UNSUPPORTED); no `_WIN32` skeleton.
+These are known limitations promoted into the next planned follow-up. See
+[`docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt`](goals/phase1_5-platform-widgets-style-text-image.goal.txt).
+
+- **G10/W13** Windows ConPTY support is still unsupported at runtime:
+  `timui_conpty_open` returns `TIMUI_ERR_UNSUPPORTED`. A `_WIN32` transport
+  skeleton exists, but the real `CreatePseudoConsole` backend, process
+  lifecycle, resize path, close semantics, VT mode setup, and `size_t` to
+  `DWORD` chunking remain to be implemented. Do not claim Windows support until
+  compile checks and a real Windows smoke run are green.
+- **Text-area submit semantics** are missing. `timui_text_area` edits multi-line
+  text, but it has no result-returning submit event, so `examples/chat.c` and
+  `examples/irc.c` currently carry composer workarounds.
+- **Medium widgets** still missing: autocomplete/combobox, toast/notification,
+  and split/resizable panes.
+- **Declarative styling** is missing. The layout solver, borders, themes, and
+  gradients exist, but there is no CSS/TCSS-like parser and cascade/resolver.
+- **Grapheme clustering** remains incomplete. Width and bidi coverage are useful,
+  but editing/truncation/rendering can still split ZWJ emoji, skin-tone emoji,
+  flags/regional indicators, combining marks, variation selectors, and related
+  extended grapheme clusters.
+- **Image protocols** are Kitty-only. Sixel and iTerm2 inline images should be
+  added through a protocol-neutral image layer; ConPTY should stay a transport,
+  not a Windows-specific graphics abstraction.
+
+## Still open (documented limitations, not Phase 1.5)
+
 - **LOW (round 2, documented)**: L1 double-Esc resolution · L2 flush clock for
   direct feed callers · L3 cross-feed UTF-8 split dangling event ptr · L4
   put_glyph overwrites a wide-glyph continuation · L7 table column remainder
@@ -137,15 +161,13 @@ fields were removed from `Timui` · **Z28** the "fill row + draw text" and
 Round-7 total: 160→176 unit tests; ASAN/UBSAN clean; goldens byte-identical;
 amalgamate + release-check green.
 
-## Verification
+## Historical verification record
 
 `nix develop -c make test` (unit + Tier-B goldens), `make vt-test` (Tier A
 libvterm round-trip — requires `libvterm-neovim`; see
 [`docs/visual-tests.md`](visual-tests.md)), `make amalgamate` + `release-check`.
-148→160 unit + 8 libvterm round-trip green after round 6 (G6/G7/G13); UBSAN
-clean; ASAN clean (system clang); goldens clean; amalgamate + release-check
-pass; TIMUI_NO_THREADS compiles. V27 (colour-model sentinel) implemented: pure
-black (0x000000) is now representable, distinct from TIMUI_COLOR_DEFAULT.
-Round-6 note: G13 is static theme data (no allocation/pointer surface), so its
-gate is the unit invariant + negative tests and amalgamate/release-check; the
-ASAN/UBSAN clean state carries over from the round-5 memory-touching work.
+The exact unit-test counts in the review notes are historical snapshots, not
+Phase 1.5 acceptance criteria; capture a fresh baseline when implementation
+starts. Round-6/Round-7 verification recorded clean unit tests, Tier-B goldens,
+ASAN/UBSAN, amalgamation/release-check, `TIMUI_NO_THREADS`, and libvterm
+round-trips where available.
