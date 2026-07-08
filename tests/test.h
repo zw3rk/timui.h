@@ -278,6 +278,7 @@ void test_text_area_submit_unfocused_noop(void);
 void test_text_area_shift_enter_then_plain_enter(void);
 void test_text_area_wrapper_enter_inserts_newline(void);
 void test_conpty_unsupported(void);
+void test_conpty_chunk_and_size_guards(void);
 void test_kitty_graphics_transmit(void);
 void test_kitty_graphics_chunking(void);
 void test_signal_restore(void);

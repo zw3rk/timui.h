@@ -12,9 +12,10 @@
  * Status: a working immediate-mode TUI, not a scaffold. The POSIX
  * raw-mode terminal backend, the incremental input parser (legacy + Kitty
  * keyboard, SGR mouse, bracketed paste, focus), the truecolour diff renderer,
- * and the themed widget set are all implemented and unit-tested. The only
- * lifecycle stub is the Win32 ConPTY backend, which returns
- * TIMUI_ERR_UNSUPPORTED.
+ * and the themed widget set are all implemented and unit-tested. The Win32
+ * ConPTY transport is implemented behind _WIN32, runtime-probed, and
+ * compile-checked; live Windows Terminal smoke evidence is still required
+ * before claiming supported Windows operation.
  *
  * SPDX-License-Identifier: Apache-2.0
  * Copyright 2026 Moritz Angermann <moritz@zw3rk.com>, zw3rk pte. ltd.
@@ -171,7 +172,7 @@ typedef struct {
 #define TIMUI_RECT(x, y, w, h) ((TimuiRect){ (x), (y), (w), (h) })
 #define TIMUI_ID(s)          timui_id_from_cstr(s)
 
-/* ---- Lifecycle (POSIX terminal backend; Win32 ConPTY is a stub) -------- */
+/* ---- Lifecycle (POSIX terminal backend; Win32 ConPTY transport) -------- */
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 TIMUI_API void        timui_close(Timui *ui);
 /* Restore the terminal (screen exit + termios) — used by the SIGTERM/SIGHUP/
@@ -1189,7 +1190,11 @@ TIMUI_API TimuiTextAreaResult timui_text_area_mut(TimuiFrame *f, TimuiId id, Tim
 TIMUI_API void timui_text_area(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiTextAreaState *state);
 
 TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);
+TIMUI_API TimuiResult timui_conpty_resize(TimuiTransport *transport, int cols, int rows);
 TIMUI_API void timui_conpty_close(TimuiTransport *transport, int pid);
+/* Test seams for the Win32 ConPTY backend's platform-neutral guards. */
+TIMUI_API size_t timui_conpty_io_chunk_for_test(size_t remaining);
+TIMUI_API int    timui_conpty_size_valid_for_test(int cols, int rows);
 
 /* ---- v0.2: terminal images -------------------------------------------- *
  * timui_image_draw records a placement emitted ON TOP of the cell diff in

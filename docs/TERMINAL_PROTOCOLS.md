@@ -54,9 +54,11 @@ set for tests or user overrides.
 
 ## Planned
 
-- **Windows ConPTY**: currently a runtime-unsupported backend stub. It belongs
-  below the protocol layer as a transport/lifecycle backend, not as a graphics
-  abstraction.
+- **Windows ConPTY**: implemented as a `_WIN32` transport/lifecycle backend
+  with runtime symbol probing and MinGW compile coverage in `make check`. It
+  belongs below the protocol layer, not as a graphics abstraction. Live Windows
+  Terminal smoke evidence is still pending before claiming supported Windows
+  operation.
 - **Sixel parity**: the raw-RGBA exact-palette emitter is implemented. Deferred
   work: PNG-to-Sixel decode, palette quantization, scaling to cell geometry,
   clipped Sixel draws, and real-terminal evidence.

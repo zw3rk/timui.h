@@ -270,6 +270,7 @@ int main(void){
         test_text_area_shift_enter_then_plain_enter,
         test_text_area_wrapper_enter_inserts_newline,
         test_conpty_unsupported,
+        test_conpty_chunk_and_size_guards,
         test_kitty_graphics_transmit,
         test_kitty_graphics_chunking,
         test_signal_restore,

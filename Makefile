@@ -15,6 +15,8 @@ ifeq ($(UNAME_S),Linux)
 endif
 CFLAGS     ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O2 -pthread
 TESTCFLAGS ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O0 -g -pthread
+CONPTY_WIN_CC ?= x86_64-w64-mingw32-gcc
+CONPTY_WIN_CFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -Werror -D_WIN32_WINNT=0x0A00
 
 INCDIR   := include
 SRCDIR   := src
@@ -131,7 +133,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www amalgamate release-check fmt check clean goldens vt-test check-conpty check-conpty-posix check-conpty-win32-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-irc run-irc smoke-irc
 
 help: ## Show this help
 	@printf "$(C_BOLD)timui.h$(C_RESET) — single-header C99 immediate-mode TUI\n"
@@ -287,7 +289,7 @@ rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
 # 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
 # ============================================================================
 
-check: build test ## Build + test gate
+check: build test check-conpty-win32-compile ## Build + test gate
 	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 test: $(TEST_BIN) ## Compile and run the unit tests
@@ -303,6 +305,22 @@ vt-test: build ## Compile + run unit tests WITH vterm round-trip tests (needs li
 	@$(MAKE) $(VT_BIN) WITH_VTERM=1
 	@printf "$(C_YELL)▶ running vt-tests$(C_RESET)\n"
 	@./$(VT_BIN)
+
+check-conpty-posix: $(TEST_BIN) ## Run POSIX ConPTY fallback/helper coverage
+	@printf "$(C_YELL)▶ running ConPTY POSIX helper tests$(C_RESET)\n"
+	@./$(TEST_BIN)
+
+check-conpty-win32-compile: ## Cross-compile the isolated Win32 ConPTY backend when mingw is available
+	@mkdir -p $(BLDDIR)
+	@if ! command -v $(CONPTY_WIN_CC) >/dev/null 2>&1; then \
+	  printf "$(C_YELL)SKIP$(C_RESET) $(CONPTY_WIN_CC) not found; install the nix dev shell cross compiler\n"; \
+	  exit 0; \
+	fi
+	@printf "$(C_CYAN)build$(C_RESET) isolated Win32 ConPTY compile seam\n"
+	@$(CONPTY_WIN_CC) $(CONPTY_WIN_CFLAGS) -I$(INCDIR) -c $(TSTDIR)/test_conpty_win32_compile.c -o $(BLDDIR)/test_conpty_win32_compile.o
+	@printf "$(C_GREEN)✓ Win32 ConPTY compile seam$(C_RESET)\n"
+
+check-conpty: check-conpty-posix check-conpty-win32-compile ## Run ConPTY POSIX helper + optional Win32 compile checks
 
 goldens: $(GOLDEN_BIN) ## Regenerate tests/golden/*.txt snapshots
 	@mkdir -p tests/golden

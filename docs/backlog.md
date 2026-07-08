@@ -29,9 +29,12 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
 
 - [ ] **Windows ConPTY backend** - replace the unsupported stub with a real
       `CreatePseudoConsole` transport: pipes, process lifetime, resize, close,
-      VT input/output modes, short-write/read handling, and `DWORD` chunking.
+      runtime symbol probing, short-write/read handling, and `DWORD` chunking.
       Do not promise graphics as part of ConPTY itself; graphics are selected by
       terminal image protocol capability above the transport.
+      - [x] `_WIN32` backend implementation, resize API, POSIX fallback tests,
+            and MinGW compile seam in `make check`.
+      - [ ] Real Windows Terminal smoke run and captured operator evidence.
 - [x] **Submit-capable multi-line text area** - add a result-returning,
       controlled API plus `_mut` convenience wrapper, preserving the current
       void `timui_text_area` compatibility wrapper. Refactor `examples/chat.c`

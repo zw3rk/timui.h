@@ -13,6 +13,7 @@
       version = "0.2.0";
       src = nixpkgs.lib.cleanSource ./.;
       nativeInputs = pkgs: [ pkgs.clang pkgs.gawk pkgs.gnumake pkgs.pkg-config ];
+      conptyCrossInputs = pkgs: [ pkgs.pkgsCross.mingwW64.stdenv.cc ];
       buildInputs = pkgs: [ pkgs.libvterm-neovim ];
       mkWww = system:
         let pkgs = forPkgs system;
@@ -39,12 +40,15 @@
           '';
         };
       mkCiCheck = system:
-        let pkgs = forPkgs system;
+        let
+          pkgs = forPkgs system;
+          hostCc = "${pkgs.stdenv.cc}/bin/cc";
         in pkgs.stdenv.mkDerivation {
           pname = "timui-ci-check";
           inherit version src;
 
-          nativeBuildInputs = nativeInputs pkgs;
+          nativeBuildInputs = nativeInputs pkgs
+            ++ conptyCrossInputs pkgs;
           buildInputs = buildInputs pkgs;
 
           dontConfigure = true;
@@ -53,11 +57,11 @@
             runHook preBuild
             cp -R tests/golden "$TMPDIR/golden.before"
             cp www/timui.h "$TMPDIR/www-timui.before"
-            make check
-            make release-check
-            make goldens
+            make CC=${hostCc} check
+            make CC=${hostCc} release-check
+            make CC=${hostCc} goldens
             diff -ru "$TMPDIR/golden.before" tests/golden
-            make www
+            make CC=${hostCc} www
             cmp -s "$TMPDIR/www-timui.before" www/timui.h
             cmp -s release/timui.h www/timui.h
             mkdir -p build
@@ -104,7 +108,8 @@
             # libvterm API used by the Tier A round-trip tests.
             # asciinema records a real terminal session's raw byte stream to a
             # .cast for `make rec-<name>` (feedable to the render verifier).
-            nativeBuildInputs = [ pkgs.gnumake pkgs.pkg-config pkgs.asciinema ];
+            nativeBuildInputs = [ pkgs.gnumake pkgs.pkg-config pkgs.asciinema ]
+              ++ conptyCrossInputs pkgs;
             buildInputs = [ pkgs.clang ]
               ++ buildInputs pkgs;
           };

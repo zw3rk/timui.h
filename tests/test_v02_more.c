@@ -6,6 +6,7 @@
 #include "test.h"
 #include "timui.h"
 
+#include <limits.h>
 #include <string.h>
 
 #define SETIN(fake, lit) timui_fake_set_input((fake), (lit), sizeof(lit) - 1)
@@ -390,5 +391,42 @@ TIMUI_TEST(test_text_area_cursor_overcap_safe){
 TIMUI_TEST(test_conpty_unsupported){
     TimuiTransport tr;
     int pid;
+    memset(&tr, 0xaa, sizeof tr);
+    pid = 1234;
+    TIMUI_CHECK(timui_conpty_open(NULL, &pid) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_conpty_open(&tr, NULL) == TIMUI_ERR_INVALID_ARGUMENT);
     TIMUI_CHECK(timui_conpty_open(&tr, &pid) == TIMUI_ERR_UNSUPPORTED);
+    TIMUI_CHECK(pid == -1);
+    TIMUI_CHECK(tr.write == NULL);
+    TIMUI_CHECK(tr.read == NULL);
+    TIMUI_CHECK(tr.flush == NULL);
+    TIMUI_CHECK(tr.close == NULL);
+    TIMUI_CHECK(tr.ctx == NULL);
+    TIMUI_CHECK(timui_conpty_resize(NULL, 80, 24) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_conpty_resize(&tr, 0, 24) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_conpty_resize(&tr, 80, 0) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_conpty_resize(&tr, 80, 24) == TIMUI_ERR_UNSUPPORTED);
+    timui_conpty_close(&tr, pid);
+}
+
+TIMUI_TEST(test_conpty_chunk_and_size_guards){
+    size_t chunk;
+    TIMUI_CHECK(timui_conpty_io_chunk_for_test(0) == 0);
+    TIMUI_CHECK(timui_conpty_io_chunk_for_test(1) == 1);
+    chunk = timui_conpty_io_chunk_for_test((size_t)INT_MAX + 123u);
+    TIMUI_CHECK(chunk > 0);
+    TIMUI_CHECK(chunk <= (size_t)INT_MAX);
+    TIMUI_CHECK(chunk <= (size_t)INT_MAX + 123u);
+    chunk = timui_conpty_io_chunk_for_test(SIZE_MAX);
+    TIMUI_CHECK(chunk > 0);
+    TIMUI_CHECK(chunk <= (size_t)INT_MAX);
+
+    TIMUI_CHECK(timui_conpty_size_valid_for_test(80, 24));
+    TIMUI_CHECK(timui_conpty_size_valid_for_test(32767, 32767));
+    TIMUI_CHECK(!timui_conpty_size_valid_for_test(0, 24));
+    TIMUI_CHECK(!timui_conpty_size_valid_for_test(80, 0));
+    TIMUI_CHECK(!timui_conpty_size_valid_for_test(-1, 24));
+    TIMUI_CHECK(!timui_conpty_size_valid_for_test(80, -1));
+    TIMUI_CHECK(!timui_conpty_size_valid_for_test(32768, 24));
+    TIMUI_CHECK(!timui_conpty_size_valid_for_test(80, 32768));
 }

@@ -47,12 +47,10 @@ reserved-macro comment · V23 kitty write-all loop.
 These are known limitations promoted into the next planned follow-up. See
 [`docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt`](goals/phase1_5-platform-widgets-style-text-image.goal.txt).
 
-- **G10/W13** Windows ConPTY support is still unsupported at runtime:
-  `timui_conpty_open` returns `TIMUI_ERR_UNSUPPORTED`. A `_WIN32` transport
-  skeleton exists, but the real `CreatePseudoConsole` backend, process
-  lifecycle, resize path, close semantics, VT mode setup, and `size_t` to
-  `DWORD` chunking remain to be implemented. Do not claim Windows support until
-  compile checks and a real Windows smoke run are green.
+- **G10/W13** Windows ConPTY is implemented behind `_WIN32`, runtime-probed for
+  ConPTY entry points, and covered by the MinGW compile seam in `make check`
+  plus POSIX fallback/helper tests. Do not claim Windows support until a real
+  Windows Terminal smoke run is green and recorded.
 - **Image protocol emitters** still need terminal evidence and parity work.
   Kitty graphics, iTerm2 inline PNG images, and raw-RGBA Sixel are in tree.
   Remaining image gaps: real iTerm2/Sixel terminal captures, PNG-to-Sixel

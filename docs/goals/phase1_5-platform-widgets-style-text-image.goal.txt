@@ -40,19 +40,25 @@ RECOMMENDED ORDER:
   the known-good path throughout.
 
 WORKSTREAM A - Windows ConPTY backend:
-- Red tests/compile seams first. Preserve non-Windows behavior: unsupported
-  return, no accidental Windows-only type leakage.
-- Replace the `_WIN32` stub in `src/timui_conpty.c` with a real backend around
+- DONE: red tests/compile seams first. Preserve non-Windows behavior:
+  unsupported return, no accidental Windows-only type leakage.
+- DONE: replace the `_WIN32` stub in `src/timui_conpty.c` with a backend around
   `CreatePipe`, `CreatePseudoConsole`, `STARTUPINFOEX`,
   `PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE`, child process lifetime, resize, close,
   and transport read/write callbacks.
-- Handle short writes/reads and chunk `size_t` buffers into `DWORD`-bounded
-  writes. Close must be idempotent and must not leak handles on partial failure.
-- Enable/restore VT processing and VT input where the backend touches a real
-  console mode.
-- Acceptance: compile-only Windows or mingw check where available; a real
-  Windows Terminal smoke target/run recorded in docs before claiming supported
-  Windows operation; `make test` and sanitizers remain green on POSIX.
+- DONE: handle short writes/reads and chunk `size_t` buffers into
+  `DWORD`-bounded writes. Close must be idempotent and must not leak handles on
+  partial failure.
+- DONE: runtime-probe ConPTY symbols so old Windows builds return unsupported
+  instead of failing to load.
+- DONE: keep the ConPTY pipe transport out of host console mode ownership; a
+  future Windows terminal backend can own VT input/output mode management.
+- DONE: compile-only MinGW check where available via
+  `make check-conpty-win32-compile`; it is also part of `make check` when the
+  cross compiler is available.
+- PENDING: a real Windows Terminal smoke target/run recorded in docs before
+  claiming supported Windows operation; `make test` and sanitizers remain green
+  on POSIX.
 
 WORKSTREAM B - Widgets:
 - Textarea first. Add a result-returning controlled API, plus `_mut`

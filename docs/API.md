@@ -38,6 +38,28 @@ is valid only between `begin` and `end`.
 Live terminal resize is explicit in v0.2: call `timui_term_size(output_fd, &w,
 &h)` and then `timui_ui_resize(ui, w, h)` when the dimensions change.
 
+### Windows ConPTY
+
+```c
+TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_pid);
+TimuiResult timui_conpty_resize(TimuiTransport *transport, int cols, int rows);
+void        timui_conpty_close(TimuiTransport *transport, int pid);
+```
+
+On `_WIN32`, `timui_conpty_open` creates a ConPTY session around the default
+shell (`COMSPEC`, falling back to `cmd.exe`) and returns a `TimuiTransport`
+backed by ConPTY input/output pipes. The ConPTY entry points are resolved at
+runtime from `kernel32.dll`; if they are unavailable, open returns
+`TIMUI_ERR_UNSUPPORTED`. The transport read path polls pipe availability before
+`ReadFile`, writes are chunked to a bounded `DWORD` size, and close is
+idempotent. `timui_conpty_resize` validates character-cell dimensions before
+calling `ResizePseudoConsole`.
+
+On non-Windows builds, ConPTY APIs return `TIMUI_ERR_UNSUPPORTED` after
+clearing output handles. The Win32 path is enforced by the MinGW compile seam in
+`make check`; live Windows Terminal smoke evidence is still required before
+documenting Windows as supported.
+
 ## Layout
 
 ```c

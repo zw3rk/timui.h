@@ -77,7 +77,8 @@ Core:
 - Split development build via `src/timui.c` and included sections.
 - C99 baseline, libc hard dependency, optional pthreads.
 - POSIX raw-mode terminal backend.
-- Win32 ConPTY is explicitly a stub returning unsupported.
+- Win32 ConPTY is implemented behind `_WIN32`, runtime-probed, and
+  compile-checked, but live Windows Terminal smoke evidence is still pending.
 
 Rendering and terminal:
 
@@ -253,7 +254,7 @@ Avoid:
    testing/rendering, single-header release.
 6. Quality proof: over 200 tests, CI gates, sanitizers, libvterm, goldens,
    release-check.
-7. Honest limitations: Windows stub, terminal-dependent images/Shift+Enter,
+7. Honest limitations: Windows smoke pending, terminal-dependent images/Shift+Enter,
    limited bidi/grapheme support, pre-1.0 API movement.
 8. Get started: `nix develop -c make`, `make run-chat`, drop-in header pattern.
 
@@ -317,7 +318,8 @@ int main(void) {
 
 - Single-header C99 immediate-mode TUI.
 - No ncurses dependency.
-- POSIX terminal backend works; Windows ConPTY is not implemented yet.
+- POSIX terminal backend works; Windows ConPTY is implemented, runtime-probed,
+  and compile-checked, with live Windows smoke evidence still pending.
 - Truecolor diff renderer and synchronized output support.
 - Incremental input parser for legacy CSI, Kitty keyboard, SGR mouse, paste,
   focus, text, and UTF-8.
@@ -331,7 +333,8 @@ int main(void) {
 
 ## Claims to avoid or qualify
 
-- Do not say "works on Windows" yet. ConPTY is a stub.
+- Do not say "works on Windows" yet. ConPTY is implemented, runtime-probed, and
+  compile-checked, but the live Windows Terminal smoke run is still pending.
 - Do not say "full Unicode" or "full bidi." The chat example has a useful
   Hebrew/Arabic approximation and CJK/emoji rendering support, but full UAX #9,
   grapheme clusters, ZWJ emoji, and skin-tone sequences remain future work.
