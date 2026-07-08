@@ -17,6 +17,15 @@ as evidence, what does not, and the artifact text to record afterward.
   as live terminal evidence.
 - Prefer `FRAMES=2` for bounded image captures; omit `FRAMES` for a manual
   Escape-driven session.
+- The manual GitHub Actions workflow
+  `.github/workflows/hosted-visual-probe.yml` may be used as a best-effort
+  hosted runner probe. Its screenshots count only after manual inspection shows
+  the expected visible terminal result. Its raw escape streams, DCS/OSC marker
+  counts, and launch logs are diagnostics only.
+- The hosted Windows job uses native MSYS2 `make` rather than `nix develop`
+  because the flake currently declares Linux and Darwin systems only. That is a
+  documented CI exception for this evidence probe, not a project-wide toolchain
+  bypass.
 - Put the final evidence note in `docs/handoff/2026-07-08-phase1-5-status.md`
   or a dated follow-up handoff, with screenshot/video paths if captured.
 
@@ -76,6 +85,14 @@ Reject or mark inconclusive if:
 - The PNG-backed tiles are placeholders.
 - The run is a captured escape stream without visual confirmation.
 
+Hosted runner probe:
+
+- Trigger `Hosted visual probes` from GitHub Actions.
+- Download the `hosted-visual-macos-iterm2` artifact.
+- Accept only if `iterm2-screen.png` visibly shows the iTerm2 live smoke with
+  PNG-backed image tiles. Treat `iterm2.typescript` and `osc1337-count.txt` as
+  diagnostics, not terminal evidence.
+
 ## Windows ConPTY
 
 Prerequisites:
@@ -110,6 +127,17 @@ Reject or mark inconclusive if:
 - The target prints the non-Windows skip.
 - Only `check-conpty-win32-compile` or `check-conpty-win32-smoke-compile` ran.
 - The smoke executable was built from a different commit.
+
+Hosted runner probe:
+
+- Trigger `Hosted visual probes` from GitHub Actions.
+- Download the `hosted-visual-windows-terminal` artifact.
+- `conpty-smoke.stdout` may count for the ConPTY smoke if it contains
+  `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE` and `evidence.md` records
+  the same commit.
+- `windows-terminal-sixel.png` counts for Sixel only if it visibly shows the
+  Windows Terminal live smoke with image tiles. Treat `sixel.typescript` and
+  `sixel-dcs-count.txt` as diagnostics, not terminal evidence.
 
 ## Evidence Template
 

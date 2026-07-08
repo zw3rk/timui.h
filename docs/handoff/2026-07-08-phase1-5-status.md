@@ -85,10 +85,12 @@ date: 2026-07-08
   claim supported Windows operation until a real Windows Terminal smoke run is
   captured and recorded.
 - iTerm2 and Sixel have fake-transport wire tests, but no live terminal capture
-  evidence yet. Run the Sixel and iTerm2 live smokes outside
-  tmux/screen/zellij, then record the terminal, command, terminal version, and
-  outcome before claiming evidence. Use `FRAMES=N` for bounded capture runs;
-  omit it for an Escape-driven operator session.
+  evidence yet. The manual `Hosted visual probes` GitHub Actions workflow can
+  now attempt macOS iTerm2 and Windows Terminal screenshots, but those artifacts
+  must be inspected before claiming evidence. Manual runs outside
+  tmux/screen/zellij remain valid; record the terminal, command, terminal
+  version, and outcome before claiming evidence. Use `FRAMES=N` for bounded
+  capture runs; omit it for an Escape-driven operator session.
 - Plain PNG images forced to Sixel now use a bounded PNG-only `stb_image`
   decoder and the existing RGBA Sixel encoder. Caller-supplied PNG+RGBA sidecars
   still cover apps that already have decoded pixels and want to avoid lazy
@@ -231,9 +233,11 @@ date: 2026-07-08
 
 ## Next Safe Move
 
-Follow `docs/runbooks/phase1-5-live-evidence.md`: use a Windows-capable
-worktree or CI worker to run the Windows smoke and real terminals for the image
-smokes:
+Follow `docs/runbooks/phase1-5-live-evidence.md`: trigger the manual
+`Hosted visual probes` GitHub Actions workflow, download the macOS and Windows
+artifacts, and inspect their screenshots before accepting hosted evidence. If
+the hosted GUI session is unavailable or inconclusive, use a Windows-capable
+worktree or CI worker and real terminals for the image smokes:
 
 ```sh
 nix develop -c make smoke-conpty-win32
