@@ -47,7 +47,8 @@ static int try_inline(const char *line, const char *infile, FILE *out, int depth
     if(len == 0 || len >= sizeof path) return 0;
     memcpy(path, inc, len);
     path[len] = '\0';
-    if(!strstr(path, "/src/")) return 0;   /* only our section includes */
+    if(!strstr(path, "/src/") && !strstr(path, "/tools/vendor/stb_image.h"))
+        return 0;   /* only our sections plus the PNG decoder */
     {
         char dir[512];
         char full[1024];

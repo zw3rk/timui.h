@@ -126,8 +126,8 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   iTerm2 and placeholder fallback for clipped iTerm2 draws.
 - DONE: Sixel emission is implemented for raw RGBA images with an exact
   16-colour palette cap and alpha thresholding.
-- DONE: RGBA Sixel clipped draws crop the source pixels and emit cropped DCS
-  payloads; plain PNG clipped Sixel draws still fall back.
+- DONE: RGBA and plain-PNG Sixel clipped draws crop the source pixels and emit
+  cropped DCS payloads; malformed/oversized PNGs still fall back.
 - DONE: raw-RGBA palettes above 16 opaque colours are quantized to a bounded
   deterministic 16-colour terminal palette instead of falling back.
 - DONE: raw-RGBA Sixel draws scale to the requested cell rectangle when terminal
@@ -137,14 +137,15 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   image caps/protocol forcing select `NONE`, and image draws render `[img]`
   without terminal image escapes.
 - DONE: `timui_image_from_png_rgba` preserves PNG bytes for Kitty/iTerm2 while
-  giving Sixel caller-decoded pixels for emission and clipping, without
-  promoting a PNG decoder into the release header.
+  giving Sixel caller-decoded pixels for emission and clipping.
+- DONE: Plain PNG images forced to Sixel are lazily decoded through a bounded
+  PNG-only `stb_image` path and then emitted through the same RGBA Sixel encoder.
 - DONE: `make smoke-image-live PROTO=...` exists for live Kitty/Sixel/iTerm2
   visual evidence capture, and `make check-image-smoke` checks the harness
   headlessly without claiming protocol evidence.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
-  API has PNG, raw-RGBA, and PNG+RGBA sidecar constructors; Sixel does not
-  imply built-in PNG decode for plain PNG images yet.
+  API has PNG, raw-RGBA, and PNG+RGBA sidecar constructors; Sixel uses decoded
+  pixels from raw RGBA, sidecars, or the bounded plain-PNG decoder.
 - Add capability selection for Kitty, Sixel, iTerm2 inline images, and none.
   Sixel should be prioritized before iTerm2 because it is useful for Windows
   Terminal and classic terminal compatibility.

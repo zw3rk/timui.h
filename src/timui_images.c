@@ -2,6 +2,100 @@
  * Accept PNG bytes and raw RGBA pixels; unsupported protocol/data pairs draw
  * a "[img]" placeholder instead of guessing. */
 
+#ifndef TIMUI_NO_IMAGES
+#ifndef TIMUI_IMAGE_PNG_MAX_DIMENSION
+#define TIMUI_IMAGE_PNG_MAX_DIMENSION 4096
+#endif
+#ifndef TIMUI_IMAGE_PNG_MAX_PIXELS
+#define TIMUI_IMAGE_PNG_MAX_PIXELS 16777216u
+#endif
+#ifndef STBI_MAX_DIMENSIONS
+#define TIMUI_UNDEF_STBI_MAX_DIMENSIONS
+#define STBI_MAX_DIMENSIONS TIMUI_IMAGE_PNG_MAX_DIMENSION
+#endif
+#ifndef STB_IMAGE_STATIC
+#define TIMUI_UNDEF_STB_IMAGE_STATIC
+#define STB_IMAGE_STATIC
+#endif
+#ifndef STB_IMAGE_IMPLEMENTATION
+#define TIMUI_UNDEF_STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#endif
+#ifndef STBI_ONLY_PNG
+#define TIMUI_UNDEF_STBI_ONLY_PNG
+#define STBI_ONLY_PNG
+#endif
+#ifndef STBI_NO_STDIO
+#define TIMUI_UNDEF_STBI_NO_STDIO
+#define STBI_NO_STDIO
+#endif
+#ifndef STBI_NO_LINEAR
+#define TIMUI_UNDEF_STBI_NO_LINEAR
+#define STBI_NO_LINEAR
+#endif
+#ifndef STBI_NO_HDR
+#define TIMUI_UNDEF_STBI_NO_HDR
+#define STBI_NO_HDR
+#endif
+#ifndef STBI_NO_THREAD_LOCALS
+#define TIMUI_UNDEF_STBI_NO_THREAD_LOCALS
+#define STBI_NO_THREAD_LOCALS
+#endif
+#ifndef STBI_NO_FAILURE_STRINGS
+#define TIMUI_UNDEF_STBI_NO_FAILURE_STRINGS
+#define STBI_NO_FAILURE_STRINGS
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+#include "../tools/vendor/stb_image.h"
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+#ifdef TIMUI_UNDEF_STBI_NO_FAILURE_STRINGS
+#undef STBI_NO_FAILURE_STRINGS
+#undef TIMUI_UNDEF_STBI_NO_FAILURE_STRINGS
+#endif
+#ifdef TIMUI_UNDEF_STBI_NO_THREAD_LOCALS
+#undef STBI_NO_THREAD_LOCALS
+#undef TIMUI_UNDEF_STBI_NO_THREAD_LOCALS
+#endif
+#ifdef TIMUI_UNDEF_STBI_NO_HDR
+#undef STBI_NO_HDR
+#undef TIMUI_UNDEF_STBI_NO_HDR
+#endif
+#ifdef TIMUI_UNDEF_STBI_NO_LINEAR
+#undef STBI_NO_LINEAR
+#undef TIMUI_UNDEF_STBI_NO_LINEAR
+#endif
+#ifdef TIMUI_UNDEF_STBI_NO_STDIO
+#undef STBI_NO_STDIO
+#undef TIMUI_UNDEF_STBI_NO_STDIO
+#endif
+#ifdef TIMUI_UNDEF_STBI_ONLY_PNG
+#undef STBI_ONLY_PNG
+#undef TIMUI_UNDEF_STBI_ONLY_PNG
+#endif
+#ifdef TIMUI_UNDEF_STB_IMAGE_IMPLEMENTATION
+#undef STB_IMAGE_IMPLEMENTATION
+#undef TIMUI_UNDEF_STB_IMAGE_IMPLEMENTATION
+#endif
+#ifdef TIMUI_UNDEF_STB_IMAGE_STATIC
+#undef STB_IMAGE_STATIC
+#undef TIMUI_UNDEF_STB_IMAGE_STATIC
+#endif
+#ifdef TIMUI_UNDEF_STBI_MAX_DIMENSIONS
+#undef STBI_MAX_DIMENSIONS
+#undef TIMUI_UNDEF_STBI_MAX_DIMENSIONS
+#endif
+#endif
+
 /* Write all len bytes, looping past short writes. A real fd transport may
  * deliver fewer bytes than requested; without this a graphics chunk can split
  * across the header/payload/ST boundary and corrupt the image (G5 residual). */
@@ -79,6 +173,51 @@ static void image_copy_rows_(unsigned char *dst, const unsigned char *src,
         memcpy(dst + (size_t)y * row, src + (size_t)y * (size_t)stride, row);
 }
 
+#ifndef TIMUI_NO_IMAGES
+static int image_png_preflight_(const TimuiImage *img, int *out_w, int *out_h){
+    const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
+    const unsigned char *d;
+    uint32_t w, h;
+    uint64_t pixels;
+    if(!img || !img->data || img->len < 24 || img->len > (size_t)INT_MAX) return 0;
+    d = img->data;
+    if(memcmp(d, sig, sizeof sig) != 0) return 0;
+    w = ((uint32_t)d[16] << 24) | ((uint32_t)d[17] << 16) | ((uint32_t)d[18] << 8) | d[19];
+    h = ((uint32_t)d[20] << 24) | ((uint32_t)d[21] << 16) | ((uint32_t)d[22] << 8) | d[23];
+    if(w == 0 || h == 0) return 0;
+    if(w > TIMUI_IMAGE_PNG_MAX_DIMENSION || h > TIMUI_IMAGE_PNG_MAX_DIMENSION) return 0;
+    pixels = (uint64_t)w * (uint64_t)h;
+    if(pixels > (uint64_t)TIMUI_IMAGE_PNG_MAX_PIXELS) return 0;
+    if(w > (uint32_t)(INT_MAX / 4)) return 0;
+    if(out_w) *out_w = (int)w;
+    if(out_h) *out_h = (int)h;
+    return 1;
+}
+
+static int image_decode_png_rgba_(TimuiImage *img){
+    int want_w = 0, want_h = 0, w = 0, h = 0, comp = 0;
+    size_t row = 0, total = 0;
+    unsigned char *rgba;
+    if(!img) return 0;
+    if(img->rgba) return 1;
+    if(img->kind != TIMUI_IMAGE_KIND_PNG) return 0;
+    if(!image_png_preflight_(img, &want_w, &want_h)) return 0;
+    rgba = stbi_load_from_memory(img->data, (int)img->len, &w, &h, &comp, 4);
+    (void)comp;
+    if(!rgba) return 0;
+    if(w != want_w || h != want_h || !image_rgba_size_(w, h, w * 4, &row, &total)){
+        stbi_image_free(rgba);
+        return 0;
+    }
+    img->rgba = rgba;
+    img->rgba_len = total;
+    img->px_w = w;
+    img->px_h = h;
+    img->stride = (int)row;
+    return 1;
+}
+#endif
+
 TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba, int w, int h, int stride){
     TimuiImage *img;
     TimuiAllocator al;
@@ -143,7 +282,14 @@ TIMUI_API void timui_image_free(Timui *ui, TimuiImage *img){
     (void)ui;
     if(!img) return;
     al = timui_default_allocator();
-    if(img->rgba && img->rgba != img->data) al.free(al.userdata, img->rgba, img->rgba_len);
+    if(img->rgba && img->rgba != img->data){
+#ifndef TIMUI_NO_IMAGES
+        if(img->kind == TIMUI_IMAGE_KIND_PNG)
+            stbi_image_free(img->rgba);
+        else
+#endif
+            al.free(al.userdata, img->rgba, img->rgba_len);
+    }
     if(img->data) al.free(al.userdata, img->data, img->len);
     al.free(al.userdata, img, sizeof *img);
 }
@@ -632,6 +778,10 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
         return;
     }
     protocol = timui_image_protocol(ui);
+#ifndef TIMUI_NO_IMAGES
+    if(protocol == TIMUI_IMAGE_PROTOCOL_SIXEL && img && img->kind == TIMUI_IMAGE_KIND_PNG)
+        (void)image_decode_png_rgba_(img);
+#endif
     if((protocol == TIMUI_IMAGE_PROTOCOL_KITTY && image_has_png_(img)) ||
        (protocol == TIMUI_IMAGE_PROTOCOL_ITERM2 && image_has_png_(img) && image_rect_same_(visible, full)) ||
        (protocol == TIMUI_IMAGE_PROTOCOL_SIXEL &&

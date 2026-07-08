@@ -34,7 +34,8 @@ WWW_LICENSE := $(WWWDIR)/LICENSE
 # The library is a unity build: src/timui.c #includes every src/timui_*.c
 # section. Any section edit must rebuild the test binary, examples, and tools,
 # so they all depend on the whole section set (not just src/timui.c).
-LIB_SECTIONS := $(wildcard $(SRCDIR)/timui_*.c) $(SRCDIR)/timui_int.h
+LIB_SECTIONS := $(wildcard $(SRCDIR)/timui_*.c) $(SRCDIR)/timui_int.h \
+                $(TOOLDIR)/vendor/stb_image.h
 # examples/radio.c has extra vendored deps (minimp3/miniaudio/kissfft) + audio
 # link flags, so it is built by a dedicated rule below — keep it out of the
 # generic single-file example pattern.

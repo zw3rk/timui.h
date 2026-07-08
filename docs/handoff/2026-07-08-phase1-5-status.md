@@ -47,8 +47,10 @@ date: 2026-07-08
   decoded RGBA rows. Kitty/iTerm2 transmit the PNG bytes; Sixel uses the RGBA
   sidecar for emission and clipping. The sidecar dimensions are expected to
   match the PNG and drive source cropping.
-- Plain PNG images forced to Sixel, clipped iTerm2 draws, and unsupported
-  protocol/data pairs intentionally render `[img]`.
+- Plain PNG images forced to Sixel now decode lazily through the bounded
+  PNG-only `stb_image` path and then use the same RGBA Sixel encoder as raw
+  RGBA and PNG+RGBA sidecars. Malformed/oversized PNGs, clipped iTerm2 draws,
+  and unsupported protocol/data pairs intentionally render `[img]`.
 - `TIMUI_NO_IMAGES` is now active as an API-preserving no-terminal-image mode:
   image constructors/free/draw APIs still compile, image caps are stripped even
   when forced on, protocol selectors return `TIMUI_IMAGE_PROTOCOL_NONE`, and
@@ -81,9 +83,10 @@ date: 2026-07-08
   evidence yet. Use `make smoke-image-live PROTO=sixel` and `make
   smoke-image-live PROTO=iterm2` outside tmux/screen/zellij, then record the
   terminal, command, terminal version, and outcome before claiming evidence.
-- Sixel parity remains open for built-in PNG-to-Sixel decode of plain PNG
-  images. Caller-supplied PNG+RGBA sidecars cover PNG-backed Sixel emission and
-  clipping without adding a PNG decoder to the release header.
+- Plain PNG images forced to Sixel now use a bounded PNG-only `stb_image`
+  decoder and the existing RGBA Sixel encoder. Caller-supplied PNG+RGBA sidecars
+  still cover apps that already have decoded pixels and want to avoid lazy
+  decode.
 - AddressSanitizer did not complete locally: `nix develop -c make test-san
   SAN=address` hung in macOS ASAN runtime initialization before entering the
   test harness. A `sample` of the process showed `__asan::AsanInitInternal` /
@@ -91,6 +94,28 @@ date: 2026-07-08
 
 ## Verification Already Run
 
+- `nix develop -c make test` - intentionally failed before the built-in
+  PNG-to-Sixel decode slice: `test_sixel_plain_png_decodes_to_dcs` and
+  `test_sixel_clipped_png_decodes_and_crops` rendered the placeholder instead
+  of Sixel DCS.
+- `nix develop -c make test` - passed after adding bounded plain-PNG Sixel
+  decode, 307 tests, existing pty Esc sandbox skip when present.
+- `nix develop -c make release-check` - passed after promoting `stb_image.h`
+  into the amalgamated release header as the PNG-only decoder.
+- `nix develop -c make www` - passed after the PNG decoder slice, refreshing
+  `www/timui.h` and `www/LICENSE`.
+- `nix develop -c make check-no-images` - passed after the PNG decoder slice;
+  `TIMUI_NO_IMAGES` still strips image caps/escapes and keeps API stubs.
+- `nix develop -c make check-image-smoke` - passed after the PNG decoder slice;
+  this remains a headless harness sanity check, not terminal image evidence.
+- `nix develop -c make check` - passed after the PNG decoder slice: build, 307
+  tests, `check-no-images` (26 checks), both Win32 ConPTY compile seams, and
+  website license/link checks.
+- `nix develop -c make check-vt-gif-all` - passed after the PNG decoder slice;
+  Pillow emitted the existing `Image.Image.getdata` deprecation warning.
+- `nix develop -c make test-san SAN=undefined` - passed after the PNG decoder
+  slice, 307 tests, existing pty Esc sandbox skip.
+- `nix develop -c make check-www` - passed after the PNG decoder slice.
 - `nix develop -c make test` - intentionally failed before the sidecar bounds
   fix: `test_sixel_rejects_short_strided_sidecar` emitted Sixel instead of the
   placeholder for a crafted short reported `rgba_len` with a large stride.
@@ -171,8 +196,6 @@ with `make smoke-conpty-win32` and record the command, Windows build, Windows
 Terminal version, and output. Separately, run and record `make smoke-image-live
 PROTO=sixel` and `make smoke-image-live PROTO=iterm2` in real terminals before
 promoting image protocol support from fake-transport wire evidence to terminal
-evidence. For Sixel parity, built-in plain-PNG Sixel remains blocked on a
-public-library PNG decode dependency decision; `tools/vendor` currently contains
-dev-tooling-only `stb` use, not a release header dependency. PNG+RGBA sidecars
-are the current dependency-free path for applications that already have decoded
-pixels.
+evidence. The plain-PNG Sixel decoder dependency decision is implemented and
+documented; remaining image work is evidence, not local wire-format
+implementation.

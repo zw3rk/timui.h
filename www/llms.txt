@@ -109,8 +109,8 @@ int main(void) {
 - Input: `timui_key_pressed`, mouse support, SGR mouse, Kitty keyboard,
   bracketed paste, focus events, UTF-8 text.
 - Advanced terminal features: truecolor, synchronized output, OSC 8 hyperlinks,
-  Kitty graphics, iTerm2 inline images, raw-RGBA Sixel, and PNG+RGBA sidecar
-  images where supported by the terminal.
+  Kitty graphics, iTerm2 inline images, raw-RGBA Sixel, PNG+RGBA sidecar
+  images, and bounded plain-PNG Sixel decode where supported by the terminal.
 - Async UI messages: `timui_post` lets worker threads post messages while the
   UI thread owns the terminal.
 - Feature macros: `TIMUI_NO_THREADS` disables the thread-safe post API;
@@ -126,8 +126,8 @@ int main(void) {
 - The library includes useful CJK/emoji width handling and Hebrew/Arabic
   approximation, but not full complex shaping or full bidi.
 - Images are protocol-dependent. Kitty/iTerm2 use PNG bytes; Sixel uses raw
-  RGBA pixels or PNG+RGBA sidecar images whose decoded pixels are supplied by
-  the caller. Plain PNG images forced to Sixel use the placeholder fallback.
+  RGBA pixels, PNG+RGBA sidecar images, or bounded lazy PNG decode for plain
+  PNGs. Malformed/oversized PNGs still use the placeholder fallback.
 
 ## License
 

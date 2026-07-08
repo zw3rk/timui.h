@@ -39,12 +39,12 @@ What `timui.h` speaks on the wire, and where it falls back.
   `timui_image_protocol`, with Kitty preferred when available, then Sixel, then
   iTerm2. This release emits Kitty graphics, iTerm2 inline images
   (`OSC 1337;File=...`) for unclipped PNG-backed draws, and Sixel DCS for raw
-  RGBA pixels or PNG+RGBA sidecars with exact palettes or bounded 16-colour
-  quantization, including cropped Sixel draws and scaling to known cell-pixel
-  geometry. Plain PNG images forced to Sixel, clipped iTerm2 draws, and
-  unsupported paths deliberately fall back to the same text placeholder instead
-  of emitting unsupported or lossy escapes. Builds with `TIMUI_NO_IMAGES` keep
-  the API but force this placeholder path for every draw.
+  RGBA pixels, PNG+RGBA sidecars, or lazily decoded plain PNGs with exact
+  palettes or bounded 16-colour quantization, including cropped Sixel draws and
+  scaling to known cell-pixel geometry. Malformed/oversized PNGs, clipped
+  iTerm2 draws, and unsupported paths deliberately fall back to the same text
+  placeholder instead of emitting unsupported or lossy escapes. Builds with
+  `TIMUI_NO_IMAGES` keep the API but force this placeholder path for every draw.
 
 ## Capability gating
 
@@ -67,7 +67,7 @@ after detection and force masks; protocol selection always returns
   operation.
 - **Sixel parity**: the RGBA emitter is implemented with exact palettes,
   bounded 16-colour quantization, clipping, and scaling when terminal
-  cell-pixel geometry is known. `timui_image_from_png_rgba` lets applications
-  provide decoded pixels for PNG-backed Sixel without promoting a PNG decoder
-  into the release header. Deferred work: built-in PNG-to-Sixel decode and
+  cell-pixel geometry is known. Plain PNG images are decoded lazily through the
+  bounded PNG-only `stb_image` path for Sixel, while `timui_image_from_png_rgba`
+  lets applications provide exact decoded pixels directly. Deferred work:
   real-terminal evidence.

@@ -63,10 +63,11 @@ Alpha is not represented directly. A first implementation should either
 threshold alpha to transparent with background-preserving zero bits (`P2=1`) or
 pre-composite RGBA over a known background before palette selection.
 
-The current library image path does not decode PNG. `timui_image_from_png`
-copies bytes and reads IHDR dimensions; `tools/vt_gif.c` decodes PNG via
-vendored `stb_image.h`, but `tools/vendor/NOTICE` currently marks stb as
-dev-tooling-only, not part of the distributed `timui.h` library.
+The first Sixel slices deliberately avoided PNG decode in the library path:
+`timui_image_from_png` copied bytes and read IHDR dimensions only, while
+`tools/vt_gif.c` decoded PNG via vendored `stb_image.h` as dev tooling. That
+kept the release header small while raw-RGBA and PNG+RGBA sidecar emission were
+designed and tested.
 
 ## Decision
 
@@ -95,10 +96,15 @@ geometry. Alpha below 128 is transparent/background-preserving.
 
 Follow-up state: `timui_image_from_png_rgba` copies original PNG bytes plus
 caller-supplied decoded RGBA rows. Kitty and iTerm2 continue to transmit the PNG
-bytes; Sixel uses the RGBA sidecar for emission and clipping. This deliberately
-keeps PNG decoding out of the release header. The supplied RGBA dimensions are
-expected to match the PNG and drive source cropping. Built-in PNG-to-Sixel
-decode and real-terminal capture evidence remain open.
+bytes; Sixel uses the RGBA sidecar for emission and clipping. The supplied RGBA
+dimensions are expected to match the PNG and drive source cropping.
+
+Final local implementation state: `stb_image.h` is now promoted into the
+library/release header as a PNG-only, no-stdio, bounded decoder. Plain PNG
+images forced to Sixel are lazily decoded into the same RGBA source path used by
+raw-RGBA and PNG+RGBA sidecars; malformed or oversized PNGs keep the `[img]`
+fallback and emit no partial DCS payload. `tools/vendor/NOTICE` records this
+library use. Real-terminal capture evidence remains open.
 
 Operator smoke state: `examples/image_smoke.c` is a small live-terminal harness
 with a valid embedded PNG, matching RGBA pixels, and PNG+RGBA sidecar. Run
@@ -107,14 +113,6 @@ aliases) outside multiplexers to collect visual evidence. `make
 check-image-smoke` only proves the harness renders the placeholder path through
 a headless pty; it is not terminal image protocol evidence.
 
-Before claiming built-in plain-PNG Sixel support, choose and document the pixel
-source:
-
-- promote vendored `stb_image.h` into the library/release header as PNG-only,
-  with strict byte/pixel limits and updated NOTICE/documentation; or
-- add a different PNG decoder dependency and accept that timui is no longer
-  pure single-header/no-external-library for Sixel; or
-- keep requiring caller-supplied RGBA sidecars for PNG-backed Sixel and leave
-  plain PNG images on the placeholder fallback until decode is solved.
-
-Do not claim Sixel support from only the protocol enum or placeholder fallback.
+Do not claim live Sixel support from fake-transport tests alone. The decoder and
+wire emitter are unit-tested, but terminal evidence still requires
+`make smoke-image-live PROTO=sixel` in a real Sixel-capable terminal.

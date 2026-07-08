@@ -23,6 +23,25 @@ static int bytes_contain(const char *h, size_t hl, const char *needle){
     return 0;
 }
 
+static int bytes_count(const char *h, size_t hl, const char *needle){
+    size_t nl = strlen(needle), i;
+    int count = 0;
+    if(nl == 0 || hl < nl) return 0;
+    for(i = 0; i + nl <= hl; i++) if(memcmp(h + i, needle, nl) == 0) count++;
+    return count;
+}
+
+static const unsigned char png_4x4[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x04,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0xa9, 0xf1, 0x9e, 0x7e, 0x00, 0x00, 0x00,
+    0x25, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x88, 0x7c, 0x67, 0xff,
+    0x9f, 0x95, 0x9d, 0xe3, 0x3f, 0x08, 0x84, 0x6d, 0x3b, 0xf4, 0x9f, 0x01,
+    0x99, 0x03, 0x92, 0x64, 0x40, 0xe6, 0x80, 0x24, 0x19, 0x90, 0x39, 0x20,
+    0x00, 0x00, 0x77, 0xa5, 0x29, 0x85, 0xb5, 0x28, 0x31, 0x1a, 0x00, 0x00,
+    0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+};
+
 typedef struct {
     TimuiFakeTransport fake;
     size_t max_write;
@@ -121,6 +140,35 @@ TIMUI_TEST(test_kitty_png_rgba_uses_png_payload){
     TIMUI_CHECK(bytes_contain(out.ptr, out.len, "iVBORw=="));
     TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1bP0;1;0q"));
     TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1b]1337;File="));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_kitty_transmit_does_not_duplicate_payload){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    static const unsigned char png[] = { 0x89, 0x50, 0x4E, 0x47 };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_KITTY);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 5, 3));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+
+    TIMUI_CHECK(bytes_count(out.ptr, out.len, "iVBORw==") == 1);
 
     timui_image_free(ui, img);
     timui_close(ui);
@@ -310,7 +358,7 @@ TIMUI_TEST(test_image_protocol_force_none_placeholder){
     timui_close(ui);
 }
 
-TIMUI_TEST(test_sixel_protocol_still_placeholder){
+TIMUI_TEST(test_sixel_malformed_png_still_placeholder){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
     TimuiTransport t;
@@ -341,6 +389,76 @@ TIMUI_TEST(test_sixel_protocol_still_placeholder){
 
     timui_force_image_protocol(ui, (TimuiImageProtocol)99);
     TIMUI_CHECK(timui_image_protocol(ui) == TIMUI_IMAGE_PROTOCOL_NONE);
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_sixel_plain_png_decodes_to_dcs){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiCellBuffer *buf;
+    TimuiStr out;
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    img = timui_image_from_png(ui, png_4x4, sizeof png_4x4);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 4, 4));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == 0);
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1b[1;1H"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1bP0;1;0q"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\"1;1;4;4"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "#1;2;"));
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1b_G"));
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1b]1337;File="));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_sixel_oversized_png_still_placeholder){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiCellBuffer *buf;
+    TimuiStr out;
+    unsigned char png[24] = {
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x20, 0x01, 0x00, 0x00, 0x00, 0x01
+    };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw(f, img, TIMUI_RECT(0, 0, 4, 1));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == '[');
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1bP0;1;0q"));
 
     timui_image_free(ui, img);
     timui_close(ui);
@@ -792,7 +910,7 @@ TIMUI_TEST(test_sixel_clipped_rgba_emits_cropped_dcs){
     timui_close(ui);
 }
 
-TIMUI_TEST(test_sixel_clipped_png_falls_back_placeholder){
+TIMUI_TEST(test_sixel_clipped_png_decodes_and_crops){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
     TimuiTransport t;
@@ -801,23 +919,24 @@ TIMUI_TEST(test_sixel_clipped_png_falls_back_placeholder){
     TimuiImage *img;
     TimuiCellBuffer *buf;
     TimuiStr out;
-    static const unsigned char png[] = { 0x89, 0x50, 0x4E, 0x47 };
 
     timui_fake_init(&fake, &al);
     t = timui_fake_transport(&fake);
     timui_open_for_test(&ui, t, 30, 10, &al);
     timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
-    img = timui_image_from_png(ui, png, sizeof png);
+    img = timui_image_from_png(ui, png_4x4, sizeof png_4x4);
     TIMUI_CHECK(img != NULL);
 
     timui_begin(ui, &f);
     buf = timui_frame_buffer(f);
     timui_fake_clear_output(&fake);
-    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 2, 2), TIMUI_RECT(0, 1, 2, 1));
-    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->codepoint == '[');
+    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 4, 4), TIMUI_RECT(0, 1, 4, 1));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->codepoint == 0);
     timui_end(f);
     out = timui_fake_output(&fake);
-    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1bP"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1b[2;1H"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1bP0;1;0q"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\"1;1;4;1"));
 
     timui_image_free(ui, img);
     timui_close(ui);
