@@ -713,6 +713,9 @@ TIMUI_API TimuiResult timui_stylesheet_parse(TimuiStylesheet *out, const char *s
 TIMUI_API void timui_stylesheet_free(TimuiStylesheet *ss);
 TIMUI_API TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *ss,
                                                       TimuiStyleQuery query);
+/* Borrow a parsed stylesheet for subsequent frames; ownership stays with the
+ * caller. Pass NULL to return to the builtin theme only. */
+TIMUI_API void timui_set_stylesheet(Timui *ui, const TimuiStylesheet *ss);
 
 /* ---- Terminal transport (backend abstraction) ------------------------- *
  * A vtable of read/write/flush/close over an opaque ctx. Real backends wrap

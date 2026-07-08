@@ -48,6 +48,7 @@ struct Timui {
     int               have_ids;
     TimuiInteract     ia;
     TimuiTheme        theme;
+    const TimuiStylesheet *stylesheet;   /* borrowed; caller owns parse/free */
     char              text_in[256];
     int               text_in_len;
     char              paste_buf[256];   /* bracketed-paste accumulator (ev ptr is transient; a paste

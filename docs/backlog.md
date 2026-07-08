@@ -48,7 +48,7 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       Textual-TCSS-inspired parser/resolver
       over existing styles: widget/id/class/state selectors, simple specificity,
       source order, and properties for fg/bg/attrs/border/padding/gap/gradient.
-- [ ] **Stylesheet widget application** - thread resolved stylesheet values into
+- [x] **Stylesheet widget application** - thread resolved stylesheet values into
       visible widgets without removing existing theme APIs or explicit style
       override paths.
 - [x] **Grapheme clustering foundation** - next/prev/width helpers integrated

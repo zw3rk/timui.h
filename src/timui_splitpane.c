@@ -97,9 +97,11 @@ static TimuiSplitPaneResult split_pane_drag_(TimuiSplitPaneResult base, TimuiRec
 static void split_pane_draw_(Timui *ui, TimuiSplitPaneResult res, TimuiAxis axis){
     TimuiStyle st;
     if(!ui || res.divider.w <= 0 || res.divider.h <= 0) return;
-    st = timui_theme_style(&ui->theme, res.dragging ? TIMUI_SLOT_SELECTION :
-                                      res.hovered ? TIMUI_SLOT_BUTTON_HOVERED :
-                                                    TIMUI_SLOT_BORDER);
+    st = timui_widget_style_(ui, TIMUI_WIDGET_SPLIT,
+                             res.dragging ? TIMUI_SLOT_SELECTION :
+                             res.hovered ? TIMUI_SLOT_BUTTON_HOVERED : TIMUI_SLOT_BORDER,
+                             (res.dragging ? TIMUI_STYLE_STATE_ACTIVE : 0) |
+                             (res.hovered ? TIMUI_STYLE_STATE_HOVERED : 0));
     timui_draw_fill(&ui->curr, res.divider, st);
     if(axis == TIMUI_AXIS_V)
         timui_draw_hline(&ui->curr, res.divider.x, res.divider.y, res.divider.w, st);

@@ -119,7 +119,10 @@ TIMUI_API TimuiButtonResult timui_button(TimuiFrame *f, TimuiId id, TimuiRect r,
           : ir.hovered ? TIMUI_SLOT_BUTTON_HOVERED
           : ir.focused ? TIMUI_SLOT_BUTTON_FOCUSED
           : TIMUI_SLOT_BUTTON;
-    st = timui_theme_style(&ui->theme, slot);
+    st = timui_widget_style_(ui, TIMUI_WIDGET_BUTTON, slot,
+                             (ir.active ? TIMUI_STYLE_STATE_ACTIVE : 0) |
+                             (ir.hovered ? TIMUI_STYLE_STATE_HOVERED : 0) |
+                             (ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0));
     timui_draw_fill(&ui->curr, r, st);
     widget_draw_text_clipped(f, r, r.x + 1, r.y + (r.h > 1 ? (r.h - 1) / 2 : 0), label, st);
     return br;
@@ -136,15 +139,18 @@ TIMUI_API TimuiRect timui_panel_begin(TimuiFrame *f, TimuiId id, TimuiRect r, Ti
     (void)id;
     if(!f || !f->ui) return body;
     ui = f->ui;
-    timui_draw_box(&ui->curr, r, border_flags, timui_theme_style(&ui->theme, TIMUI_SLOT_BORDER));
+    timui_draw_box(&ui->curr, r, border_flags,
+                   timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_BORDER, 0));
     timui_push_clip(f, r);   /* W10: clip title + body content to the panel rect */
     if(title.ptr && title.len)
-        timui_draw_text(&ui->curr, r.x + 1, r.y, title, timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL_TITLE));
+        timui_draw_text(&ui->curr, r.x + 1, r.y, title,
+                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_PANEL_TITLE, 0));
     body.x = r.x + 1; body.y = r.y + 1;
     body.w = r.w - 2; body.h = r.h - 2;
     if(body.w < 0) body.w = 0;
     if(body.h < 0) body.h = 0;
-    timui_draw_fill(&ui->curr, body, timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL));
+    timui_draw_fill(&ui->curr, body,
+                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_PANEL, 0));
     return body;
 }
 TIMUI_API void timui_panel_end(TimuiFrame *f){ if(f) timui_pop_clip(f); }
@@ -164,14 +170,17 @@ static TimuiBoolEdit bool_widget(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiSt
         be.changed = true;
         be.value = is_radio ? true : !value;   /* radio selects; checkbox toggles */
     }
-    st = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    st = timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+                             ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+                             ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     box[0] = is_radio ? '(' : '[';
     box[1] = value ? (is_radio ? 'o' : 'x') : ' ';
     box[2] = is_radio ? ')' : ']';
     box[3] = ' ';
     timui_push_clip(f, r);
     timui_draw_text(&ui->curr, r.x, r.y, (TimuiStr){ box, 4 }, st);
-    timui_draw_text(&ui->curr, r.x + 4, r.y, label, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
+    timui_draw_text(&ui->curr, r.x + 4, r.y, label,
+                    timui_widget_style_(ui, TIMUI_WIDGET_INPUT, TIMUI_SLOT_TEXT, 0));
     timui_pop_clip(f);
     return be;
 }
@@ -192,8 +201,9 @@ TIMUI_API void timui_function_bar(TimuiFrame *f, TimuiRect r, TimuiStr text){
     Timui *ui;
     if(!f || !f->ui) return;
     ui = f->ui;
-    timui_draw_fill(&ui->curr, r, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
-    timui_draw_text(&ui->curr, r.x, r.y, text, timui_theme_style(&ui->theme, TIMUI_SLOT_STATUS));
+    timui_draw_fill(&ui->curr, r, timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
+    timui_draw_text(&ui->curr, r.x, r.y, text,
+                    timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_STATUS, 0));
 }
 /* ---- UTF-8 / grapheme edit helpers (shared with timui_text_area) -------- *
  * text_in carries UTF-8 (since the G8 fix), so text inputs must append and
@@ -292,7 +302,9 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
             ui->key_in = 0;
         }
     }
-    st = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    st = timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+                             ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+                             ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     timui_draw_fill(&ui->curr, r, st);
     timui_draw_text(&ui->curr, r.x, r.y, timui_str_from_cstr(buf), st);
     return submitted;
@@ -413,7 +425,9 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
       }
     }
     style = ovr ? *ovr
-                : timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+                : timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+                                      ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+                                      ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     timui_draw_fill(&ui->curr, r, style);
     /* clip to the field and shift the text left by scroll_x so the visible
      * window tracks the cursor (put_glyph drops the clipped leading columns). */
@@ -476,7 +490,8 @@ TIMUI_API TimuiListResult timui_listbox(TimuiFrame *f, TimuiId id, TimuiRect r,
         if(idx >= count) break;
         s = label ? label(userdata, idx) : "";
         slot = (idx == state.selected) ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT;
-        st = timui_theme_style(&ui->theme, slot);
+        st = timui_widget_style_(ui, TIMUI_WIDGET_LISTBOX, slot,
+                                 idx == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
         timui_draw_row_(&ui->curr, TIMUI_RECT(r.x, r.y + i, r.w, 1), 0, timui_str_from_cstr(s), st);
     }
     if(state.selected != orig) res.state_changed = 1;
@@ -513,7 +528,8 @@ TIMUI_API int timui_message_box(TimuiFrame *f, TimuiId id, TimuiRect parent,
     ui->ia.modal_active = 1;
     ui->ia.modal_rect = TIMUI_RECT(bx, by, boxw, boxh);
     timui_panel_begin(f, id, TIMUI_RECT(bx, by, boxw, boxh), title, TIMUI_BORDER_DOUBLE);
-    timui_label(f, bx + 2, by + 1, message, timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
+    timui_label(f, bx + 2, by + 1, message,
+                timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_TEXT, 0));
     btnx = bx + 2;
     { int any_btn = 0;
       for(i = 0; i < count; i++){

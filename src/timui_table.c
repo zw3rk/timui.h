@@ -146,7 +146,7 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
     if(state.selected < state.scroll) state.scroll = state.selected;
     if(state.selected >= state.scroll + vis) state.scroll = state.selected - vis + 1;
     /* header row */
-    { TimuiStyle hs = timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL_TITLE);
+    { TimuiStyle hs = timui_widget_style_(ui, TIMUI_WIDGET_TABLE, TIMUI_SLOT_PANEL_TITLE, 0);
       x = r.x;
       for(col = 0; col < ncols; col++){
           TimuiStr h = (headers && headers[col].ptr) ? headers[col] : (TimuiStr){ NULL, 0 };
@@ -158,8 +158,9 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
     body = TIMUI_RECT(r.x, r.y + hdr_h, r.w, r.h - hdr_h);
     content = timui_scroll_begin(f, body, state.scroll);
     for(row = 0; row < nrows; row++){
-        TimuiStyle st = timui_theme_style(&ui->theme,
-            row == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+        TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TABLE,
+            row == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+            row == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
         x = content.x;
         for(col = 0; col < ncols; col++){
             const char *cell = cell_fn ? cell_fn(ud, row, col) : "";
@@ -302,7 +303,7 @@ TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r
     if(r.h >= 1 && r.w >= 1){
         timui_push_clip(f, r);
         /* sticky header: h-scrolled only, never v-scrolled. */
-        { TimuiStyle hs = timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL_TITLE);
+        { TimuiStyle hs = timui_widget_style_(ui, TIMUI_WIDGET_TABLE, TIMUI_SLOT_PANEL_TITLE, 0);
           timui_draw_fill(&ui->curr, TIMUI_RECT(r.x, r.y, r.w, 1), hs);
           cx = r.x - hscroll;
           for(c = 0; c < ncols; c++){
@@ -318,8 +319,9 @@ TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r
           int i;
           for(i = 0; i < rows.count; i++){
               int row = rows.first + i;
-              TimuiStyle st = timui_theme_style(&ui->theme,
-                  row == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+              TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TABLE,
+                  row == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+                  row == sel ? TIMUI_STYLE_STATE_SELECTED : 0);
               y = r.y + 1 + i;
               /* fill the whole row first for a continuous selection highlight */
               timui_draw_fill(&ui->curr, TIMUI_RECT(r.x, y, r.w, 1), st);

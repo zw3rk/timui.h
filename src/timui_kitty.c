@@ -171,9 +171,10 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
         }
     } else {
         /* placeholder fallback (cells) for non-Kitty terminals */
-        timui_draw_fill(&ui->curr, visible, timui_theme_style(&ui->theme, TIMUI_SLOT_INPUT));
+        timui_draw_fill(&ui->curr, visible,
+                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_INPUT, 0));
         timui_draw_text(&ui->curr, visible.x, visible.y, TIMUI_STR_LIT("[img]"),
-                        timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT_DIM));
+                        timui_widget_style_(ui, TIMUI_WIDGET_PANEL, TIMUI_SLOT_TEXT_DIM, 0));
     }
 }
 TIMUI_API void timui_image_draw(TimuiFrame *f, TimuiImage *img, TimuiRect r){

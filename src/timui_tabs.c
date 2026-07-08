@@ -105,7 +105,7 @@ TIMUI_API int timui_tabs(TimuiFrame *f, TimuiId id, TimuiRect r,
     ui = f->ui;
     if(!selected) return 0;
     sel = *selected;
-    bar_st = timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL);
+    bar_st = timui_widget_style_(ui, TIMUI_WIDGET_MENU, TIMUI_SLOT_PANEL, 0);
 
     /* No tabs: clear the bar, normalize the selection, and bail out. */
     if(n <= 0){
@@ -149,8 +149,9 @@ TIMUI_API int timui_tabs(TimuiFrame *f, TimuiId id, TimuiRect r,
 
     /* ---- draw: boxed/highlighted active tab, dim inactive labels ---- */
     y = r.y;
-    sel_st = timui_theme_style(&ui->theme, TIMUI_SLOT_SELECTION);
-    txt_st = timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT);
+    sel_st = timui_widget_style_(ui, TIMUI_WIDGET_MENU, TIMUI_SLOT_SELECTION,
+                                 TIMUI_STYLE_STATE_SELECTED);
+    txt_st = timui_widget_style_(ui, TIMUI_WIDGET_MENU, TIMUI_SLOT_TEXT, 0);
     txt_st.bg = bar_st.bg;                    /* inactive labels sit on the bar bg */
     timui_draw_fill(&ui->curr, r, bar_st);    /* clear the bar */
     timui_push_clip(f, r);                    /* clip any overflow to the bar */

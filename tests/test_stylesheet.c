@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SETIN(fake, lit) timui_fake_set_input((fake), (lit), sizeof(lit) - 1)
+
 TIMUI_TEST(test_stylesheet_parse_specificity_states){
     TimuiAllocator al = timui_default_allocator();
     TimuiStylesheet ss;
@@ -130,4 +132,135 @@ TIMUI_TEST(test_stylesheet_oom){
     memset(&ss, 0, sizeof ss);
     TIMUI_CHECK(timui_stylesheet_parse(&ss, src, strlen(src), &al) == TIMUI_ERR_OUT_OF_MEMORY);
     TIMUI_CHECK(ss.rules == NULL && ss.count == 0);
+}
+
+TIMUI_TEST(test_stylesheet_applies_button_states){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiStylesheet ss;
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    const char *src =
+        "button { fg: #010203; bg: #111213; }\n"
+        "button:hovered { bg: #212223; }\n";
+    memset(&ss, 0, sizeof ss);
+    TIMUI_CHECK(timui_stylesheet_parse(&ss, src, strlen(src), &al) == TIMUI_OK);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_set_stylesheet(ui, &ss);
+
+    timui_begin(ui, &f);
+    (void)timui_button(f, TIMUI_ID("b"), TIMUI_RECT(0, 2, 12, 1), TIMUI_STR_LIT("Go"));
+    buf = timui_frame_buffer(f);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 2)->bg == 0x111213);
+    TIMUI_CHECK(timui_cells_get(buf, 1, 2)->fg == 0x010203);
+    timui_end(f);
+
+    SETIN(&fake, "\x1b[<32;2;3M");  /* motion/hover over the button */
+    timui_begin(ui, &f);
+    (void)timui_button(f, TIMUI_ID("b"), TIMUI_RECT(0, 2, 12, 1), TIMUI_STR_LIT("Go"));
+    buf = timui_frame_buffer(f);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 2)->bg == 0x212223);
+    timui_end(f);
+
+    timui_close(ui);
+    timui_stylesheet_free(&ss);
+}
+
+static const char *style_label(void *ud, int idx){
+    (void)ud;
+    return idx == 0 ? "first" : "second";
+}
+
+TIMUI_TEST(test_stylesheet_applies_list_selection){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiStylesheet ss;
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    TimuiListState st = {1, 0};
+    const char *src =
+        "listbox { fg: #101010; bg: #202020; }\n"
+        "listbox:selected { fg: #303030; bg: #404040; reverse: true; }\n";
+    memset(&ss, 0, sizeof ss);
+    TIMUI_CHECK(timui_stylesheet_parse(&ss, src, strlen(src), &al) == TIMUI_OK);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_set_stylesheet(ui, &ss);
+
+    timui_begin(ui, &f);
+    (void)timui_listbox(f, TIMUI_ID("list"), TIMUI_RECT(0, 0, 20, 3), st, 2, style_label, NULL);
+    buf = timui_frame_buffer(f);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->fg == 0x101010);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->bg == 0x202020);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->fg == 0x303030);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->bg == 0x404040);
+    TIMUI_CHECK((timui_cells_get(buf, 0, 1)->attrs & TIMUI_ATTR_REVERSE) != 0);
+    timui_end(f);
+
+    timui_close(ui);
+    timui_stylesheet_free(&ss);
+}
+
+TIMUI_TEST(test_stylesheet_explicit_label_ignores_sheet){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiStylesheet ss;
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    TimuiStyle explicit_style = timui_style_make(0xABCDEF, 0x123456, 0);
+    const char *src = "label { fg: #000000; bg: #FFFFFF; reverse: true; }";
+    memset(&ss, 0, sizeof ss);
+    TIMUI_CHECK(timui_stylesheet_parse(&ss, src, strlen(src), &al) == TIMUI_OK);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_set_stylesheet(ui, &ss);
+
+    timui_begin(ui, &f);
+    timui_label(f, 0, 0, TIMUI_STR_LIT("Label"), explicit_style);
+    buf = timui_frame_buffer(f);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->fg == 0xABCDEF);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->bg == 0x123456);
+    TIMUI_CHECK((timui_cells_get(buf, 0, 0)->attrs & TIMUI_ATTR_REVERSE) == 0);
+    timui_end(f);
+
+    timui_close(ui);
+    timui_stylesheet_free(&ss);
+}
+
+TIMUI_TEST(test_stylesheet_clear_and_explicit_input_style){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiStylesheet ss;
+    TimuiTheme th = timui_theme_builtin(TIMUI_THEME_DOS_BLUE);
+    TimuiStyle theme_button = timui_theme_style(&th, TIMUI_SLOT_BUTTON);
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    char text[16] = "hi";
+    TimuiInputState is = { text, sizeof text, 2, 0 };
+    TimuiStyle explicit_style = timui_style_make(0xABCDEF, 0x123456, 0);
+    const char *src = "button { bg: #010203; } input { bg: #FF0000; }";
+    memset(&ss, 0, sizeof ss);
+    TIMUI_CHECK(timui_stylesheet_parse(&ss, src, strlen(src), &al) == TIMUI_OK);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+    timui_set_stylesheet(ui, &ss);
+
+    timui_begin(ui, &f);
+    (void)timui_input_field_styled(f, TIMUI_ID("in"), TIMUI_RECT(0, 1, 8, 1), &is, explicit_style);
+    (void)timui_button(f, TIMUI_ID("b"), TIMUI_RECT(0, 3, 8, 1), TIMUI_STR_LIT("Go"));
+    buf = timui_frame_buffer(f);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->bg == 0x123456);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 3)->bg == 0x010203);
+    timui_end(f);
+
+    timui_set_stylesheet(ui, NULL);
+    timui_begin(ui, &f);
+    (void)timui_button(f, TIMUI_ID("b"), TIMUI_RECT(0, 3, 8, 1), TIMUI_STR_LIT("Go"));
+    buf = timui_frame_buffer(f);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 3)->bg == theme_button.bg);
+    timui_end(f);
+
+    timui_close(ui);
+    timui_stylesheet_free(&ss);
 }

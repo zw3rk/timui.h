@@ -135,6 +135,7 @@ TimuiResult timui_stylesheet_parse(TimuiStylesheet *, const char *src, size_t le
                                    const TimuiAllocator *);
 TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *, TimuiStyleQuery);
 void timui_stylesheet_free(TimuiStylesheet *);
+void timui_set_stylesheet(Timui *, const TimuiStylesheet *);   /* borrowed; NULL clears */
 ```
 
 The stylesheet parser is a small TCSS-inspired layer over existing styles. The
@@ -144,6 +145,12 @@ Declarations cover `fg`, `bg`, `bold`, `dim`, `reverse`, `border`, `padding`,
 `gap`, `gradient-lo`, and `gradient-hi`. Resolution is deterministic:
 id-specific rules beat class/state rules, class/state beat kind, and source
 order breaks ties per property.
+
+`timui_set_stylesheet` attaches a parsed stylesheet by borrowing it for later
+frames. Built-in widgets resolve their theme slot through the sheet using widget
+kind and states such as `:hovered`, `:focused`, `:active`, and `:selected`.
+Explicit style arguments, including `timui_label` and
+`timui_input_field_styled`, remain hard overrides.
 
 ## UTF-8, Widths & Graphemes
 

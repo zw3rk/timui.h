@@ -76,8 +76,9 @@ TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
     content = timui_scroll_begin(f, r, 0);
     for(i = 0; i < count; i++){
         int y = content.y + i;
-        TimuiStyle st = timui_theme_style(&ui->theme,
-            i == selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+        TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TREE,
+            i == selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+            i == selected ? TIMUI_STYLE_STATE_SELECTED : 0);
         timui_tree_draw_node_(ui, &nodes[i], TIMUI_RECT(content.x, y, r.w, 1), y, st);
     }
     timui_scroll_end(f);
@@ -153,8 +154,9 @@ TIMUI_API TimuiTreeScrollResult timui_tree_scroll(TimuiFrame *f, TimuiId id, Tim
         if(!timui_tree_step_(&nodes[i], &hidden)) continue;
         row = vp - scroll;
         if(row >= 0 && row < vis){
-            TimuiStyle st = timui_theme_style(&ui->theme,
-                vp == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+            TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_TREE,
+                vp == sel ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+                vp == sel ? TIMUI_STYLE_STATE_SELECTED : 0);
             timui_tree_draw_node_(ui, &nodes[i], r, r.y + row, st);
         }
         vp++;

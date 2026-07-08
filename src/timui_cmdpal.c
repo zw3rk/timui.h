@@ -47,8 +47,9 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
     { TimuiRect content = timui_scroll_begin(f, list_r, 0);
       for(i = 0; i < matched_count; i++){
           int orig = matched_idx[i];
-          TimuiStyle st = timui_theme_style(&ui->theme,
-              i == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+          TimuiStyle st = timui_widget_style_(ui, TIMUI_WIDGET_LISTBOX,
+              i == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+              i == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
           timui_draw_row_(&ui->curr, TIMUI_RECT(content.x, content.y + i, list_r.w, 1), 1, commands[orig], st);
       }
       timui_scroll_end(f);

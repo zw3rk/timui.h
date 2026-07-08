@@ -12,7 +12,7 @@ static TimuiStyle toast_style_(Timui *ui, TimuiToastSeverity severity){
     if(severity == TIMUI_TOAST_SUCCESS) slot = TIMUI_SLOT_SUCCESS;
     else if(severity == TIMUI_TOAST_WARNING) slot = TIMUI_SLOT_WARNING;
     else if(severity == TIMUI_TOAST_ERROR) slot = TIMUI_SLOT_ERROR;
-    return timui_theme_style(&ui->theme, slot);
+    return timui_widget_style_(ui, TIMUI_WIDGET_TOAST, slot, 0);
 }
 TIMUI_API TimuiToastResult timui_toasts(TimuiFrame *f, TimuiId id, TimuiRect r,
                                         const TimuiToast *toasts, int count,
@@ -36,11 +36,12 @@ TIMUI_API TimuiToastResult timui_toasts(TimuiFrame *f, TimuiId id, TimuiRect r,
         st = toast_style_(ui, toasts[i].severity);
         ir = timui_interact_button(&ui->ia, id + (TimuiId)(i + 1), tr);
         if(ir.clicked && ui->ia.mouse_released) res.dismissed = i;
-        timui_draw_fill(&ui->curr, tr, timui_theme_style(&ui->theme, TIMUI_SLOT_PANEL));
+        timui_draw_fill(&ui->curr, tr,
+                        timui_widget_style_(ui, TIMUI_WIDGET_TOAST, TIMUI_SLOT_PANEL, 0));
         timui_draw_box(&ui->curr, tr, TIMUI_BORDER_ROUND, st);
         widget_draw_text_clipped(f, tr, tr.x + 2, tr.y, toasts[i].title, st);
         widget_draw_text_clipped(f, tr, tr.x + 2, tr.y + 1, toasts[i].message,
-                                 timui_theme_style(&ui->theme, TIMUI_SLOT_TEXT));
+                                 timui_widget_style_(ui, TIMUI_WIDGET_TOAST, TIMUI_SLOT_TEXT, 0));
         if(tr.w >= 5)
             timui_draw_text(&ui->curr, tr.x + tr.w - 4, tr.y, TIMUI_STR_LIT("[x]"), st);
         res.visible_count++;

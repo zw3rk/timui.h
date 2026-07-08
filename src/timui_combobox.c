@@ -173,7 +173,9 @@ TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRec
           ui->cursor_visible = 1;
       }
     }
-    { TimuiStyle fst = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    { TimuiStyle fst = timui_widget_style_(ui, TIMUI_WIDGET_INPUT,
+          ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+          ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
       timui_draw_fill(&ui->curr, field, fst);
       timui_push_clip(f, field);
       timui_draw_text(&ui->curr, field.x - state.scroll_x, field.y, timui_str_from_cstr(state.query), fst);
@@ -185,7 +187,9 @@ TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRec
             TimuiStyle st;
             TimuiStr label;
             if(mi >= match_count) break;
-            st = timui_theme_style(&ui->theme, mi == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT);
+            st = timui_widget_style_(ui, TIMUI_WIDGET_LISTBOX,
+                mi == state.selected ? TIMUI_SLOT_SELECTION : TIMUI_SLOT_TEXT,
+                mi == state.selected ? TIMUI_STYLE_STATE_SELECTED : 0);
             label = options[matches[mi]].ptr ? options[matches[mi]] : TIMUI_STR_LIT("");
             timui_draw_row_(&ui->curr, TIMUI_RECT(popup.x, popup.y + i, popup.w, 1), 0, label, st);
         }

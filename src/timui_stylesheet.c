@@ -368,4 +368,23 @@ TIMUI_API TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *ss,
     return res;
 }
 
+TIMUI_API void timui_set_stylesheet(Timui *ui, const TimuiStylesheet *ss){
+    if(ui) ui->stylesheet = ss;
+}
+
+static TimuiStyle timui_widget_style_(Timui *ui, TimuiWidgetKind kind,
+                                      TimuiStyleSlot slot, uint32_t states){
+    TimuiStyle base;
+    TimuiStyleQuery q;
+    if(!ui) return timui_style_make(0, 0, 0);
+    base = timui_theme_style(&ui->theme, slot);
+    if(!ui->stylesheet) return base;
+    q.kind = kind;
+    q.id = NULL;
+    q.classes = NULL;
+    q.states = states;
+    q.base = base;
+    return timui_stylesheet_resolve(ui->stylesheet, q).style;
+}
+
 #undef TIMUI_SS_NAME_MAX

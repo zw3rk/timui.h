@@ -105,7 +105,9 @@ TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, Timu
         ui->enter_count = 0;
         ui->key_in = 0;
     }
-    { TimuiStyle sst = timui_theme_style(&ui->theme, ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT);
+    { TimuiStyle sst = timui_widget_style_(ui, TIMUI_WIDGET_TEXT_AREA,
+          ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
+          ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
       content = timui_scroll_begin(f, r, st.scroll_y);
       i = 0;
       while(i < st.cap && st.text[i]){
