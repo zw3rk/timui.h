@@ -67,10 +67,10 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
             cleanup when switching protocols and placeholder fallback for
             clipped draws.
       - [x] Sixel encoder/emitter for raw RGBA images with an exact 16-colour
-            palette cap and placeholder fallback for PNG/clipped/over-palette
-            cases.
+            palette cap and placeholder fallback for PNG/over-palette cases.
+      - [x] Cropped Sixel emission for clipped raw-RGBA draws.
       - [ ] Sixel terminal evidence plus PNG decode, quantization, scaling, and
-            clipped draw parity.
+            non-raw clipped draw parity.
       - [ ] iTerm2 terminal evidence.
 
 ## Phase 2 backlog - architecture and applications

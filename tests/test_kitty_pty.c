@@ -477,7 +477,82 @@ TIMUI_TEST(test_sixel_palette_over_cap_falls_back_no_partial_dcs){
     timui_close(ui);
 }
 
-TIMUI_TEST(test_sixel_clipped_draw_still_placeholder){
+TIMUI_TEST(test_sixel_clipped_rgba_emits_cropped_dcs){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiCellBuffer *buf;
+    TimuiStr out;
+    unsigned char rgba[4 * 6 * 4];
+    int x, y;
+    memset(rgba, 0, sizeof rgba);
+    for(y = 2; y < 5; y++){
+        for(x = 1; x < 3; x++){
+            unsigned char *px = rgba + ((size_t)y * 4u + (size_t)x) * 4u;
+            px[0] = 0xff;
+            px[3] = 0xff;
+        }
+    }
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    img = timui_image_from_rgba(ui, rgba, 4, 6, 4 * 4);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 4, 6), TIMUI_RECT(1, 2, 2, 3));
+    TIMUI_CHECK(timui_cells_get(buf, 1, 2)->codepoint == 0);
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1b[3;2H"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1bP0;1;0q"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\"1;1;2;3"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "#1;2;100;0;0"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "#1FF"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_sixel_clipped_png_falls_back_placeholder){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiCellBuffer *buf;
+    TimuiStr out;
+    static const unsigned char png[] = { 0x89, 0x50, 0x4E, 0x47 };
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 2, 2), TIMUI_RECT(0, 1, 2, 1));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->codepoint == '[');
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1bP"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_sixel_clipped_invalid_visible_no_partial_dcs){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
     TimuiTransport t;
@@ -499,11 +574,55 @@ TIMUI_TEST(test_sixel_clipped_draw_still_placeholder){
     timui_begin(ui, &f);
     buf = timui_frame_buffer(f);
     timui_fake_clear_output(&fake);
-    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 2, 2), TIMUI_RECT(0, 1, 2, 1));
-    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->codepoint == '[');
+    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 2, 2, 2), TIMUI_RECT(0, 0, 2, 3));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == '[');
     timui_end(f);
     out = timui_fake_output(&fake);
     TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "\x1bP"));
+
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_sixel_clipped_palette_uses_visible_crop_not_full_image){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiCellBuffer *buf;
+    TimuiStr out;
+    unsigned char rgba[20 * 2 * 4];
+    int x, y;
+
+    for(y = 0; y < 2; y++){
+        for(x = 0; x < 20; x++){
+            unsigned char *px = rgba + ((size_t)y * 20u + (size_t)x) * 4u;
+            px[0] = (unsigned char)(x * 11);
+            px[1] = (unsigned char)(255 - x);
+            px[2] = (unsigned char)(x * 3);
+            px[3] = 0xff;
+        }
+    }
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_image_protocol(ui, TIMUI_IMAGE_PROTOCOL_SIXEL);
+    img = timui_image_from_rgba(ui, rgba, 20, 2, 20 * 4);
+    TIMUI_CHECK(img != NULL);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 20, 2), TIMUI_RECT(0, 0, 4, 2));
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == 0);
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\x1bP0;1;0q"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "\"1;1;4;2"));
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "#4;2;"));
+    TIMUI_CHECK(!bytes_contain(out.ptr, out.len, "#17;2;"));
 
     timui_image_free(ui, img);
     timui_close(ui);

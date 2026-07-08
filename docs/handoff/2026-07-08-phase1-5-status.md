@@ -34,9 +34,10 @@ date: 2026-07-08
 - Kitty graphics remain the rich PNG path, including clipped image draws.
 - iTerm2 inline images emit OSC 1337 for unclipped PNG draws.
 - Sixel emits DCS graphics for raw RGBA images with up to 16 opaque exact
-  colours; alpha below 128 is transparent/background-preserving.
-- PNG images forced to Sixel, over-palette Sixel images, clipped Sixel draws,
-  and clipped iTerm2 draws intentionally render `[img]`.
+  colours; alpha below 128 is transparent/background-preserving. Clipped
+  raw-RGBA Sixel draws crop and emit cropped DCS payloads.
+- PNG images forced to Sixel, over-palette Sixel images, PNG/non-raw clipped
+  Sixel draws, and clipped iTerm2 draws intentionally render `[img]`.
 - Win32 ConPTY is implemented behind `_WIN32`, runtime-probed for
   `CreatePseudoConsole`/`ResizePseudoConsole`/`ClosePseudoConsole`, and covered
   by POSIX fallback/helper tests plus a MinGW compile seam in `make check`.
@@ -52,7 +53,7 @@ date: 2026-07-08
 - iTerm2 and Sixel have fake-transport wire tests, but no live terminal capture
   evidence yet. Do not claim terminal evidence until captured.
 - Sixel parity remains open: PNG-to-Sixel decode, palette quantization, scaling
-  to cell geometry, and clipped Sixel draws.
+  to cell geometry, and non-raw clipped Sixel draws.
 - AddressSanitizer did not complete locally: `nix develop -c make test-san
   SAN=address` hung in macOS ASAN runtime initialization before entering the
   test harness. A `sample` of the process showed `__asan::AsanInitInternal` /
@@ -60,14 +61,15 @@ date: 2026-07-08
 
 ## Verification Already Run
 
-- `nix develop -c make test` - passed, 287 tests, existing pty Esc sandbox skip.
+- `nix develop -c make test` - passed, 290 tests, existing pty Esc sandbox skip.
 - `nix develop -c make check-conpty` - passed, including POSIX fallback/helper
   tests and the isolated MinGW Win32 ConPTY compile seam.
-- `nix develop -c make check` - passed after rebase, including build, 287 tests,
+- `nix develop -c make check` - passed after the raw-RGBA Sixel clipping change,
+  including build, 290 tests,
   and the MinGW ConPTY compile seam.
-- `nix develop -c make build release-check check-vt-gif-all` - passed.
-- `nix develop -c make release-check` - passed after ConPTY/header changes.
-- `nix develop -c make test-san SAN=undefined` - passed, 287 tests, existing pty
+- `nix develop -c make check-vt-gif-all` - passed after the image emission change.
+- `nix develop -c make release-check` - passed after Sixel/header changes.
+- `nix develop -c make test-san SAN=undefined` - passed, 290 tests, existing pty
   Esc sandbox skip.
 - `nix flake check` - passed for the current system; Nix reported incompatible
   non-current systems omitted unless `--all-systems` is used.

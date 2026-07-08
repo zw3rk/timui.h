@@ -87,7 +87,8 @@ Rendering and terminal:
 - OSC 8 hyperlinks.
 - Kitty graphics image placement and clipped image drawing, iTerm2 inline
   images for unclipped PNG draws, and Sixel for raw RGBA images with a bounded
-  exact palette; placeholder fallback outside supported image protocol paths.
+  exact palette, including cropped raw-RGBA draws; placeholder fallback outside
+  supported image protocol paths.
 - Minimal UTF-8 decode and display width, including CJK/fullwidth awareness.
 
 Input and interaction:
@@ -329,7 +330,8 @@ int main(void) {
 - Thread-safe `timui_post`; all other UI/frame/widget APIs are UI-thread only.
 - Fake transport, snapshot/golden tests, libvterm round-trip verification.
 - Kitty graphics support where the terminal supports it, iTerm2 inline images
-  for unclipped PNG draws, and raw-RGBA Sixel; fallback placeholder elsewhere.
+  for unclipped PNG draws, and raw-RGBA Sixel including clipped raw draws;
+  fallback placeholder elsewhere.
 
 ## Claims to avoid or qualify
 
@@ -340,7 +342,8 @@ int main(void) {
   grapheme clusters, ZWJ emoji, and skin-tone sequences remain future work.
 - Do not say "images work everywhere." They are terminal-protocol-dependent
   (Kitty graphics, iTerm2 inline images, or raw-RGBA Sixel today), with a
-  fallback placeholder.
+  fallback placeholder. PNG-to-Sixel, quantization, Sixel scaling, and live
+  iTerm2/Sixel terminal evidence remain open.
 - Do not imply `make check` alone is the whole project gate. CI also runs
   `release-check`, golden staleness checks, `vt-test`, and sanitizers.
 - Do not claim a website build system exists. This repo has product docs and

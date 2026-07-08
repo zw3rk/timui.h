@@ -88,9 +88,10 @@ forced to Sixel should continue to draw `[img]` until PNG decode, scaling,
 quantization, and clipping are deliberately designed.
 
 Implemented state: `timui_image_from_rgba` copies rows into tightly packed RGBA
-storage and the Sixel emitter handles unclipped raw RGBA images with up to 16
-opaque exact colours. Alpha below 128 is transparent/background-preserving.
-PNG-to-Sixel, palette quantization, scaling, clipped Sixel, and real-terminal
+storage and the Sixel emitter handles raw RGBA images with up to 16 opaque exact
+colours, including cropped raw-RGBA draws via `timui_image_draw_clipped`. Alpha
+below 128 is transparent/background-preserving. PNG-to-Sixel, palette
+quantization, scaling to cell geometry, non-raw clipped Sixel, and real-terminal
 capture evidence remain open.
 
 Before claiming PNG-based Sixel support, choose and document the pixel source:

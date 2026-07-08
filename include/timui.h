@@ -1203,8 +1203,8 @@ TIMUI_API int    timui_conpty_size_valid_for_test(int cols, int rows);
  * inline File payload per draw. The caller reserves the region (draws its own
  * background and no text there). This release emits Kitty graphics and iTerm2
  * inline PNG images, plus Sixel for raw RGBA images with a bounded exact-color
- * palette. Unsupported protocols and unsupported clipped draws render a
- * "[img]" cell placeholder. */
+ * palette and raw-RGBA clipped draws. Unsupported protocols and unsupported
+ * clipped draws render a "[img]" cell placeholder. */
 typedef enum {
     TIMUI_IMAGE_KIND_PNG = 0,
     TIMUI_IMAGE_KIND_RGBA

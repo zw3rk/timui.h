@@ -159,11 +159,11 @@ The image API is protocol-neutral at the draw call. v0.2 emits Kitty graphics
 and iTerm2 inline images from PNG bytes supplied to `timui_image_from_png`, and
 Sixel from raw RGBA pixels supplied to `timui_image_from_rgba`. The Sixel path
 is intentionally narrow: exact colours only, capped at 16 opaque colours,
-alpha below 128 treated as transparent, no PNG decode, no quantization, no
-scaling, and no clipped Sixel draws. `timui_image_draw_clipped` currently keeps
-clipped image support Kitty-only; iTerm2/Sixel clipped draws fall back to
-`[img]`. `timui_force_image_protocol` is intended for tests and user overrides;
-unknown enum values clear image caps and select `NONE`.
+alpha below 128 treated as transparent, no PNG decode, no quantization, and no
+scaling to cell geometry. `timui_image_draw_clipped` crops Kitty placements and
+raw-RGBA Sixel source pixels. iTerm2 clipped draws and PNG images forced to
+Sixel fall back to `[img]`. `timui_force_image_protocol` is intended for tests
+and user overrides; unknown enum values clear image caps and select `NONE`.
 
 ### Text editing
 

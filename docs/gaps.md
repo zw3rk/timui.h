@@ -54,9 +54,9 @@ These are known limitations promoted into the next planned follow-up. See
 - **Image protocol emitters** still need terminal evidence and parity work.
   Kitty graphics, iTerm2 inline PNG images, and raw-RGBA Sixel are in tree.
   Remaining image gaps: real iTerm2/Sixel terminal captures, PNG-to-Sixel
-  decode, palette quantization, Sixel scaling/clipping, and any mux passthrough
-  story. ConPTY should stay a transport, not a Windows-specific graphics
-  abstraction.
+  decode, palette quantization, Sixel scaling to cell geometry, non-raw Sixel
+  clipping, and any mux passthrough story. ConPTY should stay a transport, not
+  a Windows-specific graphics abstraction.
 
 ## Still open (documented limitations, not Phase 1.5)
 

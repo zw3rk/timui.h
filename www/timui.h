@@ -1204,8 +1204,8 @@ TIMUI_API int    timui_conpty_size_valid_for_test(int cols, int rows);
  * inline File payload per draw. The caller reserves the region (draws its own
  * background and no text there). This release emits Kitty graphics and iTerm2
  * inline PNG images, plus Sixel for raw RGBA images with a bounded exact-color
- * palette. Unsupported protocols and unsupported clipped draws render a
- * "[img]" cell placeholder. */
+ * palette and raw-RGBA clipped draws. Unsupported protocols and unsupported
+ * clipped draws render a "[img]" cell placeholder. */
 typedef enum {
     TIMUI_IMAGE_KIND_PNG = 0,
     TIMUI_IMAGE_KIND_RGBA
@@ -6972,7 +6972,12 @@ typedef struct {
     unsigned char r, g, b;
 } SixelColor_;
 
+typedef struct {
+    int sx, sy, sw, sh;
+} SixelCrop_;
+
 static int image_rect_emit_valid_(TimuiRect r);
+static int image_rect_contains_(TimuiRect outer, TimuiRect inner);
 
 static int sixel_is_rgba_(const TimuiImage *img){
     return img && img->kind == TIMUI_IMAGE_KIND_RGBA && img->data &&
@@ -6988,12 +6993,41 @@ static int sixel_palette_index_(const SixelColor_ *pal, int count,
     return -1;
 }
 
-static int sixel_palette_(const TimuiImage *img, SixelColor_ *pal, int *out_count){
+static int sixel_crop_(const TimuiImage *img, TimuiRect full, TimuiRect visible, SixelCrop_ *out){
+    int64_t fx0, fy0, fx1, fy1;
+    int64_t sx0, sy0, sx1, sy1;
+    if(!sixel_is_rgba_(img) || !out || !image_rect_contains_(full, visible))
+        return 0;
+    fx0 = (int64_t)visible.x - (int64_t)full.x;
+    fy0 = (int64_t)visible.y - (int64_t)full.y;
+    fx1 = fx0 + (int64_t)visible.w;
+    fy1 = fy0 + (int64_t)visible.h;
+    sx0 = fx0 * (int64_t)img->px_w / (int64_t)full.w;
+    sy0 = fy0 * (int64_t)img->px_h / (int64_t)full.h;
+    sx1 = (fx1 * (int64_t)img->px_w + (int64_t)full.w - 1) / (int64_t)full.w;
+    sy1 = (fy1 * (int64_t)img->px_h + (int64_t)full.h - 1) / (int64_t)full.h;
+    if(sx0 < 0) sx0 = 0;
+    if(sy0 < 0) sy0 = 0;
+    if(sx1 > img->px_w) sx1 = img->px_w;
+    if(sy1 > img->px_h) sy1 = img->px_h;
+    if(sx1 <= sx0 || sy1 <= sy0) return 0;
+    out->sx = (int)sx0;
+    out->sy = (int)sy0;
+    out->sw = (int)(sx1 - sx0);
+    out->sh = (int)(sy1 - sy0);
+    return 1;
+}
+
+static int sixel_palette_crop_(const TimuiImage *img, SixelCrop_ crop,
+                               SixelColor_ *pal, int *out_count){
     int x, y, count = 0;
     if(!sixel_is_rgba_(img) || !pal || !out_count) return 0;
-    for(y = 0; y < img->px_h; y++){
+    if(crop.sx < 0 || crop.sy < 0 || crop.sw <= 0 || crop.sh <= 0) return 0;
+    if(crop.sx > img->px_w || crop.sy > img->px_h) return 0;
+    if(crop.sw > img->px_w - crop.sx || crop.sh > img->px_h - crop.sy) return 0;
+    for(y = crop.sy; y < crop.sy + crop.sh; y++){
         const unsigned char *row = img->data + (size_t)y * (size_t)img->stride;
-        for(x = 0; x < img->px_w; x++){
+        for(x = crop.sx; x < crop.sx + crop.sw; x++){
             const unsigned char *px = row + (size_t)x * 4u;
             if(px[3] < 128) continue;
             if(sixel_palette_index_(pal, count, px[0], px[1], px[2]) >= 0) continue;
@@ -7008,10 +7042,28 @@ static int sixel_palette_(const TimuiImage *img, SixelColor_ *pal, int *out_coun
     return count > 0;
 }
 
+static int sixel_palette_(const TimuiImage *img, SixelColor_ *pal, int *out_count){
+    SixelCrop_ crop;
+    if(!sixel_is_rgba_(img)) return 0;
+    crop.sx = 0;
+    crop.sy = 0;
+    crop.sw = img->px_w;
+    crop.sh = img->px_h;
+    return sixel_palette_crop_(img, crop, pal, out_count);
+}
+
 static int sixel_image_supported_(const TimuiImage *img){
     SixelColor_ pal[SIXEL_MAX_COLORS];
     int count = 0;
     return sixel_palette_(img, pal, &count);
+}
+
+static int sixel_image_supported_at_(const TimuiImage *img, TimuiRect full, TimuiRect visible){
+    SixelColor_ pal[SIXEL_MAX_COLORS];
+    SixelCrop_ crop;
+    int count = 0;
+    return sixel_crop_(img, full, visible, &crop) &&
+           sixel_palette_crop_(img, crop, pal, &count);
 }
 
 static unsigned sixel_pct_(unsigned char v){
@@ -7030,44 +7082,47 @@ static void sixel_emit_color_def_(TimuiTransport *t, int idx, SixelColor_ c){
     image_write_all_(t, b, (size_t)n);
 }
 
-static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r){
+static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r, TimuiRect full){
     SixelColor_ pal[SIXEL_MAX_COLORS];
+    SixelCrop_ crop;
     int count = 0;
     int ci, x, band;
     char b[64];
     int n;
     const char *p;
     if(!t || !t->write || !image_rect_emit_valid_(r)) return 0;
-    if(!sixel_palette_(img, pal, &count)) return 0;
+    if(!sixel_crop_(img, full, r, &crop)) return 0;
+    if(!sixel_palette_crop_(img, crop, pal, &count)) return 0;
     if(!image_cup_(t, r.x, r.y)) return 0;
     image_write_all_(t, "\x1bP0;1;0q", sizeof("\x1bP0;1;0q") - 1);
     n = 0;
     b[n++] = '"'; b[n++] = '1'; b[n++] = ';'; b[n++] = '1'; b[n++] = ';';
-    n += fmt_uint(b + n, (unsigned)img->px_w); b[n++] = ';';
-    n += fmt_uint(b + n, (unsigned)img->px_h);
+    n += fmt_uint(b + n, (unsigned)crop.sw); b[n++] = ';';
+    n += fmt_uint(b + n, (unsigned)crop.sh);
     image_write_all_(t, b, (size_t)n);
     for(ci = 0; ci < count; ci++) sixel_emit_color_def_(t, ci, pal[ci]);
-    for(band = 0; band < img->px_h; band += 6){
+    for(band = 0; band < crop.sh; band += 6){
         for(ci = 0; ci < count; ci++){
             n = 0;
             b[n++] = '#';
             n += fmt_uint(b + n, (unsigned)(ci + 1));
             image_write_all_(t, b, (size_t)n);
-            for(x = 0; x < img->px_w; x++){
+            for(x = 0; x < crop.sw; x++){
                 int bit;
                 unsigned bits = 0;
                 for(bit = 0; bit < 6; bit++){
-                    int y = band + bit;
+                    int y = crop.sy + band + bit;
                     const unsigned char *px;
-                    if(y >= img->px_h) continue;
-                    px = img->data + (size_t)y * (size_t)img->stride + (size_t)x * 4u;
+                    if(y >= crop.sy + crop.sh) continue;
+                    px = img->data + (size_t)y * (size_t)img->stride +
+                         (size_t)(crop.sx + x) * 4u;
                     if(px[3] >= 128 && px[0] == pal[ci].r && px[1] == pal[ci].g && px[2] == pal[ci].b)
                         bits |= (1u << bit);
                 }
                 b[0] = (char)(0x3f + bits);
                 image_write_all_(t, b, 1);
             }
-            p = (ci + 1 < count) ? "$" : ((band + 6 < img->px_h) ? "-" : "");
+            p = (ci + 1 < count) ? "$" : ((band + 6 < crop.sh) ? "-" : "");
             if(*p) image_write_all_(t, p, 1);
         }
     }
@@ -7123,7 +7178,8 @@ void timui_images_flush_(Timui *ui){
             emitted += iterm2_emit_(&ui->transport, ui->img_place[i].img, ui->img_place[i].rect);
     } else if(protocol == TIMUI_IMAGE_PROTOCOL_SIXEL){
         for(i = 0; i < ui->img_place_count; i++)
-            emitted += sixel_emit_(&ui->transport, ui->img_place[i].img, ui->img_place[i].rect);
+            emitted += sixel_emit_(&ui->transport, ui->img_place[i].img,
+                                   ui->img_place[i].rect, ui->img_place[i].full);
     }
     ui->img_last_count = emitted;
     ui->img_last_protocol = emitted ? protocol : TIMUI_IMAGE_PROTOCOL_NONE;
@@ -7166,7 +7222,9 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
     protocol = timui_image_protocol(ui);
     if(protocol == TIMUI_IMAGE_PROTOCOL_KITTY ||
        (protocol == TIMUI_IMAGE_PROTOCOL_ITERM2 && image_rect_same_(visible, full)) ||
-       (protocol == TIMUI_IMAGE_PROTOCOL_SIXEL && image_rect_same_(visible, full) && sixel_image_supported_(img))){
+       (protocol == TIMUI_IMAGE_PROTOCOL_SIXEL &&
+        ((image_rect_same_(visible, full) && sixel_image_supported_(img)) ||
+         (!image_rect_same_(visible, full) && sixel_image_supported_at_(img, full, visible))))){
         if(!image_rect_emit_valid_(visible)){
             image_placeholder_(ui, visible);
             return;

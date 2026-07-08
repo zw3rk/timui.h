@@ -124,12 +124,13 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   OSC 1337, including stale Kitty placement cleanup when switching from Kitty to
   iTerm2 and placeholder fallback for clipped iTerm2 draws.
 - DONE: Sixel emission is implemented for raw RGBA images with an exact
-  16-colour palette cap and alpha thresholding. PNG images forced to Sixel,
-  over-palette images, and clipped Sixel draws intentionally fall back to
-  `[img]`.
+  16-colour palette cap and alpha thresholding. PNG images forced to Sixel and
+  over-palette images intentionally fall back to `[img]`.
+- DONE: raw-RGBA Sixel clipped draws crop the source pixels and emit cropped
+  DCS payloads; PNG/non-raw clipped Sixel draws still fall back.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API has PNG and raw-RGBA constructors; Sixel does not imply PNG decode,
-  quantization, scaling, or clipping parity yet.
+  quantization, scaling, or PNG/non-raw clipping parity yet.
 - Add capability selection for Kitty, Sixel, iTerm2 inline images, and none.
   Sixel should be prioritized before iTerm2 because it is useful for Windows
   Terminal and classic terminal compatibility.
