@@ -174,6 +174,29 @@ TIMUI_TEST(test_input_line_buf_clipped){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_line_buf_clamps_unterminated){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    char storage[8] = { 'a', 'b', 'c', 'd', 'E', 'F', 'G', '\0' };
+    TimuiRect r = TIMUI_RECT(0, 0, 10, 1);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+
+#define ILF() do{ timui_begin(ui,&f); (void)timui_input_line_buf(f, TIMUI_ID("line"), r, storage, 4); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); ILF();
+    SETIN(&fake, "\x1b[<0;2;1m"); ILF();
+    SETIN(&fake, "\x7f"); ILF();
+    TIMUI_CHECK(storage[0] == 'a' && storage[1] == 'b' && storage[2] == '\0');
+    TIMUI_CHECK(storage[4] == 'E' && storage[5] == 'F' && storage[6] == 'G');
+#undef ILF
+    timui_close(ui);
+}
+
 /* F1.5: input_field — in-line cursor editing (single line). */
 TIMUI_TEST(test_input_field_edit){
     TimuiAllocator al = timui_default_allocator();

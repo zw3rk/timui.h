@@ -192,6 +192,7 @@ void test_input_line_utf8_no_split(void);
 void test_input_line_utf8_backspace(void);
 void test_input_line_grapheme_backspace(void);
 void test_input_line_buf_clipped(void);
+void test_input_line_buf_clamps_unterminated(void);
 void test_input_field_edit(void);
 void test_input_field_grapheme_edit(void);
 void test_input_field_cursor_clamped_to_text(void);

@@ -4775,10 +4775,14 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
     bool submitted = false;
     if(!f || !f->ui || !buf || cap == 0) return false;
     ui = f->ui;
+    len = text_len_bounded_(buf, cap);
+    if(len >= cap){
+        len = cap - 1;
+        buf[len] = '\0';
+    }
     {
         int submit = ui->ia.activate_pressed;   /* capture before interact_button consumes it */
         ir = timui_interact_button(&ui->ia, id, r);   /* click to focus */
-        len = strlen(buf);
         if(ir.focused){
             int i = 0;
             /* append whole UTF-8 codepoints; skip one that won't fit intact */
@@ -4803,7 +4807,7 @@ TIMUI_API bool timui_input_line_buf(TimuiFrame *f, TimuiId id, TimuiRect r, char
                              ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
                              ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
     timui_draw_fill(&ui->curr, r, st);
-    widget_draw_text_clipped(f, r, r.x, r.y, timui_str_from_cstr(buf), st);
+    widget_draw_text_clipped(f, r, r.x, r.y, (TimuiStr){ buf, len }, st);
     return submitted;
 }
 /* Display column of the cursor: sum of grapheme widths over buf[0..upto) (F1.5). */

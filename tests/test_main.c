@@ -181,6 +181,7 @@ int main(void){
         test_input_line_utf8_backspace,
         test_input_line_grapheme_backspace,
         test_input_line_buf_clipped,
+        test_input_line_buf_clamps_unterminated,
         test_input_field_edit,
         test_input_field_grapheme_edit,
         test_input_field_cursor_clamped_to_text,
