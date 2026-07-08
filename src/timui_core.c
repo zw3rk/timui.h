@@ -1140,19 +1140,19 @@ TIMUI_API TimuiRect timui_pad(TimuiRect r, int l, int t, int rr, int b){
 }
 TIMUI_API void timui_split_cols(TimuiRect r, float ratio, TimuiRect *a, TimuiRect *b){
     int aw;
-    if(ratio < 0.0f) ratio = 0.0f;
+    if(!(ratio >= 0.0f)) ratio = 0.0f;
     if(ratio > 1.0f) ratio = 1.0f;
     aw = (int)(r.w * ratio);
     if(a){ a->x = r.x;      a->y = r.y; a->w = aw;       a->h = r.h; }
-    if(b){ b->x = r.x + aw; b->y = r.y; b->w = r.w - aw; b->h = r.h; }
+    if(b){ b->x = timui_clamp_i64_to_int_((int64_t)r.x + (int64_t)aw); b->y = r.y; b->w = r.w - aw; b->h = r.h; }
 }
 TIMUI_API void timui_split_rows(TimuiRect r, float ratio, TimuiRect *a, TimuiRect *b){
     int ah;
-    if(ratio < 0.0f) ratio = 0.0f;
+    if(!(ratio >= 0.0f)) ratio = 0.0f;
     if(ratio > 1.0f) ratio = 1.0f;
     ah = (int)(r.h * ratio);
     if(a){ a->x = r.x; a->y = r.y;      a->w = r.w; a->h = ah; }
-    if(b){ b->x = r.x; b->y = r.y + ah; b->w = r.w; b->h = r.h - ah; }
+    if(b){ b->x = r.x; b->y = timui_clamp_i64_to_int_((int64_t)r.y + (int64_t)ah); b->w = r.w; b->h = r.h - ah; }
 }
 
 /* Z10: undo the section's implementation-only macros so they can't leak into

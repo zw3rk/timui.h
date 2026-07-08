@@ -41,6 +41,17 @@ TIMUI_TEST(test_rect_split){
     TIMUI_CHECK(a.x == 0 && b.x == 25 && a.h == 10 && b.h == 10);
 }
 
+TIMUI_TEST(test_rect_split_extreme_origin_safe){
+    TimuiRect a, b;
+    timui_split_cols(TIMUI_RECT(INT_MAX - 2, 7, 10, 4), 0.5f, &a, &b);
+    TIMUI_CHECK(a.x == INT_MAX - 2 && a.w == 5);
+    TIMUI_CHECK(b.x == INT_MAX && b.w == 5);
+
+    timui_split_rows(TIMUI_RECT(3, INT_MAX - 2, 10, 4), 0.5f, &a, &b);
+    TIMUI_CHECK(a.y == INT_MAX - 2 && a.h == 2);
+    TIMUI_CHECK(b.y == INT_MAX && b.h == 2);
+}
+
 TIMUI_TEST(test_rect_inset_clamp){
     TimuiRect r = timui_inset(TIMUI_RECT(0, 0, 10, 10), 2);
     TIMUI_CHECK(r.x == 2 && r.y == 2 && r.w == 6 && r.h == 6);

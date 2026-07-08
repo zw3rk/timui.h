@@ -26,6 +26,7 @@ extern int timui_test_failures;
 void test_rect_cuts(void);
 void test_rect_cut_null_safe(void);
 void test_rect_split(void);
+void test_rect_split_extreme_origin_safe(void);
 void test_rect_inset_clamp(void);
 void test_rect_inset_pad_extreme_safe(void);
 void test_ids_stable(void);
