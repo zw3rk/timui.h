@@ -2090,6 +2090,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         }
         if(saw_mouse_press && saw_mouse_release)
             timui_interact_set_mouse(&ui->ia, press_x, press_y, ui->ia.mouse_down);
+        if(saw_mouse_press){
+            ui->mouse_x = press_x;
+            ui->mouse_y = press_y;
+        }
         timui_interact_begin(&ui->ia);
         if(saw_mouse_press) ui->ia.mouse_pressed = 1;
         if(saw_mouse_release) ui->ia.mouse_released = 1;

@@ -104,6 +104,28 @@ TIMUI_TEST(test_mouse_motion_not_clicked){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_mouse_clicked_reports_press_cell){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    int x = -1, y = -1;
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+
+    timui_fake_set_input(&fake, "\x1b[<0;5;2M\x1b[<0;11;2m",
+                         sizeof("\x1b[<0;5;2M\x1b[<0;11;2m") - 1);
+    timui_begin(ui, &f);
+    TIMUI_CHECK(timui_mouse_clicked(f, &x, &y));
+    TIMUI_CHECK(x == 4 && y == 1);
+    timui_end(f);
+
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_focus_events){
     TimuiInputParser p;
     Sink s;

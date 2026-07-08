@@ -82,6 +82,7 @@ void test_mouse_press_release(void);
 void test_mouse_wheel_and_motion(void);
 void test_mouse_wheel_not_clicked(void);
 void test_mouse_motion_not_clicked(void);
+void test_mouse_clicked_reports_press_cell(void);
 void test_focus_events(void);
 void test_bracketed_paste(void);
 void test_input_esc_resync_no_loss(void);
