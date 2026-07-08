@@ -1112,20 +1112,30 @@ TIMUI_API TimuiRect timui_cut_right(TimuiRect *r, int w){
     out.x = r->x + r->w; out.y = r->y; out.w = w; out.h = r->h;
     return out;
 }
+static int timui_clamp_i64_to_int_(int64_t v){
+    if(v < (int64_t)INT_MIN) return INT_MIN;
+    if(v > (int64_t)INT_MAX) return INT_MAX;
+    return (int)v;
+}
 TIMUI_API TimuiRect timui_inset(TimuiRect r, int n){
+    int64_t shrink;
     if(n < 0) n = 0;
-    r.x += n; r.y += n;
-    r.w -= 2 * n; r.h -= 2 * n;
-    if(r.w < 0) r.w = 0;
-    if(r.h < 0) r.h = 0;
+    shrink = (int64_t)n * 2;
+    r.x = timui_clamp_i64_to_int_((int64_t)r.x + (int64_t)n);
+    r.y = timui_clamp_i64_to_int_((int64_t)r.y + (int64_t)n);
+    r.w = ((int64_t)r.w > shrink) ? (int)((int64_t)r.w - shrink) : 0;
+    r.h = ((int64_t)r.h > shrink) ? (int)((int64_t)r.h - shrink) : 0;
     return r;
 }
 TIMUI_API TimuiRect timui_pad(TimuiRect r, int l, int t, int rr, int b){
+    int64_t sw, sh;
     if(l < 0) l = 0; if(t < 0) t = 0; if(rr < 0) rr = 0; if(b < 0) b = 0;
-    r.x += l; r.y += t;
-    r.w -= (l + rr); r.h -= (t + b);
-    if(r.w < 0) r.w = 0;
-    if(r.h < 0) r.h = 0;
+    sw = (int64_t)l + (int64_t)rr;
+    sh = (int64_t)t + (int64_t)b;
+    r.x = timui_clamp_i64_to_int_((int64_t)r.x + (int64_t)l);
+    r.y = timui_clamp_i64_to_int_((int64_t)r.y + (int64_t)t);
+    r.w = ((int64_t)r.w > sw) ? (int)((int64_t)r.w - sw) : 0;
+    r.h = ((int64_t)r.h > sh) ? (int)((int64_t)r.h - sh) : 0;
     return r;
 }
 TIMUI_API void timui_split_cols(TimuiRect r, float ratio, TimuiRect *a, TimuiRect *b){

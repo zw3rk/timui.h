@@ -6,6 +6,8 @@
 #include "test.h"
 #include "timui.h"
 
+#include <limits.h>
+
 TIMUI_TEST(test_rect_cuts){
     TimuiRect r   = TIMUI_RECT(0, 0, 10, 10);
     TimuiRect top = timui_cut_top(&r, 2);
@@ -50,6 +52,16 @@ TIMUI_TEST(test_rect_inset_clamp){
     /* Negative requested size is treated as zero. */
     TimuiRect neg = timui_cut_top(&(TimuiRect){0, 0, 5, 5}, -3);
     TIMUI_CHECK(neg.h == 0);
+}
+
+TIMUI_TEST(test_rect_inset_pad_extreme_safe){
+    TimuiRect r;
+    r = timui_inset(TIMUI_RECT(INT_MAX - 2, INT_MAX - 2, INT_MAX, INT_MAX), INT_MAX);
+    TIMUI_CHECK(r.x == INT_MAX && r.y == INT_MAX && r.w == 0 && r.h == 0);
+
+    r = timui_pad(TIMUI_RECT(INT_MAX - 2, INT_MAX - 2, INT_MAX, INT_MAX),
+                  INT_MAX, INT_MAX, INT_MAX, INT_MAX);
+    TIMUI_CHECK(r.x == INT_MAX && r.y == INT_MAX && r.w == 0 && r.h == 0);
 }
 
 TIMUI_TEST(test_ids_stable){

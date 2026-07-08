@@ -16,6 +16,7 @@ int main(void){
         test_rect_cut_null_safe,
         test_rect_split,
         test_rect_inset_clamp,
+        test_rect_inset_pad_extreme_safe,
         test_ids_stable,
         test_error_string,
         test_version,
