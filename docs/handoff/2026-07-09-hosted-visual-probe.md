@@ -8,15 +8,13 @@ date: 2026-07-09
 
 ## Landing State
 
-- Branch: `hosted-visual-rerun-fix`
-- Integrated local master: `4dac663`
-  (`docs: record hosted visual probe results`)
-- Hosted-probe implementation inspected: `4ea5b51`
-  (`ci: refine hosted visual runner setup`)
-- Remote push: `github master` pushed through `4dac663`
+- Branch: `runner-capture-research`
+- Integrated local master: `8cb8b99`
+  (`ci: expose POSIX APIs in hosted image smoke`)
+- Remote push: `github master` pushed through `8cb8b99`
 - GitHub workflow: `Hosted visual probes`
-- Latest run inspected: `28979373796`
-- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28979373796`
+- Latest run inspected: `28981426012`
+- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28981426012`
 
 ## Read First
 
@@ -24,60 +22,77 @@ date: 2026-07-09
 - `tools/ci/hosted_visual_macos.sh`
 - `tools/ci/hosted_visual_windows.ps1`
 - `docs/runbooks/phase1-5-live-evidence.md`
-- `docs/handoff/2026-07-08-phase1-5-status.md`
+- `docs/research/hosted-runner-capture/REVIEW.md`
 
 ## Accepted State
 
-- The manual hosted-runner workflow now exists on remote `master`.
-- The workflow uploads macOS and Windows artifacts even when the visual probe is
-  inconclusive.
-- Local validation before the runner attempts:
-  - `bash -n tools/ci/hosted_visual_macos.sh`
-  - `nix shell nixpkgs#actionlint -c actionlint .github/workflows/hosted-visual-probe.yml`
-  - `nix shell nixpkgs#powershell -c pwsh ... Parser.ParseFile(...)`
-  - `nix develop -c make check-conpty-win32-smoke-compile`
+- Hosted macOS screenshot capture is possible. Run `28980999976` produced
+  `terminal-sanity.png`, visibly showing Terminal.app with
+  `TIMUI_HOSTED_SCREENSHOT_SANITY`.
+- Hosted Windows screenshot capture is possible. Runs `28980999976` and
+  `28981426012` produced `cmd-sanity.png`, visibly showing the sanity console in
+  an active `runneradmin` console session.
+- Hosted Windows Terminal can be launched and captured. Run `28981426012`
+  produced `windows-terminal-sixel-12s.png` and `windows-terminal-sixel-24s.png`
+  showing the `timui image smoke` UI inside Windows Terminal with
+  `active: sixel (forced)`.
+- The Windows POSIX image-smoke build now succeeds under MSYS2 after passing the
+  setup action's `msys2-location` output into the script and overriding
+  `POSIX_CFLAGS` for MSYS C99 feature visibility.
+- The workflow remains best-effort/manual. Sanity screenshots prove capture
+  mechanics only; protocol screenshots still need manual inspection.
 
-## Hosted Runs Tried
+## Rejected / Inconclusive State
 
-- `28978545945`: first run. macOS failed before probe at Nix install; Windows
-  exposed MSYS2 first-run path pollution and Windows Terminal command quoting.
-- `28978893252`: workflow completed. macOS built fallback binary but AppleScript
-  failed; Windows Terminal opened an About dialog and the POSIX image smoke did
-  not build natively.
-- `28979182947`: workflow completed. Windows Terminal modal removed and ConPTY
-  smoke runner hardened, but macOS AppleScript still failed and Windows builds
-  still did not produce acceptable visual evidence.
-- `28979373796`: latest inspected run. Both jobs completed and uploaded
-  artifacts, but no Phase 1.5 live evidence was accepted.
+- Hosted iTerm2 image evidence is still rejected. iTerm2 installs, but
+  `osascript.status` is `1`; screenshots show a macOS TCC prompt for `bash` to
+  access screen/audio instead of the timui iTerm2 smoke.
+- Hosted Windows Sixel image evidence is still rejected. The Windows Terminal
+  screenshots show the timui UI and forced Sixel mode, but the three image tiles
+  are not visibly rendered as image tiles.
+- Hosted Windows ConPTY smoke is still rejected. `conpty-smoke.status` is `2`;
+  the runner compiles and starts `cmd.exe`, but the sentinel
+  `TIMUI_CONPTY_SMOKE` is not observed.
 
-## Latest Artifact Results
+## Artifact Results
 
-- Local downloaded artifacts:
-  `artifacts/gh-runs/28979373796/hosted-visual-macos-iterm2/` and
-  `artifacts/gh-runs/28979373796/hosted-visual-windows-terminal/`
-  (`/artifacts/` is gitignored).
-- macOS:
+- Local downloaded artifacts are under:
+  - `artifacts/gh-runs/28980999976/`
+  - `artifacts/gh-runs/28981256095/`
+  - `artifacts/gh-runs/28981426012/`
+- `/artifacts/` is gitignored scratch.
+- Run `28981426012` Windows:
   - `image-smoke-build.status`: `0`
-  - `osascript.status`: `1`
-  - `osc1337-count.txt`: `0`
-  - `iterm2-screen.png`: desktop/dock only; no iTerm2 timui smoke window.
-  - Verdict: rejected/inconclusive for iTerm2 live image evidence.
-- Windows:
-  - `image-smoke-build.status`: `2`
   - `conpty-smoke.status`: `2`
-  - `sixel-dcs-count.txt`: `0`
-  - `windows-terminal-sixel.png`: runner log window only; no timui smoke.
-  - `conpty-smoke.stdout`: native smoke runner compiles, then shows only
-    `cmd.exe` banner/prompt.
-  - `conpty-smoke.stderr`: `sentinel not observed`.
-  - Verdict: rejected/inconclusive for both Sixel visual evidence and ConPTY
-    sentinel evidence.
+  - `sixel-dcs-count.txt`: `3`
+  - `cmd-sanity.png`: visible sanity console
+  - `windows-terminal-sixel-12s.png`: visible timui image smoke UI, no accepted
+    image tiles
+- Run `28981426012` macOS:
+  - `image-smoke-build.status`: `0`
+  - `open-terminal-sanity.status`: `0`
+  - `terminal-sanity-screencapture.status`: `0`
+  - `osascript.status`: `1`
+  - `iterm2-screen-*.png`: TCC prompt, not timui iTerm2 smoke
+
+## Verification Already Run
+
+- `bash -n tools/ci/hosted_visual_macos.sh`
+- `nix shell nixpkgs#powershell -c pwsh ... Parser.ParseFile(...)`
+- `nix shell nixpkgs#actionlint -c actionlint .github/workflows/hosted-visual-probe.yml`
+- `git diff --check`
+- `nix develop -c make check-www`
+- `nix develop -c make check-conpty-win32-smoke-compile`
+- GitHub hosted workflow runs: `28980999976`, `28981256095`, `28981426012`
 
 ## Next Safe Move
 
-Use a self-hosted or manual GUI machine for accepted Phase 1.5 visual evidence.
-Hosted runners are useful diagnostics, but the current hosted macOS session does
-not let us drive iTerm2 with AppleScript, and hosted Windows does not provide a
-usable POSIX terminal-image build path for `examples/image_smoke.c`. For ConPTY,
-debug the Windows smoke runner on an interactive Windows host where the
-intermediate byte stream can be inspected live before promoting a CI result.
+- For accepted iTerm2 evidence: use a self-hosted/manual macOS GUI session with
+  iTerm2 already installed and screen/automation permissions pre-granted, or
+  avoid iTerm2 and keep hosted macOS for Terminal.app screenshot mechanics only.
+- For accepted Windows Sixel evidence: inspect Windows Terminal's Sixel support
+  on the hosted Windows Server 2025 image, including settings/version/feature
+  flags; otherwise move pixel proof to a self-hosted Windows GUI runner.
+- For ConPTY: debug `tools/conpty_smoke_win32.c` on an interactive Windows host
+  with live byte-stream logging before treating hosted ConPTY as an acceptance
+  gate.
