@@ -53,11 +53,12 @@ These are known limitations promoted into the next planned follow-up. See
   lifecycle, resize path, close semantics, VT mode setup, and `size_t` to
   `DWORD` chunking remain to be implemented. Do not claim Windows support until
   compile checks and a real Windows smoke run are green.
-- **Image protocol emitters** are still incomplete. Kitty graphics and iTerm2
-  inline-image emission are in tree, with iTerm2 limited to unclipped PNG draws.
-  Sixel still falls back to `[img]` until the project chooses a PNG decode/raw
-  pixel source and encoder. ConPTY should stay a transport, not a
-  Windows-specific graphics abstraction.
+- **Image protocol emitters** still need terminal evidence and parity work.
+  Kitty graphics, iTerm2 inline PNG images, and raw-RGBA Sixel are in tree.
+  Remaining image gaps: real iTerm2/Sixel terminal captures, PNG-to-Sixel
+  decode, palette quantization, Sixel scaling/clipping, and any mux passthrough
+  story. ConPTY should stay a transport, not a Windows-specific graphics
+  abstraction.
 
 ## Still open (documented limitations, not Phase 1.5)
 

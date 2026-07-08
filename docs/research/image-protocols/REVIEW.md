@@ -87,6 +87,12 @@ kind with a bounded exact-color palette and alpha thresholding. PNG images
 forced to Sixel should continue to draw `[img]` until PNG decode, scaling,
 quantization, and clipping are deliberately designed.
 
+Implemented state: `timui_image_from_rgba` copies rows into tightly packed RGBA
+storage and the Sixel emitter handles unclipped raw RGBA images with up to 16
+opaque exact colours. Alpha below 128 is transparent/background-preserving.
+PNG-to-Sixel, palette quantization, scaling, clipped Sixel, and real-terminal
+capture evidence remain open.
+
 Before claiming PNG-based Sixel support, choose and document the pixel source:
 
 - promote vendored `stb_image.h` into the library/release header as PNG-only,

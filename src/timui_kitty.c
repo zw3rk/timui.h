@@ -42,6 +42,8 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     if(!img->data){ al.free(al.userdata, img, sizeof *img); return NULL; }
     memcpy(img->data, data, size);
     img->len = size;
+    img->kind = TIMUI_IMAGE_KIND_PNG;
+    img->stride = 0;
     img->id = 0;                 /* assigned on first transmit (timui_images_flush_) */
     /* pixel size from the PNG IHDR (width @16, height @20, big-endian) so a
      * placement can be cropped to a cell sub-rect (smooth scroll clipping). */
@@ -53,6 +55,35 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
         img->px_w = (w <= (uint32_t)INT_MAX) ? (int)w : 0;
         img->px_h = (h <= (uint32_t)INT_MAX) ? (int)h : 0;
     }
+    return img;
+}
+TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba, int w, int h, int stride){
+    TimuiImage *img;
+    TimuiAllocator al;
+    size_t row, total;
+    const unsigned char *src;
+    int y;
+    (void)ui;
+    if(!rgba || w <= 0 || h <= 0) return NULL;
+    if(w > INT_MAX / 4) return NULL;
+    row = (size_t)w * 4u;
+    if(stride < (int)row) return NULL;
+    if((size_t)h > SIZE_MAX / row) return NULL;
+    total = row * (size_t)h;
+    al = timui_default_allocator();
+    img = (TimuiImage *)al.alloc(al.userdata, sizeof(TimuiImage));
+    if(!img) return NULL;
+    img->data = (unsigned char *)al.alloc(al.userdata, total);
+    if(!img->data){ al.free(al.userdata, img, sizeof *img); return NULL; }
+    src = (const unsigned char *)rgba;
+    for(y = 0; y < h; y++)
+        memcpy(img->data + (size_t)y * row, src + (size_t)y * (size_t)stride, row);
+    img->len = total;
+    img->id = 0;
+    img->px_w = w;
+    img->px_h = h;
+    img->kind = TIMUI_IMAGE_KIND_RGBA;
+    img->stride = (int)row;
     return img;
 }
 TIMUI_API void timui_image_free(Timui *ui, TimuiImage *img){
@@ -176,6 +207,115 @@ static int iterm2_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r){
     return 1;
 }
 
+#define SIXEL_MAX_COLORS 16
+
+typedef struct {
+    unsigned char r, g, b;
+} SixelColor_;
+
+static int image_rect_emit_valid_(TimuiRect r);
+
+static int sixel_is_rgba_(const TimuiImage *img){
+    return img && img->kind == TIMUI_IMAGE_KIND_RGBA && img->data &&
+           img->px_w > 0 && img->px_h > 0 && img->px_w <= INT_MAX / 4 &&
+           (size_t)img->stride >= (size_t)img->px_w * 4u;
+}
+
+static int sixel_palette_index_(const SixelColor_ *pal, int count,
+                                unsigned char r, unsigned char g, unsigned char b){
+    int i;
+    for(i = 0; i < count; i++)
+        if(pal[i].r == r && pal[i].g == g && pal[i].b == b) return i;
+    return -1;
+}
+
+static int sixel_palette_(const TimuiImage *img, SixelColor_ *pal, int *out_count){
+    int x, y, count = 0;
+    if(!sixel_is_rgba_(img) || !pal || !out_count) return 0;
+    for(y = 0; y < img->px_h; y++){
+        const unsigned char *row = img->data + (size_t)y * (size_t)img->stride;
+        for(x = 0; x < img->px_w; x++){
+            const unsigned char *px = row + (size_t)x * 4u;
+            if(px[3] < 128) continue;
+            if(sixel_palette_index_(pal, count, px[0], px[1], px[2]) >= 0) continue;
+            if(count >= SIXEL_MAX_COLORS) return 0;
+            pal[count].r = px[0];
+            pal[count].g = px[1];
+            pal[count].b = px[2];
+            count++;
+        }
+    }
+    *out_count = count;
+    return count > 0;
+}
+
+static int sixel_image_supported_(const TimuiImage *img){
+    SixelColor_ pal[SIXEL_MAX_COLORS];
+    int count = 0;
+    return sixel_palette_(img, pal, &count);
+}
+
+static unsigned sixel_pct_(unsigned char v){
+    return (unsigned)(((unsigned)v * 100u + 127u) / 255u);
+}
+
+static void sixel_emit_color_def_(TimuiTransport *t, int idx, SixelColor_ c){
+    char b[64];
+    int n = 0;
+    const char *p;
+    b[n++] = '#'; n += fmt_uint(b + n, (unsigned)(idx + 1));
+    p = ";2;"; while(*p) b[n++] = *p++;
+    n += fmt_uint(b + n, sixel_pct_(c.r)); b[n++] = ';';
+    n += fmt_uint(b + n, sixel_pct_(c.g)); b[n++] = ';';
+    n += fmt_uint(b + n, sixel_pct_(c.b));
+    image_write_all_(t, b, (size_t)n);
+}
+
+static int sixel_emit_(TimuiTransport *t, const TimuiImage *img, TimuiRect r){
+    SixelColor_ pal[SIXEL_MAX_COLORS];
+    int count = 0;
+    int ci, x, band;
+    char b[64];
+    int n;
+    const char *p;
+    if(!t || !t->write || !image_rect_emit_valid_(r)) return 0;
+    if(!sixel_palette_(img, pal, &count)) return 0;
+    if(!image_cup_(t, r.x, r.y)) return 0;
+    image_write_all_(t, "\x1bP0;1;0q", sizeof("\x1bP0;1;0q") - 1);
+    n = 0;
+    b[n++] = '"'; b[n++] = '1'; b[n++] = ';'; b[n++] = '1'; b[n++] = ';';
+    n += fmt_uint(b + n, (unsigned)img->px_w); b[n++] = ';';
+    n += fmt_uint(b + n, (unsigned)img->px_h);
+    image_write_all_(t, b, (size_t)n);
+    for(ci = 0; ci < count; ci++) sixel_emit_color_def_(t, ci, pal[ci]);
+    for(band = 0; band < img->px_h; band += 6){
+        for(ci = 0; ci < count; ci++){
+            n = 0;
+            b[n++] = '#';
+            n += fmt_uint(b + n, (unsigned)(ci + 1));
+            image_write_all_(t, b, (size_t)n);
+            for(x = 0; x < img->px_w; x++){
+                int bit;
+                unsigned bits = 0;
+                for(bit = 0; bit < 6; bit++){
+                    int y = band + bit;
+                    const unsigned char *px;
+                    if(y >= img->px_h) continue;
+                    px = img->data + (size_t)y * (size_t)img->stride + (size_t)x * 4u;
+                    if(px[3] >= 128 && px[0] == pal[ci].r && px[1] == pal[ci].g && px[2] == pal[ci].b)
+                        bits |= (1u << bit);
+                }
+                b[0] = (char)(0x3f + bits);
+                image_write_all_(t, b, 1);
+            }
+            p = (ci + 1 < count) ? "$" : ((band + 6 < img->px_h) ? "-" : "");
+            if(*p) image_write_all_(t, p, 1);
+        }
+    }
+    image_write_all_(t, "\x1b\\", 2);
+    return 1;
+}
+
 /* Transmit/place or emit every image recorded this frame, on top of the cell
  * diff. Kitty gets explicit placement lifecycle management; iTerm2 is a direct
  * inline image write with no placement ids or delete escape. */
@@ -222,6 +362,9 @@ void timui_images_flush_(Timui *ui){
     } else if(protocol == TIMUI_IMAGE_PROTOCOL_ITERM2){
         for(i = 0; i < ui->img_place_count; i++)
             emitted += iterm2_emit_(&ui->transport, ui->img_place[i].img, ui->img_place[i].rect);
+    } else if(protocol == TIMUI_IMAGE_PROTOCOL_SIXEL){
+        for(i = 0; i < ui->img_place_count; i++)
+            emitted += sixel_emit_(&ui->transport, ui->img_place[i].img, ui->img_place[i].rect);
     }
     ui->img_last_count = emitted;
     ui->img_last_protocol = emitted ? protocol : TIMUI_IMAGE_PROTOCOL_NONE;
@@ -263,7 +406,8 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
     }
     protocol = timui_image_protocol(ui);
     if(protocol == TIMUI_IMAGE_PROTOCOL_KITTY ||
-       (protocol == TIMUI_IMAGE_PROTOCOL_ITERM2 && image_rect_same_(visible, full))){
+       (protocol == TIMUI_IMAGE_PROTOCOL_ITERM2 && image_rect_same_(visible, full)) ||
+       (protocol == TIMUI_IMAGE_PROTOCOL_SIXEL && image_rect_same_(visible, full) && sixel_image_supported_(img))){
         if(!image_rect_emit_valid_(visible)){
             image_placeholder_(ui, visible);
             return;

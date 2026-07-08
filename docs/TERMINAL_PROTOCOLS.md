@@ -33,12 +33,14 @@ What `timui.h` speaks on the wire, and where it falls back.
 - **Alternate screen** (`CSI ? 1049 h/l`), title (`OSC 0 ; … BEL`).
 - **OSC 8 hyperlinks**: emitted when `TIMUI_CAP_OSC8_HYPERLINKS` is set, with
   cell-level link tracking for hit-testing.
-- **Terminal images**: `timui_image_*` accepts PNG bytes. Protocol selection is
-  exposed via `timui_caps_image_protocol` / `timui_image_protocol`, with Kitty
-  preferred when available, then Sixel, then iTerm2. This release emits Kitty
-  graphics and iTerm2 inline images (`OSC 1337;File=...`) for unclipped draws.
-  Sixel caps, and iTerm2 clipped draws, deliberately fall back to the same text
-  placeholder instead of emitting unsupported or lossy escapes.
+- **Terminal images**: `timui_image_*` accepts PNG bytes and raw RGBA pixels.
+  Protocol selection is exposed via `timui_caps_image_protocol` /
+  `timui_image_protocol`, with Kitty preferred when available, then Sixel, then
+  iTerm2. This release emits Kitty graphics, iTerm2 inline images
+  (`OSC 1337;File=...`) for unclipped PNG draws, and Sixel DCS for unclipped raw
+  RGBA images with a bounded exact-colour palette. PNG images forced to Sixel,
+  clipped iTerm2/Sixel draws, and unsupported paths deliberately fall back to
+  the same text placeholder instead of emitting unsupported or lossy escapes.
 
 ## Capability gating
 
@@ -55,6 +57,6 @@ set for tests or user overrides.
 - **Windows ConPTY**: currently a runtime-unsupported backend stub. It belongs
   below the protocol layer as a transport/lifecycle backend, not as a graphics
   abstraction.
-- **Sixel emitter**: planned as an additional wire protocol behind the existing
-  image API/capability model. The capability enum and selector are in place,
-  but Sixel needs a real pixel source/encoder before timui can honestly emit it.
+- **Sixel parity**: the raw-RGBA exact-palette emitter is implemented. Deferred
+  work: PNG-to-Sixel decode, palette quantization, scaling to cell geometry,
+  clipped Sixel draws, and real-terminal evidence.

@@ -119,6 +119,8 @@ TimuiImageProtocol timui_image_protocol(const Timui *);
 void timui_force_cap(Timui *, TimuiCapFlags, int enable);
 void timui_force_image_protocol(Timui *, TimuiImageProtocol);
 TimuiImage *timui_image_from_png(Timui *, const void *data, size_t size);
+TimuiImage *timui_image_from_rgba(Timui *, const void *rgba,
+                                  int w, int h, int stride);
 void timui_image_draw(TimuiFrame *, TimuiImage *, TimuiRect);
 void timui_image_draw_clipped(TimuiFrame *, TimuiImage *,
                               TimuiRect full, TimuiRect visible);
@@ -131,14 +133,15 @@ the application explicitly forces them. Image protocol selection returns
 `NONE`, `KITTY`, `SIXEL`, or `ITERM2`; when several image caps are present,
 Kitty wins, then Sixel, then iTerm2.
 
-The image API is protocol-neutral at the call site. v0.2 emits Kitty graphics
-and iTerm2 inline images from the PNG bytes supplied to `timui_image_from_png`;
-Sixel selections deliberately draw the `[img]` placeholder until a real pixel
-source/encoder lands. `timui_image_draw_clipped` currently keeps clipped image
-support Kitty-only; iTerm2 clipped draws fall back to `[img]` rather than crop
-and re-encode PNGs implicitly. `timui_force_image_protocol` is intended for
-tests and user overrides; unknown enum values clear image caps and select
-`NONE`.
+The image API is protocol-neutral at the draw call. v0.2 emits Kitty graphics
+and iTerm2 inline images from PNG bytes supplied to `timui_image_from_png`, and
+Sixel from raw RGBA pixels supplied to `timui_image_from_rgba`. The Sixel path
+is intentionally narrow: exact colours only, capped at 16 opaque colours,
+alpha below 128 treated as transparent, no PNG decode, no quantization, no
+scaling, and no clipped Sixel draws. `timui_image_draw_clipped` currently keeps
+clipped image support Kitty-only; iTerm2/Sixel clipped draws fall back to
+`[img]`. `timui_force_image_protocol` is intended for tests and user overrides;
+unknown enum values clear image caps and select `NONE`.
 
 ### Text editing
 
