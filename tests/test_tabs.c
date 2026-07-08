@@ -13,6 +13,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 #define TIMUI_IMPLEMENTATION
 #include "timui.h"
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -109,6 +110,10 @@ static void test_scroll(void){
     CHECK(timui_tabs_scroll(sp, 3, 2, 8, 999) == 6);
     /* degenerate viewport width (<=0) does not crash; clamps to >= 0. */
     CHECK(timui_tabs_scroll(sp, 3, 0, 0, 0) >= 0);
+
+    /* Crafted high spans must not wrap while keeping an oversize tab readable. */
+    { TimuiTabSpan edge[1] = { { INT_MAX - 2, 4 } };
+      CHECK(timui_tabs_scroll(edge, 1, 0, 3, 0) == INT_MAX - 2); }
 }
 
 /* ---- pure visibility: overlap with [scroll, scroll+width) --------------- */
@@ -121,6 +126,9 @@ static void test_visible(void){
     { TimuiTabSpan e = { 0, 3 };
       CHECK(!timui_tab_visible(e, 3, 5));
       CHECK( timui_tab_visible(e, 2, 5)); }    /* [2,7) overlaps [0,3) */
+
+    { TimuiTabSpan edge = { INT_MAX - 2, 4 };
+      CHECK(timui_tab_visible(edge, INT_MAX - 3, 3)); }
 }
 
 /* ---- interactive widget: click + arrows through a fake transport --------- */

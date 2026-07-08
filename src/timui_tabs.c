@@ -39,6 +39,12 @@ static int timui_tab_text_width_(const char *s){
     return w;
 }
 
+static int timui_tabs_clamp_i64_(int64_t v){
+    if(v < (int64_t)INT_MIN) return INT_MIN;
+    if(v > (int64_t)INT_MAX) return INT_MAX;
+    return (int)v;
+}
+
 /* Pure layout: place n tabs left-to-right. Each tab is drawn as " LABEL " — one
  * pad column on each side of its display width — and consecutive tabs are
  * separated by `sep` columns. Writes up to `max` spans into `out` (out may be
@@ -65,29 +71,36 @@ TIMUI_API int timui_tabs_layout(const char *const *labels, int n, int sep,
  * the label start stays readable. Result is clamped to [0, max(0,total-width)]. */
 TIMUI_API int timui_tabs_scroll(const TimuiTabSpan *spans, int n, int selected,
                                 int width, int cur_scroll){
-    int scroll, total, maxscroll, end;
+    int64_t scroll, total, maxscroll, end, sx, sw, vw;
     if(!spans || n <= 0) return 0;
     if(selected < 0) selected = 0;
     if(selected >= n) selected = n - 1;
-    total = spans[n - 1].x + spans[n - 1].w;          /* end of the last tab */
+    total = (int64_t)spans[n - 1].x + (int64_t)spans[n - 1].w; /* end of the last tab */
     scroll = cur_scroll < 0 ? 0 : cur_scroll;
-    end = spans[selected].x + spans[selected].w;
-    if(spans[selected].x < scroll)                    /* left of the view */
-        scroll = spans[selected].x;
-    else if(width > 0 && end > scroll + width)         /* right of the view */
-        scroll = end - width;
-    if(width > 0 && spans[selected].w > width)          /* oversize: show label start */
-        scroll = spans[selected].x;
-    maxscroll = total - width;
+    sx = (int64_t)spans[selected].x;
+    sw = (int64_t)spans[selected].w;
+    vw = (int64_t)width;
+    end = sx + sw;
+    if(sx < scroll)                                    /* left of the view */
+        scroll = sx;
+    else if(width > 0 && end > scroll + vw)             /* right of the view */
+        scroll = end - vw;
+    if(width > 0 && sw > vw)                            /* oversize: show label start */
+        scroll = sx;
+    maxscroll = total - vw;
     if(maxscroll < 0) maxscroll = 0;
     if(scroll > maxscroll) scroll = maxscroll;
     if(scroll < 0) scroll = 0;
-    return scroll;
+    return timui_tabs_clamp_i64_(scroll);
 }
 
 /* Pure visibility: does `span` overlap the viewport [scroll, scroll+width)? */
 TIMUI_API int timui_tab_visible(TimuiTabSpan span, int scroll, int width){
-    return (span.x < scroll + width && span.x + span.w > scroll) ? 1 : 0;
+    int64_t sx = (int64_t)span.x;
+    int64_t sw = (int64_t)span.w;
+    int64_t sc = (int64_t)scroll;
+    int64_t vw = (int64_t)width;
+    return (sx < sc + vw && sx + sw > sc) ? 1 : 0;
 }
 
 /* The interactive widget. Draws the bar, highlights *selected, applies Left/
