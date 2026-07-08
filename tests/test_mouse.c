@@ -74,6 +74,36 @@ TIMUI_TEST(test_mouse_wheel_not_clicked){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_mouse_motion_not_clicked){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiInputParser p;
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    Sink s;
+    int x = -1, y = -1;
+
+    s.n = 0;
+    timui_input_init(&p);
+    FEED(&p, "\x1b[<35;5;6M");  /* no-button motion */
+    TIMUI_CHECK(s.n == 1 && s.ev[0].kind == TIMUI_EVENT_MOUSE);
+    TIMUI_CHECK(s.ev[0].as.mouse.motion);
+    TIMUI_CHECK(!s.ev[0].as.mouse.pressed);
+    TIMUI_CHECK(!s.ev[0].as.mouse.released);
+    TIMUI_CHECK(s.ev[0].as.mouse.button == -1);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+    timui_fake_set_input(&fake, "\x1b[<35;5;3M", sizeof("\x1b[<35;5;3M") - 1);
+    timui_begin(ui, &f);
+    TIMUI_CHECK(!timui_mouse_clicked(f, &x, &y));
+    timui_end(f);
+
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_focus_events){
     TimuiInputParser p;
     Sink s;

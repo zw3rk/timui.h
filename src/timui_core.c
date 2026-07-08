@@ -436,13 +436,14 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 ui->mouse_wheel += ev.as.mouse.wheel_y;   /* expose wheel to the app */
                 ui->mouse_x = mx; ui->mouse_y = my;
                 if(ev.as.mouse.wheel_y == 0 &&
-                   (ev.as.mouse.button == 0 || ev.as.mouse.released)){
-                    timui_interact_set_mouse(&ui->ia, mx, my,
-                                             ev.as.mouse.button == 0 && ev.as.mouse.pressed);
-                    if(ev.as.mouse.button == 0 && ev.as.mouse.pressed){
+                   (ev.as.mouse.motion || ev.as.mouse.button == 0 || ev.as.mouse.released)){
+                    int down = ev.as.mouse.motion ? (ev.as.mouse.button == 0)
+                                                  : (ev.as.mouse.button == 0 && ev.as.mouse.pressed);
+                    timui_interact_set_mouse(&ui->ia, mx, my, down);
+                    if(!ev.as.mouse.motion && ev.as.mouse.button == 0 && ev.as.mouse.pressed){
                         saw_mouse_press = 1; press_x = mx; press_y = my; ui->mouse_clicked = 1;
                     }
-                    if(ev.as.mouse.released) saw_mouse_release = 1;
+                    if(!ev.as.mouse.motion && ev.as.mouse.released) saw_mouse_release = 1;
                 }
             } else if(ev.kind == TIMUI_EVENT_KEY){
                 ui->key_pressed = ev.as.key.key;   /* app-level key detection */

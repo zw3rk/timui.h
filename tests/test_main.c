@@ -70,6 +70,7 @@ int main(void){
         test_mouse_press_release,
         test_mouse_wheel_and_motion,
         test_mouse_wheel_not_clicked,
+        test_mouse_motion_not_clicked,
         test_focus_events,
         test_bracketed_paste,
         test_input_esc_resync_no_loss,
