@@ -124,11 +124,28 @@ static int image_fmt_size_(char *buf, size_t v){
     return n;
 }
 
+static int image_png_header_(const void *data, size_t size, int *out_w, int *out_h){
+    const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
+    const unsigned char *d;
+    uint32_t w, h;
+    if(!data || size < 24) return 0;
+    d = (const unsigned char *)data;
+    if(memcmp(d, sig, sizeof sig) != 0) return 0;
+    if(d[12] != 'I' || d[13] != 'H' || d[14] != 'D' || d[15] != 'R') return 0;
+    w = ((uint32_t)d[16] << 24) | ((uint32_t)d[17] << 16) | ((uint32_t)d[18] << 8) | d[19];
+    h = ((uint32_t)d[20] << 24) | ((uint32_t)d[21] << 16) | ((uint32_t)d[22] << 8) | d[23];
+    if(w == 0 || h == 0 || w > (uint32_t)INT_MAX || h > (uint32_t)INT_MAX) return 0;
+    if(out_w) *out_w = (int)w;
+    if(out_h) *out_h = (int)h;
+    return 1;
+}
+
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size){
     TimuiImage *img;
     TimuiAllocator al;
+    int w = 0, h = 0;
     (void)ui;
-    if(!data || size == 0) return NULL;
+    if(!image_png_header_(data, size, &w, &h)) return NULL;
     al = timui_default_allocator();
     img = (TimuiImage *)al.alloc(al.userdata, sizeof(TimuiImage));
     if(!img) return NULL;
@@ -143,14 +160,8 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     img->id = 0;                 /* assigned on first transmit (timui_images_flush_) */
     /* pixel size from the PNG IHDR (width @16, height @20, big-endian) so a
      * placement can be cropped to a cell sub-rect (smooth scroll clipping). */
-    img->px_w = img->px_h = 0;
-    if(size >= 24){
-        const unsigned char *d = (const unsigned char *)data;
-        uint32_t w = ((uint32_t)d[16] << 24) | ((uint32_t)d[17] << 16) | ((uint32_t)d[18] << 8) | d[19];
-        uint32_t h = ((uint32_t)d[20] << 24) | ((uint32_t)d[21] << 16) | ((uint32_t)d[22] << 8) | d[23];
-        img->px_w = (w <= (uint32_t)INT_MAX) ? (int)w : 0;
-        img->px_h = (h <= (uint32_t)INT_MAX) ? (int)h : 0;
-    }
+    img->px_w = w;
+    img->px_h = h;
     return img;
 }
 
@@ -175,20 +186,14 @@ static void image_copy_rows_(unsigned char *dst, const unsigned char *src,
 
 #ifndef TIMUI_NO_IMAGES
 static int image_png_preflight_(const TimuiImage *img, int *out_w, int *out_h){
-    const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
-    const unsigned char *d;
-    uint32_t w, h;
+    int w = 0, h = 0;
     uint64_t pixels;
-    if(!img || !img->data || img->len < 24 || img->len > (size_t)INT_MAX) return 0;
-    d = img->data;
-    if(memcmp(d, sig, sizeof sig) != 0) return 0;
-    w = ((uint32_t)d[16] << 24) | ((uint32_t)d[17] << 16) | ((uint32_t)d[18] << 8) | d[19];
-    h = ((uint32_t)d[20] << 24) | ((uint32_t)d[21] << 16) | ((uint32_t)d[22] << 8) | d[23];
-    if(w == 0 || h == 0) return 0;
+    if(!img || img->len > (size_t)INT_MAX) return 0;
+    if(!image_png_header_(img->data, img->len, &w, &h)) return 0;
     if(w > TIMUI_IMAGE_PNG_MAX_DIMENSION || h > TIMUI_IMAGE_PNG_MAX_DIMENSION) return 0;
-    pixels = (uint64_t)w * (uint64_t)h;
+    pixels = (uint64_t)(uint32_t)w * (uint64_t)(uint32_t)h;
     if(pixels > (uint64_t)TIMUI_IMAGE_PNG_MAX_PIXELS) return 0;
-    if(w > (uint32_t)(INT_MAX / 4)) return 0;
+    if((uint32_t)w > (uint32_t)(INT_MAX / 4)) return 0;
     if(out_w) *out_w = (int)w;
     if(out_h) *out_h = (int)h;
     return 1;

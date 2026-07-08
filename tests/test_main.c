@@ -311,6 +311,7 @@ int main(void){
         test_text_area_wrapper_enter_inserts_newline,
         test_conpty_unsupported,
         test_conpty_chunk_and_size_guards,
+        test_kitty_graphics_rejects_invalid_png,
         test_kitty_graphics_transmit,
         test_kitty_png_rgba_uses_png_payload,
         test_kitty_transmit_does_not_duplicate_payload,
