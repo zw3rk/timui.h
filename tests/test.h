@@ -327,6 +327,7 @@ void test_signal_restore(void);
 void test_kitty_graphics_clip(void);
 void test_image_png_ihdr_over_int_ignored(void);
 void test_kitty_clipped_invalid_visible_no_image_escape(void);
+void test_kitty_graphics_clip_horizontal_source_rect(void);
 void test_kitty_graphics_respects_active_clip(void);
 void test_kitty_graphics_placeholder(void);
 void test_image_protocol_force_none_placeholder(void);

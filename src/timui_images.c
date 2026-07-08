@@ -706,18 +706,26 @@ void timui_images_flush_(Timui *ui){
             int sx = 0, sy = 0, sw = 0, sh = 0;
             if(!image_has_png_(img)) continue;
             if(r.x < 0 || r.y < 0 || r.x == INT_MAX || r.y == INT_MAX) continue;
-            /* If the visible rect is a vertical sub-slice of `full`, crop the source
-             * pixels to match, so the image clips smoothly at a pane edge. */
-            if(img->px_w > 0 && img->px_h > 0 && full.h > 0 && (r.y != full.y || r.h != full.h)){
+            /* If the visible rect is a sub-slice of `full`, crop the source
+             * pixels to match, so the image clips smoothly at pane edges. */
+            if(img->px_w > 0 && img->px_h > 0 && full.w > 0 && full.h > 0 &&
+               (r.x != full.x || r.w != full.w || r.y != full.y || r.h != full.h)){
+                int64_t sx64 = ((int64_t)r.x - (int64_t)full.x) * (int64_t)img->px_w / (int64_t)full.w;
+                int64_t sw64 = (int64_t)r.w * (int64_t)img->px_w / (int64_t)full.w;
                 int64_t sy64 = ((int64_t)r.y - (int64_t)full.y) * (int64_t)img->px_h / (int64_t)full.h;
                 int64_t sh64 = (int64_t)r.h * (int64_t)img->px_h / (int64_t)full.h;
-                sx = 0;
-                sw = img->px_w;
+                if(sx64 < 0) sx64 = 0;
+                if(sx64 > img->px_w) sx64 = img->px_w;
+                if(sw64 < 1) sw64 = 1;
+                if(sx64 + sw64 > img->px_w) sw64 = (int64_t)img->px_w - sx64;
+                if(sw64 < 1) sw64 = 1;
                 if(sy64 < 0) sy64 = 0;
                 if(sy64 > img->px_h) sy64 = img->px_h;
                 if(sh64 < 1) sh64 = 1;
                 if(sy64 + sh64 > img->px_h) sh64 = (int64_t)img->px_h - sy64;
                 if(sh64 < 1) sh64 = 1;
+                sx = (int)sx64;
+                sw = (int)sw64;
                 sy = (int)sy64;
                 sh = (int)sh64;
             }

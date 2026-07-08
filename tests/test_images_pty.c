@@ -244,6 +244,35 @@ TIMUI_TEST(test_kitty_graphics_clip){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_kitty_graphics_clip_horizontal_source_rect){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiImage *img;
+    TimuiStr out;
+    unsigned char png[24] = {0};
+    png[19] = 20;   /* IHDR width  = 20 px */
+    png[23] = 10;   /* IHDR height = 10 px */
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    timui_force_cap(ui, TIMUI_CAP_KITTY_GRAPHICS, 1);
+    img = timui_image_from_png(ui, png, sizeof png);
+    TIMUI_CHECK(img && img->px_w == 20 && img->px_h == 10);
+    timui_begin(ui, &f);
+    timui_fake_clear_output(&fake);
+    timui_image_draw_clipped(f, img, TIMUI_RECT(0, 0, 4, 2), TIMUI_RECT(2, 0, 2, 2));
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "x=10"));   /* src x = 2/4 * 20 */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "w=10"));   /* src w = 2/4 * 20 */
+    TIMUI_CHECK(bytes_contain(out.ptr, out.len, "c=2"));    /* displayed in 2 cols */
+    timui_image_free(ui, img);
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_image_png_ihdr_over_int_ignored){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
