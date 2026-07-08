@@ -102,6 +102,26 @@ TimuiTheme timui_theme_builtin(TimuiBuiltinTheme);   /* DOS_BLUE/GRAY, MODERN_DA
 TimuiStyle timui_theme_style(const TimuiTheme *, TimuiStyleSlot);
 ```
 
+## UTF-8, Widths & Graphemes
+
+```c
+int    timui_utf8_decode(const char *s, size_t len, uint32_t *out_cp);
+int    timui_utf8_width(uint32_t cp);
+size_t timui_grapheme_next(const char *s, size_t len, size_t off);
+size_t timui_grapheme_prev(const char *s, size_t len, size_t off);
+int    timui_grapheme_width(const char *s, size_t len);
+int    timui_display_width(const char *s);
+int    timui_fit_cell(const char *s, int width, char *out, size_t cap, int *ellipsis);
+```
+
+The scalar UTF-8 helpers decode one codepoint and provide a minimal terminal
+cell width. Grapheme helpers walk byte offsets across common extended clusters
+that terminal UI code must not split: combining marks, variation selectors,
+skin-tone modifiers, regional-indicator flags, CRLF, and ZWJ emoji sequences.
+
+`timui_display_width` and `timui_fit_cell` use those cluster helpers, so table
+and grid truncation keep clusters intact before appending an ellipsis.
+
 ## Events & input (usually consumed by widgets)
 
 ```c

@@ -109,6 +109,8 @@ int main(void){
         test_utf8_decode,
         test_utf8_width,
         test_utf8_decode_above_max,
+        test_grapheme_next_prev,
+        test_grapheme_width,
         test_draw_text,
         test_draw_fill,
         test_draw_box_single,

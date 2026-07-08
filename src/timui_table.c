@@ -25,11 +25,10 @@ static int timui_disp_width_n_(const char *s, size_t len){
     int w = 0;
     if(!s) return 0;
     for(i = 0; i < len;){
-        uint32_t cp = 0xFFFDu;
-        int adv = timui_utf8_decode(s + i, len - i, &cp);
-        if(adv <= 0) adv = 1;                  /* never stall on a bad byte */
-        w += timui_utf8_width(cp);
-        i += (size_t)adv;
+        size_t n = timui_grapheme_next(s, len, i);
+        if(n <= i) n = i + 1;                  /* never stall on malformed input */
+        w += timui_grapheme_width(s + i, n - i);
+        i = n;
     }
     return w;
 }
@@ -80,17 +79,16 @@ TIMUI_API int timui_fit_cell(const char *s, int width, char *out, size_t cap, in
      * caller pads the slack). */
     budget = width - 1;
     for(i = 0; i < len;){
-        uint32_t cp = 0xFFFDu;
-        int adv = timui_utf8_decode(s + i, len - i, &cp);
+        size_t n = timui_grapheme_next(s, len, i);
         int gw;
-        if(adv <= 0) adv = 1;
-        gw = timui_utf8_width(cp);
+        if(n <= i) n = i + 1;
+        gw = timui_grapheme_width(s + i, n - i);
         if(used + gw > budget) break;
-        if(o + (size_t)adv + sizeof(TIMUI_ELLIPSIS_) > cap) break;  /* keep room for "…" + NUL */
-        memcpy(out + o, s + i, (size_t)adv);
-        o += (size_t)adv;
+        if(o + (n - i) + sizeof(TIMUI_ELLIPSIS_) > cap) break;  /* keep room for "…" + NUL */
+        memcpy(out + o, s + i, n - i);
+        o += n - i;
         used += gw;
-        i += (size_t)adv;
+        i = n;
     }
     if(o + 3 < cap){ memcpy(out + o, TIMUI_ELLIPSIS_, 3); o += 3; }
     out[o] = '\0';

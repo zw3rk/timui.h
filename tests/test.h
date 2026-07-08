@@ -120,6 +120,8 @@ void test_resize_oom_rollback_failure_keeps_dims(void);
 void test_utf8_decode(void);
 void test_utf8_width(void);
 void test_utf8_decode_above_max(void);
+void test_grapheme_next_prev(void);
+void test_grapheme_width(void);
 void test_draw_text(void);
 void test_draw_fill(void);
 void test_draw_box_single(void);

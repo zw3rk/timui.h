@@ -540,13 +540,22 @@ TIMUI_API uint32_t    timui_hyperlink_set(TimuiCellBuffer *buf, const char *uri)
 TIMUI_API void        timui_draw_text_linked(TimuiCellBuffer *buf, int x, int y, TimuiStr text, TimuiStyle st, uint32_t link);
 TIMUI_API void        timui_label_hyperlink(TimuiFrame *f, int x, int y, TimuiStr text, const char *uri, TimuiStyle style);
 
-/* ---- UTF-8 decode + display width (minimal v0.1) ---------------------- *
+/* ---- UTF-8 decode + display width ------------------------------------- *
  * timui_utf8_decode returns the byte length of the next codepoint (1..4),
  * 0 if the input is incomplete, or 1 with *out_cp=U+FFFD on an invalid byte.
- * timui_utf8_width is a minimal wcwidth: control/combining -> 0, CJK/
- * fullwidth -> 2, box-drawing/printable -> 1. (Generated tables are v0.2.) */
+ * timui_utf8_width is a minimal wcwidth: control/combining/format modifiers ->
+ * 0, CJK/fullwidth/emoji bases -> 2, box-drawing/printable -> 1.
+ *
+ * Grapheme helpers walk extended user-visible clusters for the common TUI
+ * cases timui must not split: CRLF, combining marks, variation selectors,
+ * emoji skin-tone modifiers, regional-indicator flags, and ZWJ emoji runs.
+ * `next` / `prev` take byte offsets into s[0..len] and return byte offsets;
+ * width measures the first cluster in s[0..len]. */
 TIMUI_API int timui_utf8_decode(const char *s, size_t len, uint32_t *out_cp);
 TIMUI_API int timui_utf8_width(uint32_t cp);
+TIMUI_API size_t timui_grapheme_next(const char *s, size_t len, size_t off);
+TIMUI_API size_t timui_grapheme_prev(const char *s, size_t len, size_t off);
+TIMUI_API int    timui_grapheme_width(const char *s, size_t len);
 
 /* ---- Drawing primitives (into the cell buffer) ------------------------ */
 typedef enum {
@@ -1154,6 +1163,7 @@ TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int l
 #include "../src/timui_int.h"
 #include "../src/timui_core.c"
 #include "../src/timui_render.c"
+#include "../src/timui_grapheme.c"
 #include "../src/timui_term.c"
 #include "../src/timui_input.c"
 #include "../src/timui_widgets.c"

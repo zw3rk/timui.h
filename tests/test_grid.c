@@ -66,6 +66,12 @@ static void run(const char *name, test_fn fn)
 #define CJK_WEN   "\xE6\x96\x87"     /* 文 (width 2) */
 #define WAVE      "\xF0\x9F\x91\x8B" /* 👋 (width 2) */
 #define ELL       "\xE2\x80\xA6"     /* … (width 1) */
+#define ACUTE     "\xCC\x81"         /* U+0301 combining acute accent */
+#define SKIN_MED  "\xF0\x9F\x8F\xBD" /* U+1F3FD skin tone modifier */
+#define RI_US     "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8" /* 🇺🇸 */
+#define HEART_VS  "\xE2\x9D\xA4\xEF\xB8\x8F"         /* ❤️ */
+#define FAMILY_ZWJ "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D" \
+                   "\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA6"            /* family */
 
 /* ----------------------------------------------------------------------- */
 /* (a) column-width fitting — display width                                  */
@@ -78,6 +84,12 @@ static void test_display_width(void)
     CHECK(timui_display_width(CJK_ZHONG CJK_WEN) == 4);   /* 中文 = 2+2 */
     CHECK(timui_display_width(WAVE) == 2);                /* emoji = 2 */
     CHECK(timui_display_width(CJK_ZHONG "x") == 3);       /* 中 + x */
+    CHECK(timui_display_width("e" ACUTE) == 1);           /* combining cluster */
+    CHECK(timui_display_width(WAVE SKIN_MED) == 2);        /* emoji + skin tone */
+    CHECK(timui_display_width(RI_US) == 2);                /* regional-indicator pair */
+    CHECK(timui_display_width(HEART_VS) == 2);             /* VS16 emoji presentation */
+    CHECK(timui_display_width(FAMILY_ZWJ) == 2);           /* ZWJ emoji sequence */
+    CHECK(timui_display_width("\r\nx") == 1);             /* CRLF is one zero-width cluster */
     CHECK(timui_display_width(NULL) == 0);                /* adversarial: NULL */
 }
 
@@ -122,6 +134,15 @@ static void test_fit_cell(void)
     CHECK_FIT(CJK_ZHONG CJK_WEN "X", 4, 3, 1, CJK_ZHONG ELL); /* 中(2)+… = 3, 4th padded */
     /* wide pair fits exactly, no ellipsis */
     CHECK_FIT(CJK_ZHONG CJK_WEN, 4, 4, 0, CJK_ZHONG CJK_WEN);
+
+    /* grapheme clusters are never split across the truncation boundary */
+    CHECK_FIT("e" ACUTE "fg", 2, 2, 1, "e" ACUTE ELL);
+    CHECK_FIT(WAVE SKIN_MED "x", 2, 1, 1, ELL);
+    CHECK_FIT(WAVE SKIN_MED "x", 3, 3, 0, WAVE SKIN_MED "x");
+    CHECK_FIT(RI_US "x", 2, 1, 1, ELL);
+    CHECK_FIT(RI_US "x", 3, 3, 0, RI_US "x");
+    CHECK_FIT(FAMILY_ZWJ "x", 2, 1, 1, ELL);
+    CHECK_FIT(HEART_VS "x", 2, 1, 1, ELL);
 
     /* adversarial: width 0 / negative -> empty, ellipsis flagged if content lost */
     CHECK_FIT("abc", 0, 0, 1, "");
