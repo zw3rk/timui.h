@@ -47,6 +47,26 @@ TIMUI_TEST(test_mouse_sgr_cb3_is_release){
     TIMUI_CHECK(!s.ev[0].as.mouse.pressed && s.ev[0].as.mouse.released);
 }
 
+TIMUI_TEST(test_mouse_malformed_sgr_ignored){
+    TimuiInputParser p;
+    Sink s;
+
+    s.n = 0;
+    timui_input_init(&p);
+    FEED(&p, "\x1b[<0;5M");
+    TIMUI_CHECK(s.n == 0);
+
+    s.n = 0;
+    timui_input_init(&p);
+    FEED(&p, "\x1b[<;;M");
+    TIMUI_CHECK(s.n == 0);
+
+    s.n = 0;
+    timui_input_init(&p);
+    FEED(&p, "\x1b[<0;0;1M");
+    TIMUI_CHECK(s.n == 0);
+}
+
 TIMUI_TEST(test_mouse_wheel_and_motion){
     TimuiInputParser p;
     Sink s;

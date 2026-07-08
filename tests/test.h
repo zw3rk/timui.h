@@ -85,6 +85,7 @@ void test_input_utf8(void);
 void test_input_invalid_safe(void);
 void test_mouse_press_release(void);
 void test_mouse_sgr_cb3_is_release(void);
+void test_mouse_malformed_sgr_ignored(void);
 void test_mouse_wheel_and_motion(void);
 void test_mouse_wheel_not_clicked(void);
 void test_mouse_motion_not_clicked(void);

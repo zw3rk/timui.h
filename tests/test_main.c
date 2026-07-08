@@ -74,6 +74,7 @@ int main(void){
         test_input_invalid_safe,
         test_mouse_press_release,
         test_mouse_sgr_cb3_is_release,
+        test_mouse_malformed_sgr_ignored,
         test_mouse_wheel_and_motion,
         test_mouse_wheel_not_clicked,
         test_mouse_motion_not_clicked,

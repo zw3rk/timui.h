@@ -316,7 +316,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
              * fresh escape (ECMA-48), rather than resyncing to ground and
              * leaking the interrupted tail as text. */
             if(c == 0x1b){ p->state = 1; p->esc_since_ms = p->now_ms; break; }
-            if(c == '<'){ p->csi_mouse = 1; p->mcount = 0; p->mparam[0] = p->mparam[1] = p->mparam[2] = 0; break; }
+            if(c == '<'){ p->csi_mouse = 1; p->mcount = 0; p->mparam[0] = p->mparam[1] = p->mparam[2] = -1; break; }
             if(c == '?' || c == '>' || c == '='){ break; }              /* private marker */
             /* Z4: ':' opens a sub-parameter (Kitty event-type / alternate-key
              * reports). timui does not use sub-parameters, so ignore their
@@ -326,8 +326,10 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             if(c >= '0' && c <= '9'){
                 if(p->sub_param){ break; }                              /* discard sub-parameter digits */
                 if(p->csi_mouse){
-                    if(p->mcount < 3 && p->mparam[p->mcount] < 99999)
-                        p->mparam[p->mcount] = p->mparam[p->mcount] * 10 + (c - '0');
+                    if(p->mcount < 3 && p->mparam[p->mcount] < 99999){
+                        if(p->mparam[p->mcount] < 0) p->mparam[p->mcount] = c - '0';
+                        else p->mparam[p->mcount] = p->mparam[p->mcount] * 10 + (c - '0');
+                    }
                 } else if(p->has_mod){
                     if(p->mod_param < 99999) p->mod_param = p->mod_param * 10 + (c - '0');
                 } else { if(p->param < 999999) p->param = p->param * 10 + (c - '0'); p->nparams = 1; }
@@ -342,7 +344,12 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
             if(c >= 0x40 && c <= 0x7e){
                 uint32_t mods = p->has_mod ? decode_kitty_mods(p->mod_param) : 0;
                 if(p->csi_mouse){
-                    if(c == 'M' || c == 'm'){ emit_mouse(cb, ctx, p->mparam, c); count++; }
+                    if((c == 'M' || c == 'm') &&
+                       p->mcount == 2 && p->mparam[0] >= 0 &&
+                       p->mparam[1] > 0 && p->mparam[2] > 0){
+                        emit_mouse(cb, ctx, p->mparam, c);
+                        count++;
+                    }
                     p->csi_mouse = 0;
                 } else if(c == '~'){
                     int n = p->nparams ? p->param : 0;
