@@ -10,13 +10,13 @@ date: 2026-07-09
 
 - Branch: `runner-capture-research`
 - Follow-up branch: `windows-visual-rca`
-- Latest inspected hosted-run commit: `3acbd66`
-  (`docs: record hosted runner visual RCA`)
+- Latest inspected hosted-run commit: `7b38a1a`
+  (`ci: bound hosted iTerm2 API launch`)
 - Remote push before the iTerm2 API probe: `github windows-visual-rca` pushed
   through `3acbd66`
 - GitHub workflow: `Hosted visual probes`
-- Latest run inspected: `28982641529`
-- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28982641529`
+- Latest run inspected: `28984631494`
+- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28984631494`
 
 ## Read First
 
@@ -69,6 +69,13 @@ date: 2026-07-09
   `Session.async_screenshot()` for `iterm2-api-session.png`. This should avoid
   macOS global screen capture/TCC entirely, but it is not accepted until a
   hosted run produces and manually verifies the PNG.
+- Run `28984631494` proved the upstream iTerm2 Python API overlay works, but
+  iTerm2 did not reach the API server because the just-installed Homebrew cask
+  hit macOS first-launch/Gatekeeper confirmation:
+  `iterm2-screen-12s.png` and `iterm2-screen-24s.png` show the
+  `"iTerm" is an app downloaded from the Internet` prompt. The next probe
+  removes `com.apple.quarantine`, registers the app, installs PyObjC for the
+  AppKit prelaunch path, and falls back to direct executable launch.
 - Historical Windows Sixel rejection was fixture-size, not renderer failure.
   Run `28982372688` showed direct Sixel rendered, while timui emitted three
   `4x4` rasters because the smoke fixture was 4x4 and MSYS/Windows Terminal did
@@ -85,7 +92,15 @@ date: 2026-07-09
   - `artifacts/gh-runs/28981426012/`
   - `artifacts/gh-runs/28982372688/`
   - `artifacts/gh-runs/28982641529/`
+  - `artifacts/gh-runs/28984631494/`
 - `/artifacts/` is gitignored scratch.
+- Run `28984631494` macOS iTerm2:
+  - `iterm2-api-overlay.status`: `0`
+  - `iterm2-open.status`: `124`
+  - `iterm2-api-capture.status`: `1`
+  - `iterm2-api-prelaunch.txt`: `ModuleNotFoundError("No module named 'AppKit'")`
+  - `iterm2-screen-12s.png`: visible first-launch/Gatekeeper prompt for iTerm,
+    not accepted protocol evidence.
 - Run `28982641529` Windows:
   - `image-smoke-build.status`: `0`
   - `conpty-smoke.status`: `2`
@@ -124,12 +139,12 @@ date: 2026-07-09
 - `nix develop -c make check-image-smoke` - failed after adding the visible
   Sixel predicate, then passed after the 64x24 smoke fixture change.
 - GitHub hosted workflow runs: `28980999976`, `28981256095`, `28981426012`,
-  `28982372688`, `28982641529`
+  `28982372688`, `28982641529`, `28984631494`
 
 ## Next Safe Move
 
-- Integrate `windows-visual-rca` into `master` after review/verification.
-- For accepted iTerm2 evidence: trigger `Hosted visual probes` again and inspect
+- For accepted iTerm2 evidence: trigger `Hosted visual probes` again after the
+  first-launch remediation commit and inspect
   `iterm2-api-session.png`, `iterm2-api-session.json`, and
   `iterm2-api-capture.status`. Accept only if `iterm2-api-overlay.status` also
   passed, `iterm2-api-source-commit.txt` records the upstream API package

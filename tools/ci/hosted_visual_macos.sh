@@ -53,6 +53,8 @@ note ""
   uname -a || true
   printf '\nwhoami:\n'
   whoami || true
+  printf '\nconsole user:\n'
+  stat -f 'user=%Su uid=%u' /dev/console || true
   printf '\nwindowserver:\n'
   pgrep -lf WindowServer || true
   printf '\niterm2 app:\n'
@@ -172,6 +174,35 @@ fi
 
 if [ -d "${iterm_app}" ]; then
   note "- iTerm2 app: ${iterm_app}"
+  console_uid="$(stat -f '%u' /dev/console 2>/dev/null || id -u)"
+  lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+  {
+    printf 'app: %s\n\n' "${iterm_app}"
+    printf 'quarantine before:\n'
+    xattr -p com.apple.quarantine "${iterm_app}" 2>&1 || true
+    if [ -x "${iterm_app}/Contents/MacOS/iTerm2" ]; then
+      printf '\nexecutable quarantine before:\n'
+      xattr -p com.apple.quarantine "${iterm_app}/Contents/MacOS/iTerm2" 2>&1 || true
+    fi
+    printf '\nrecursive quarantine removal:\n'
+    xattr -dr com.apple.quarantine "${iterm_app}" 2>&1 || true
+    printf '\nquarantine after:\n'
+    xattr -p com.apple.quarantine "${iterm_app}" 2>&1 || true
+    if [ -x "${iterm_app}/Contents/MacOS/iTerm2" ]; then
+      printf '\nexecutable quarantine after:\n'
+      xattr -p com.apple.quarantine "${iterm_app}/Contents/MacOS/iTerm2" 2>&1 || true
+    fi
+    printf '\nspctl assessment:\n'
+    spctl --assess --verbose "${iterm_app}" 2>&1 || true
+    printf '\nlsregister -f:\n'
+    if [ -x "${lsregister}" ]; then
+      "${lsregister}" -f "${iterm_app}" || true
+    fi
+  } > "${out}/iterm2-first-launch.stdout" 2> "${out}/iterm2-first-launch.stderr"
+  status=$?
+  printf '%s\n' "${status}" > "${out}/iterm2-first-launch.status"
+  note "- iTerm2 first-launch remediation: exit ${status}"
+
   {
     printf 'app: %s\n\n' "${iterm_app}"
     if [ -f "${iterm_app}/Contents/Info.plist" ]; then
@@ -187,7 +218,6 @@ if [ -d "${iterm_app}" ]; then
     osascript -e 'id of application "iTerm2"' || true
     osascript -e 'application id "com.googlecode.iterm2" is running' || true
     printf '\nlsregister:\n'
-    lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
     if [ -x "${lsregister}" ]; then
       "${lsregister}" -f "${iterm_app}" || true
     fi
@@ -234,6 +264,7 @@ PY
   api_python="${api_venv}/bin/python3"
   if [ -x "${api_python}" ]; then
     capture iterm2-api-pip "${api_python}" -m pip install --upgrade pip iterm2 || true
+    capture iterm2-api-pyobjc "${api_python}" -m pip install --upgrade pyobjc-framework-Cocoa || true
     api_src="${RUNNER_TEMP:-/tmp}/timui-iterm2-api-src"
     {
       rm -rf "${api_src}"
@@ -267,7 +298,12 @@ PY
   fi
 
   {
-    open -b com.googlecode.iterm2 || open -a iTerm || open "${iterm_app}"
+    launchctl asuser "${console_uid}" /usr/bin/open -b com.googlecode.iterm2 ||
+      launchctl asuser "${console_uid}" /usr/bin/open -a iTerm ||
+      launchctl asuser "${console_uid}" /usr/bin/open "${iterm_app}" ||
+      open -b com.googlecode.iterm2 ||
+      open -a iTerm ||
+      open "${iterm_app}"
   } > "${out}/iterm2-open.stdout" 2> "${out}/iterm2-open.stderr" &
   open_pid=$!
   open_status=""
@@ -288,6 +324,32 @@ PY
   fi
   printf '%s\n' "${open_status}" > "${out}/iterm2-open.status"
   note "- iTerm2 open: exit ${open_status}"
+  pgrep -lf 'iTerm|iTerm2' > "${out}/iterm2-processes-after-open.txt" 2>&1 || true
+  if [ "${open_status}" != "0" ]; then
+    {
+      iterm_exe="${iterm_app}/Contents/MacOS/iTerm2"
+      if [ ! -x "${iterm_exe}" ]; then
+        printf 'missing executable: %s\n' "${iterm_exe}"
+        exit 127
+      fi
+      printf 'launching: %s\n' "${iterm_exe}"
+      launchctl asuser "${console_uid}" /usr/bin/nohup "${iterm_exe}" \
+        > "${out}/iterm2-direct-launch.process.stdout" \
+        2> "${out}/iterm2-direct-launch.process.stderr" &
+      direct_pid=$!
+      printf '%s\n' "${direct_pid}" > "${out}/iterm2-direct-launch.pid"
+      sleep 4
+      ps -p "${direct_pid}" -o pid,ppid,comm,args || true
+      printf '\nprocesses:\n'
+      pgrep -lf 'iTerm|iTerm2' || true
+    } > "${out}/iterm2-direct-launch.stdout" 2> "${out}/iterm2-direct-launch.stderr"
+    status=$?
+    printf '%s\n' "${status}" > "${out}/iterm2-direct-launch.status"
+    note "- iTerm2 direct executable launch: exit ${status}"
+  else
+    note "- iTerm2 direct executable launch: skipped, open succeeded"
+    printf 'open succeeded\n' > "${out}/iterm2-direct-launch.skip"
+  fi
   sleep 6
 
   api_script="${out}/iterm2-api-capture.py"
@@ -308,11 +370,18 @@ import iterm2
 def prelaunch_iterm():
     try:
         import AppKit
+        import Foundation
         bundle = "com.googlecode.iterm2"
         running = AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle)
-        if not running:
-            AppKit.NSWorkspace.sharedWorkspace().launchApplication_("iTerm")
-        return "ok"
+        if running:
+            return "already running"
+        app_path = os.environ.get("IT2_APP_PATH")
+        if app_path:
+            url = Foundation.NSURL.fileURLWithPath_(app_path)
+            ok = AppKit.NSWorkspace.sharedWorkspace().openURL_(url)
+            return "openURL(%s)=%s" % (app_path, ok)
+        ok = AppKit.NSWorkspace.sharedWorkspace().launchApplication_("iTerm")
+        return "launchApplication(iTerm)=%s" % ok
     except Exception as exc:
         return repr(exc)
 

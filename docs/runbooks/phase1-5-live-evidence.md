@@ -107,6 +107,12 @@ Hosted runner probe:
   `"screen_text_matched": true`, and the PNG visibly shows the iTerm2 live smoke
   with PNG-backed image tiles. This path uses iTerm2's own session screenshot
   API, not macOS global screen capture.
+- If the iTerm2 API path fails before connection, inspect
+  `iterm2-first-launch.*`, `iterm2-open.*`, `iterm2-direct-launch.*`, and the
+  full-display screenshots first. Run `28984631494` failed because the
+  Homebrew-installed iTerm2 cask was stopped at macOS first-launch/Gatekeeper
+  confirmation, so a screenshot showing that prompt is diagnostic, not protocol
+  evidence.
 - Direct macOS screenshots such as `iterm2-screen-*.png`,
   `iterm2-window-*.png`, and `iterm2-region-*.png` may also count only if they
   visibly show the iTerm2 live smoke with PNG-backed image tiles and no TCC

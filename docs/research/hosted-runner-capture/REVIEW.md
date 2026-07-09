@@ -65,6 +65,13 @@ usable as timui.h terminal visual evidence?
   avoid an AppleScript auth prompt after `EnableAPIServer` is set. Treat this as
   accepted iTerm2 visual evidence only after the PNG artifact is manually
   inspected and visibly shows the `image_smoke` iTerm2 inline-image tiles.
+- Run `28984631494` narrowed the next iTerm2 blocker to first launch, not
+  desktop availability: the runner had a logged-in GUI session and
+  `screencapture` produced desktop PNGs, but the visible iTerm2 artifact was the
+  macOS `"downloaded from the Internet"` confirmation for the Homebrew cask.
+  The next probe removes `com.apple.quarantine`, registers the bundle with
+  LaunchServices, installs PyObjC for AppKit launch diagnostics, and falls back
+  to direct executable launch before retrying the iTerm2 API screenshot.
 - Hosted Windows can run screen-capture code and can render Windows Terminal UI
   in the active `runneradmin` console session. Run `28982641529` proved
   Windows Terminal Sixel rendering on hosted Windows Server 2025:
@@ -111,8 +118,9 @@ usable as timui.h terminal visual evidence?
 
 - Add protocol-level Sixel decode predicates so hosted Windows can still prove
   Sixel payload correctness without depending on visible desktop capture.
-- Hosted iTerm2 direct OS capture remains blocked by macOS privacy/TCC. The
-  next safe experiment is the Python API session PNG path; if that fails, use
-  Terminal.app hosted screenshots for capture mechanics and deterministic
+- Hosted iTerm2 direct OS capture remains weaker than Terminal.app and may
+  still hit macOS privacy/TCC after first launch succeeds. The next safe
+  experiment is the de-quarantined Python API session PNG path; if that fails,
+  use Terminal.app hosted screenshots for capture mechanics and deterministic
   protocol-byte evidence, or use a persistent Mac with pre-approved permissions
   if native iTerm2 pixels become a release requirement.
