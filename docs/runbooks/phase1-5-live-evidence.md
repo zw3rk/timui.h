@@ -108,13 +108,13 @@ Hosted runner probe:
 - Prefer `iterm2-window-12s.png`. Accept it if it visibly shows the iTerm2 live
   smoke with `active: iterm2 (forced)`, PNG-backed image tiles for `plain png`
   and `png+rgba sidecar`, and an unsupported note for `raw rgba`. Run
-  `28985723187` is the accepted hosted macOS iTerm2 baseline; it predates the
-  clearer raw-RGBA note, but already proved the PNG-backed iTerm2 path.
+  `28986249841` is the accepted hosted macOS iTerm2 baseline for this cleaned-up
+  smoke.
 - `iterm2-region-12s.png` and `iterm2-screen-*.png` may also count only if they
   visibly show the same live iTerm2 payload without TCC or other permission
   prompts obscuring the evidence.
 - Treat `iterm2-api-session.json` as a supporting text predicate when it records
-  `"screen_text_matched": true`. On run `28985723187`, the Python API connected
+  `"screen_text_matched": true`. On run `28986249841`, the Python API connected
   and matched the screen text, but Homebrew iTerm2 3.6.11 rejected
   `Session.async_screenshot()` as too old for the screenshot RPC. If a future
   run produces `iterm2-api-session.png`, accept it only if the JSON predicate is

@@ -10,12 +10,13 @@ date: 2026-07-09
 
 - Branch: `runner-capture-research`
 - Follow-up branch: `windows-visual-rca`
-- Latest inspected hosted-run commit: `9c00183`
-  (`docs: accept hosted iTerm2 visual evidence`)
-- Remote push: `github windows-visual-rca` pushed through `9c00183`
+- Latest inspected hosted-run commit: `ba94c37`
+  (`examples: clarify iTerm2 image smoke`)
+- Remote push for visual evidence: `github windows-visual-rca` pushed through
+  `ba94c37`
 - GitHub workflow: `Hosted visual probes`
-- Latest run inspected: `28985723187`
-- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28985723187`
+- Latest run inspected: `28986249841`
+- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28986249841`
 
 ## Read First
 
@@ -45,11 +46,10 @@ date: 2026-07-09
   `image_smoke` tiles visibly rendered; `timui-sixel-dcs-metrics.txt` records
   three `64x24` Sixel rasters.
 - Hosted macOS iTerm2 now has accepted timui OSC 1337 visual evidence. Run
-  `28985723187` produced `iterm2-window-12s.png`, visibly showing the
+  `28986249841` produced `iterm2-window-12s.png`, visibly showing the
   `timui image smoke` UI in iTerm2 with `active: iterm2 (forced)` and both
-  PNG-backed image tiles rendered. Raw RGBA-only images are expected not to emit
-  an iTerm2 image payload; the smoke harness now labels that slot explicitly
-  instead of relying on the generic `[img]` placeholder.
+  PNG-backed image tiles rendered. The raw RGBA-only slot visibly says
+  `iTerm2 needs PNG`, which is expected for this protocol path.
 - The Windows POSIX image-smoke build now succeeds under MSYS2 after passing the
   setup action's `msys2-location` output into the script and overriding
   `POSIX_CFLAGS` for MSYS C99 feature visibility.
@@ -63,10 +63,10 @@ date: 2026-07-09
   prompts instead of the timui iTerm2 smoke.
 - macOS direct full-screen capture can still trigger a real user-consent prompt
   for direct screen/audio capture. The accepted path is the targeted iTerm2
-  window capture from run `28985723187`, not the full-screen diagnostic when it
+  window capture from run `28986249841`, not the full-screen diagnostic when it
   contains a TCC overlay.
 - The iTerm2 Python API connection path is useful as a text predicate, but not
-  as screenshot evidence on current hosted images. Run `28985723187` connected
+  as screenshot evidence on current hosted images. Run `28986249841` connected
   to iTerm2, `iterm2-api-session.json` recorded `"screen_text_matched": true`,
   and the upstream API overlay exposed `Session.async_screenshot()`, but
   Homebrew iTerm2 3.6.11 rejected that RPC as too old for Python API session
@@ -98,8 +98,9 @@ date: 2026-07-09
   - `artifacts/gh-runs/28984631494/`
   - `artifacts/gh-runs/28985212786/`
   - `artifacts/gh-runs/28985723187/`
+  - `artifacts/gh-runs/28986249841/`
 - `/artifacts/` is gitignored scratch.
-- Run `28985723187` macOS iTerm2:
+- Run `28986249841` macOS iTerm2:
   - `image-smoke-build.status`: `0`
   - `iterm2-first-launch.status`: `0`
   - `iterm2-defaults-allow-inline-display.status`: `0`
@@ -107,10 +108,18 @@ date: 2026-07-09
   - `iterm2-api-session.json`: `"screen_text_matched": true`
   - `iterm2-api-capture.status`: `1`, because iTerm2 3.6.11 is too old for the
     Python API screenshot RPC.
+  - `screencapture-window-12s.status`: `0`
   - `iterm2-window-12s.png`: accepted native iTerm2 visual evidence; visible
-    PNG-backed `plain png` and `png+rgba sidecar` tiles. The raw RGBA-only slot
-    is not accepted as iTerm2 image evidence because OSC 1337 needs PNG-backed
-    payloads in this implementation.
+    PNG-backed `plain png` and `png+rgba sidecar` tiles, plus the expected
+    `iTerm2 needs PNG` note in the raw RGBA-only slot.
+  - `osc1337-count.txt`: `0`; treat this as a typescript diagnostic only, not as
+    a contradiction of the visible iTerm2 window capture.
+  - `evidence.md`: Nix action outcome was `failure`, so the hosted probe used
+    its native `make` fallback. This is acceptable only for this best-effort
+    hosted visual evidence path; project gates still use `nix develop`.
+- Run `28985723187` macOS iTerm2:
+  - Accepted prior baseline for the PNG-backed iTerm2 path before the raw-RGBA
+    slot was relabeled.
 - Run `28985212786` macOS iTerm2:
   - First-launch Gatekeeper prompt was cleared and iTerm2 launched.
   - `iterm2-window-12s.png` showed the next blocker:
@@ -166,13 +175,13 @@ date: 2026-07-09
 - `nix develop -c make check` - passed after the iTerm2 cleanup.
 - GitHub hosted workflow runs: `28980999976`, `28981256095`, `28981426012`,
   `28982372688`, `28982641529`, `28984631494`, `28985212786`, `28985469159`,
-  `28985723187`
+  `28985723187`, `28986249841`
 
 ## Next Safe Move
 
 - For future iTerm2 evidence: prefer `iterm2-window-12s.png` or
   `iterm2-region-12s.png` from `Hosted visual probes`. The accepted baseline is
-  run `28985723187` at `9c00183`. Treat `iterm2-api-session.json` as a useful
+  run `28986249841` at `ba94c37`. Treat `iterm2-api-session.json` as a useful
   text predicate, but not screenshot evidence while Homebrew iTerm2 3.6.11
   reports the screenshot RPC unsupported.
 - For ConPTY: debug `tools/conpty_smoke_win32.c` on an interactive Windows host
