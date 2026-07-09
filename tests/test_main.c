@@ -394,6 +394,9 @@ int main(void){
         test_getters,
         test_render_stream_chat_like,
         test_frame_synchronized_output,
+        test_async_scan_state_valid_messages,
+        test_async_scan_state_rejects_malformed_progress,
+        test_async_scan_state_clamps_progress,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

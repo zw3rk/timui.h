@@ -402,5 +402,8 @@ void test_app_frame_delivers_large_messages(void);
 void test_getters(void);
 void test_render_stream_chat_like(void);
 void test_frame_synchronized_output(void);
+void test_async_scan_state_valid_messages(void);
+void test_async_scan_state_rejects_malformed_progress(void);
+void test_async_scan_state_clamps_progress(void);
 
 #endif /* TIMUI_TEST_H */

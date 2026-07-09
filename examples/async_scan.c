@@ -9,27 +9,25 @@
  */
 #define TIMUI_IMPLEMENTATION
 #include "timui.h"
+#include "async_scan_state.h"
 
 #include <pthread.h>
 #include <time.h>      /* nanosleep */
-
-typedef struct { int progress; int done; } Model;
-enum { MSG_PROGRESS = 1, MSG_DONE };
 
 static void *worker(void *arg){
     Timui *ui = (Timui *)arg;
     int i;
     for(i = 0; i <= 10; i++){
         int p = i * 10;
-        timui_post(ui, MSG_PROGRESS, &p, sizeof p);
+        timui_post(ui, ASYNC_SCAN_MSG_PROGRESS, &p, sizeof p);
         { struct timespec ts = {0, 100 * 1000 * 1000}; nanosleep(&ts, NULL); }   /* 100ms */
     }
-    { int d = 1; timui_post(ui, MSG_DONE, &d, sizeof d); }
+    timui_post(ui, ASYNC_SCAN_MSG_DONE, NULL, 0);
     return NULL;
 }
 
 static void view(TimuiFrame *f, void *m){
-    Model *mdl = (Model *)m;
+    AsyncScanModel *mdl = (AsyncScanModel *)m;
     TimuiCellBuffer *buf = timui_frame_buffer(f);
     TimuiRect root = timui_root(f);
     TimuiRect bar;
@@ -46,17 +44,15 @@ static void view(TimuiFrame *f, void *m){
 }
 
 static void update(void *m, uint32_t type, const void *msg, size_t sz){
-    Model *mdl = (Model *)m;
-    (void)sz;
-    if(type == MSG_PROGRESS) mdl->progress = *(const int *)msg;
-    else if(type == MSG_DONE){ mdl->progress = 100; mdl->done = 1; }
+    (void)async_scan_update((AsyncScanModel *)m, type, msg, sz);
 }
 
 int main(void){
     TimuiConfig cfg = {0};
     Timui *ui = NULL;
-    Model mdl = {0};
+    AsyncScanModel mdl = {0};
     pthread_t th;
+    int thread_started = 0;
     cfg.title     = "timui.h async scan";
     cfg.input_fd  = 0;
     cfg.output_fd = 1;
@@ -65,21 +61,24 @@ int main(void){
     cfg.theme     = TIMUI_THEME_DOS_BLUE;
     if(timui_open(&cfg, &ui) != TIMUI_OK) return 1;
 
-    pthread_create(&th, NULL, worker, ui);
+    if(pthread_create(&th, NULL, worker, ui) == 0) thread_started = 1;
+    else mdl.done = 1;
     while(!timui_should_quit(ui)){
         TimuiFrame *f = NULL;
         uint32_t type = 0;
         int val = 0;
-        size_t sz = sizeof val;
         if(!timui_begin(ui, &f)) break;
-        while(timui_recv(ui, &type, &val, &sz)) update(&mdl, type, &val, sz);
+        for(;;){
+            size_t sz = sizeof val;
+            if(!timui_recv(ui, &type, &val, &sz)) break;
+            update(&mdl, type, sz == 0 ? NULL : &val, sz);
+        }
         if(mdl.done) timui_quit(ui);          /* W2: terminate on completion */
         view(f, &mdl);
         if(timui_key_pressed(f, TIMUI_KEY_ESCAPE)) timui_quit(ui);
-        sz = sizeof val;
         timui_end(f);
     }
-    pthread_join(th, NULL);
+    if(thread_started) pthread_join(th, NULL);
     timui_close(ui);
     return 0;
 }
