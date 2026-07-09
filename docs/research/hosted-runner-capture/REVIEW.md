@@ -48,12 +48,13 @@ usable as timui.h terminal visual evidence?
   Terminal.app. Prefer opening an executable `.command` file with
   `open -a Terminal`, then capture with `screencapture`.
 - Hosted iTerm2 OS-level capture is possible when the probe targets the iTerm2
-  window rather than relying only on full-screen diagnostics. Run `28985469159`
+  window rather than relying only on full-screen diagnostics. Run `28985723187`
   on `macos-15` produced accepted native iTerm2 visual evidence in
   `iterm2-window-12s.png`: `timui image smoke`, `active: iterm2 (forced)`, and
-  both PNG-backed OSC 1337 tiles were visible. Full-screen diagnostic captures
-  may still include macOS TCC overlays and should not count when they obscure
-  the terminal payload.
+  both PNG-backed OSC 1337 tiles were visible. The raw RGBA-only slot is not an
+  iTerm2 image payload; the smoke harness labels it as unsupported for this
+  protocol. Full-screen diagnostic captures may still include macOS TCC overlays
+  and should not count when they obscure the terminal payload.
 - iTerm2's Python API is a separate promising path. Current upstream source
   exposes `Session.async_screenshot()`, which asks iTerm2 for a PNG of the
   session's visible screen rather than asking macOS for global screen capture.
@@ -72,7 +73,7 @@ usable as timui.h terminal visual evidence?
   `screencapture` produced desktop PNGs, but the visible iTerm2 artifact was the
   macOS `"downloaded from the Internet"` confirmation for the Homebrew cask.
 - Run `28985212786` then cleared first launch and found the iTerm2 inline-image
-  consent prompt. Run `28985469159` fixed that by pre-seeding
+  consent prompt. Run `28985723187` fixed that by pre-seeding
   `NoSyncSuppressDownloadConfirmation` and its saved selection before launch.
 - Hosted Windows can run screen-capture code and can render Windows Terminal UI
   in the active `runneradmin` console session. Run `28982641529` proved
@@ -121,7 +122,7 @@ usable as timui.h terminal visual evidence?
 
 - Add protocol-level Sixel decode predicates so hosted Windows can still prove
   Sixel payload correctness without depending on visible desktop capture.
-- Hosted iTerm2 visual evidence has an accepted baseline in run `28985469159`.
+- Hosted iTerm2 visual evidence has an accepted baseline in run `28985723187`.
   Remaining work is to make the predicate more automatic, for example by adding
   ROI/pixel checks against `iterm2-window-12s.png` or by revisiting
   `Session.async_screenshot()` when the hosted iTerm2 cask supports that RPC.

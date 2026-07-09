@@ -79,6 +79,15 @@ static void draw_row(TimuiFrame *f, int x, int y, const char *label,
     timui_image_draw(f, img, r);
 }
 
+static void draw_unsupported(TimuiFrame *f, int x, int y, const char *label,
+                             const char *note, TimuiRect r){
+    TimuiStyle box = timui_style_make(0x98a1a6, 0x050708, 0);
+    timui_label(f, x, y, timui_str_from_cstr(label),
+                timui_style_make(0x98a1a6, TIMUI_COLOR_DEFAULT, 0));
+    timui_draw_fill(timui_frame_buffer(f), r, box);
+    timui_label(f, r.x, r.y + r.h / 2, timui_str_from_cstr(note), box);
+}
+
 int main(int argc, char **argv){
     TimuiConfig cfg = {0};
     Timui *ui = NULL;
@@ -140,11 +149,21 @@ int main(int argc, char **argv){
 
         if(root.w >= 70 && root.h >= 18){
             draw_row(f, 4, 6,  "plain png",      png,  TIMUI_RECT(4,  8, 16, 7));
-            draw_row(f, 28, 6, "raw rgba",       rgba, TIMUI_RECT(28, 8, 16, 7));
+            if(active == TIMUI_IMAGE_PROTOCOL_ITERM2){
+                draw_unsupported(f, 28, 6, "raw rgba", "iTerm2 needs PNG",
+                                 TIMUI_RECT(28, 8, 16, 7));
+            } else {
+                draw_row(f, 28, 6, "raw rgba", rgba, TIMUI_RECT(28, 8, 16, 7));
+            }
             draw_row(f, 52, 6, "png+rgba sidecar", both, TIMUI_RECT(52, 8, 16, 7));
         } else {
             draw_row(f, 2, 5,  "plain png",      png,  TIMUI_RECT(2,  7, 14, 5));
-            draw_row(f, 2, 13, "raw rgba",       rgba, TIMUI_RECT(2, 15, 14, 5));
+            if(active == TIMUI_IMAGE_PROTOCOL_ITERM2){
+                draw_unsupported(f, 2, 13, "raw rgba", "PNG needed",
+                                 TIMUI_RECT(2, 15, 14, 5));
+            } else {
+                draw_row(f, 2, 13, "raw rgba", rgba, TIMUI_RECT(2, 15, 14, 5));
+            }
             draw_row(f, 2, 21, "png+rgba sidecar", both, TIMUI_RECT(2, 23, 14, 5));
         }
 

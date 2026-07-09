@@ -629,6 +629,13 @@ check-image-smoke: $(BLDDIR)/image_smoke $(BLDDIR)/pty_drive $(BLDDIR)/vt_render
 	  && ! grep -Fq '"1;1;4;4' "$(RECDIR)/image-smoke-sixel.raw" \
 	  && printf "$(C_GREEN)✓ image_smoke$(C_RESET) forced Sixel emits visible source-pixel rasters\n" \
 	  || { printf "$(C_YELL)✗ image_smoke$(C_RESET) forced Sixel used tiny fixture rasters\n"; exit 1; }
+	@./$(BLDDIR)/pty_drive --cols 96 --rows 28 --run-ms 1000 --settle-ms 200 \
+	   --out "$(RECDIR)/image-smoke-iterm2.raw" -- ./$(BLDDIR)/image_smoke --frames 1 --protocol iterm2 < /dev/null
+	@count=$$(grep -ao '1337;File=' "$(RECDIR)/image-smoke-iterm2.raw" | wc -l | tr -d ' '); \
+	 out=$$(./$(BLDDIR)/vt_render --cols 96 --rows 28 "$(RECDIR)/image-smoke-iterm2.raw"); \
+	 [ "$$count" = "2" ] && echo "$$out" | grep -q 'iTerm2 needs PNG' \
+	  && printf "$(C_GREEN)✓ image_smoke$(C_RESET) forced iTerm2 skips raw RGBA-only payloads\n" \
+	  || { printf "$(C_YELL)✗ image_smoke$(C_RESET) iTerm2 smoke: expected two OSC 1337 PNG-backed payloads and an unsupported-RGBA note\n"; printf 'count=%s\n%s\n' "$$count" "$$out"; exit 1; }
 
 # Headless IRC smoke: run the client's OFFLINE --demo path (canned transcript,
 # NO network) through a pty and assert the model+render pipeline works: the

@@ -72,7 +72,8 @@ Reject or mark inconclusive if:
 Prerequisites:
 
 - iTerm2 or another terminal that explicitly supports OSC 1337 inline images.
-- A visible terminal window large enough for the three image tiles.
+- A visible terminal window large enough for the two PNG-backed image tiles and
+  the raw-RGBA note.
 
 Command:
 
@@ -85,13 +86,16 @@ Accept if all are true:
 - The command exits with status 0.
 - The screen says `active: iterm2 (forced)`.
 - `plain png` and `png+rgba sidecar` show visible images.
-- `raw rgba` may render `[img]`; iTerm2 inline images are PNG-backed in this
-  implementation.
+- `raw rgba` shows the explicit unsupported note. iTerm2 inline images are
+  PNG-backed in this implementation; raw RGBA-only images are not emitted as
+  OSC 1337 image payloads.
 - No terminal corruption remains after exit.
 
 Reject or mark inconclusive if:
 
 - The PNG-backed tiles are placeholders.
+- The raw-RGBA slot is treated as image evidence rather than as the expected
+  unsupported note.
 - The run is a captured escape stream without visual confirmation.
 
 Hosted runner probe:
@@ -102,15 +106,15 @@ Hosted runner probe:
   `TIMUI_HOSTED_SCREENSHOT_SANITY` Terminal.app window; if it does not, the
   hosted macOS screenshot path is inconclusive before iTerm2 is considered.
 - Prefer `iterm2-window-12s.png`. Accept it if it visibly shows the iTerm2 live
-  smoke with `active: iterm2 (forced)` and PNG-backed image tiles for
-  `plain png` and `png+rgba sidecar`. Run `28985469159` is the accepted hosted
-  macOS iTerm2 baseline. The `raw rgba` tile may remain `[img]`; iTerm2 inline
-  images are PNG-backed in this implementation.
+  smoke with `active: iterm2 (forced)`, PNG-backed image tiles for `plain png`
+  and `png+rgba sidecar`, and an unsupported note for `raw rgba`. Run
+  `28985723187` is the accepted hosted macOS iTerm2 baseline; it predates the
+  clearer raw-RGBA note, but already proved the PNG-backed iTerm2 path.
 - `iterm2-region-12s.png` and `iterm2-screen-*.png` may also count only if they
   visibly show the same live iTerm2 payload without TCC or other permission
   prompts obscuring the evidence.
 - Treat `iterm2-api-session.json` as a supporting text predicate when it records
-  `"screen_text_matched": true`. On run `28985469159`, the Python API connected
+  `"screen_text_matched": true`. On run `28985723187`, the Python API connected
   and matched the screen text, but Homebrew iTerm2 3.6.11 rejected
   `Session.async_screenshot()` as too old for the screenshot RPC. If a future
   run produces `iterm2-api-session.png`, accept it only if the JSON predicate is

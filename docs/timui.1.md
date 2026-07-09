@@ -129,13 +129,17 @@ in `docs/runbooks/phase1-5-live-evidence.md`.
 
 **check-image-smoke**
 : Headless sanity check for the image smoke harness. It forces protocol `none`,
-  drives `image_smoke` through a pty, and asserts the placeholder path renders.
+  `sixel`, and `iterm2`, drives `image_smoke` through a pty, and asserts the
+  placeholder path, non-trivial Sixel rasters, and iTerm2 PNG-backed-only
+  behavior.
 
 **smoke-image-live** \[*PROTO=auto|kitty|sixel|iterm2|none*] \[*FRAMES=N*]
 : Run `examples/image_smoke.c` in the current terminal. It draws a plain PNG,
   raw RGBA image, and PNG+RGBA sidecar so an operator can verify the selected
-  terminal image protocol. `FRAMES=N` exits after N drawn frames for bounded
-  capture runs; without it, Escape exits. Convenience aliases are
+  terminal image protocol. In forced iTerm2 mode, the raw RGBA-only slot is
+  labeled unsupported because this implementation emits OSC 1337 only for
+  PNG-backed images. `FRAMES=N` exits after N drawn frames for bounded capture
+  runs; without it, Escape exits. Convenience aliases are
   **smoke-image-live-auto**, **smoke-image-live-kitty**,
   **smoke-image-live-sixel**, **smoke-image-live-iterm2**, and
   **smoke-image-live-none**.
