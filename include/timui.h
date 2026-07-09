@@ -330,6 +330,11 @@ typedef struct {
     TimuiUpdateFn update;
 } TimuiApp;
 
+/* Run one functional app frame on an already-open Timui. Useful when the caller
+ * owns the outer loop; returns 1 when a frame was rendered, 0 on invalid args,
+ * a quit state, or begin failure. Posted messages are delivered to update()
+ * after timui_end(), so terminal/image flushes see the model used by view(). */
+TIMUI_API int  timui_app_frame(Timui *ui, TimuiApp *app);
 TIMUI_API int  timui_run(const TimuiConfig *cfg, TimuiApp *app);
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size);

@@ -389,6 +389,8 @@ int main(void){
         test_interact_tab_grow_oom,
         test_hyperlink_set_edges,
         test_run_negative_guards,
+        test_app_frame_updates_after_end,
+        test_app_frame_delivers_large_messages,
         test_getters,
         test_render_stream_chat_like,
         test_frame_synchronized_output,

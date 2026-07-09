@@ -1,9 +1,5 @@
 /* ---- optional functional runner --------------------------------------- *
  * UI-thread message queue (emit during view, recv into update) + the runner. */
-/* timui_run delivers each posted message via a fixed internal buffer. Messages
- * larger than TIMUI_RUN_BUF are truncated (W5) — keep posts small, or call
- * timui_recv directly with your own buffer for large payloads. */
-#define TIMUI_RUN_BUF 4096
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size){
     return f && f->ui && timui_mpsc_post(&f->ui->postq, type, data, size) != 0;
 }
@@ -16,25 +12,29 @@ TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *
 TIMUI_API void timui_frame_quit(TimuiFrame *f){
     if(f && f->ui) timui_quit(f->ui);
 }
+static void timui_app_drain_updates_(Timui *ui, TimuiApp *app){
+    TimuiMpscNode *n;
+    if(!ui || !app) return;
+    while((n = timui_mpsc_pop_node_(&ui->postq)) != NULL){
+        if(app->update) app->update(app->model, n->type, n->data, n->size);
+        timui_mpsc_free_node_(&ui->postq, n);
+    }
+}
+TIMUI_API int timui_app_frame(Timui *ui, TimuiApp *app){
+    TimuiFrame *f = NULL;
+    if(!ui || !app || !app->view || timui_should_quit(ui)) return 0;
+    if(!timui_begin(ui, &f)) return 0;
+    app->view(f, app->model);
+    timui_end(f);
+    timui_app_drain_updates_(ui, app);
+    return 1;
+}
 TIMUI_API int timui_run(const TimuiConfig *cfg, TimuiApp *app){
     Timui *ui = NULL;
     if(!cfg || !app || !app->view || timui_open(cfg, &ui) != TIMUI_OK) return 1;
     while(!timui_should_quit(ui)){
-        TimuiFrame *f = NULL;
-        uint32_t type = 0;
-        unsigned char buf[TIMUI_RUN_BUF];
-        size_t sz;
-        if(!timui_begin(ui, &f)) break;
-        app->view(f, app->model);
-        sz = sizeof buf;
-        while(timui_recv(ui, &type, buf, &sz)){
-            if(sz > sizeof buf) sz = sizeof buf;   /* clamp to prevent stack over-read */
-            if(app->update) app->update(app->model, type, buf, sz);
-            sz = sizeof buf;
-        }
-        timui_end(f);
+        if(!timui_app_frame(ui, app)) break;
     }
     timui_close(ui);
     return 0;
 }
-#undef TIMUI_RUN_BUF   /* Z10: impl-only macro must not leak into the consumer TU */
