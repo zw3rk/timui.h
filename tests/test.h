@@ -397,8 +397,13 @@ void test_function_bar_clipped(void);
 void test_interact_tab_grow_oom(void);
 void test_hyperlink_set_edges(void);
 void test_run_negative_guards(void);
+void test_app_frame_updates_after_end(void);
+void test_app_frame_delivers_large_messages(void);
 void test_getters(void);
 void test_render_stream_chat_like(void);
 void test_frame_synchronized_output(void);
+void test_async_scan_state_valid_messages(void);
+void test_async_scan_state_rejects_malformed_progress(void);
+void test_async_scan_state_clamps_progress(void);
 
 #endif /* TIMUI_TEST_H */

@@ -389,9 +389,14 @@ int main(void){
         test_interact_tab_grow_oom,
         test_hyperlink_set_edges,
         test_run_negative_guards,
+        test_app_frame_updates_after_end,
+        test_app_frame_delivers_large_messages,
         test_getters,
         test_render_stream_chat_like,
         test_frame_synchronized_output,
+        test_async_scan_state_valid_messages,
+        test_async_scan_state_rejects_malformed_progress,
+        test_async_scan_state_clamps_progress,
     };
     size_t i;
     size_t n = sizeof(tests) / sizeof(tests[0]);

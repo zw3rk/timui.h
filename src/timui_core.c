@@ -1054,9 +1054,30 @@ TIMUI_API TimuiResult timui_mpsc_init(TimuiMpsc *q, const TimuiAllocator *alloc)
 #endif
     return TIMUI_OK;
 }
+static TimuiMpscNode *timui_mpsc_pop_node_(TimuiMpsc *q){
+    TimuiMpscNode *n;
+    if(!q) return NULL;
+#ifndef TIMUI_NO_THREADS
+    if(!q->lock) return NULL;
+#endif
+    TIMUI_MPSC_LOCK(q);
+    n = q->head;
+    if(n){
+        q->head = n->next;
+        if(!q->head) q->tail = NULL;
+        q->pending--;
+    }
+    TIMUI_MPSC_UNLOCK(q);
+    return n;
+}
+static void timui_mpsc_free_node_(TimuiMpsc *q, TimuiMpscNode *n){
+    if(!q || !n) return;
+    TIMUI_MPSC_LOCK(q);
+    q->alloc.free(q->alloc.userdata, n, sizeof(*n) + n->size);
+    TIMUI_MPSC_UNLOCK(q);
+}
 TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
-    uint32_t t;
-    size_t s = 0;
+    TimuiMpscNode *n;
     if(!q) return;
 #ifndef TIMUI_NO_THREADS
     if(!q->lock){
@@ -1066,7 +1087,8 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
         return;
     }
 #endif
-    while(timui_mpsc_recv(q, &t, NULL, &s)){ }       /* drain remaining nodes */
+    while((n = timui_mpsc_pop_node_(q)) != NULL)
+        timui_mpsc_free_node_(q, n);                 /* drain remaining nodes */
 #ifndef TIMUI_NO_THREADS
     if(q->lock){
         pthread_mutex_destroy((pthread_mutex_t *)q->lock);
@@ -1101,18 +1123,7 @@ TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, siz
 TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, size_t *inout_size){
     TimuiMpscNode *n;
     size_t copy;
-    if(!q) return 0;
-#ifndef TIMUI_NO_THREADS
-    if(!q->lock) return 0;
-#endif
-    TIMUI_MPSC_LOCK(q);
-    n = q->head;
-    if(n){
-        q->head = n->next;
-        if(!q->head) q->tail = NULL;
-        q->pending--;
-    }
-    TIMUI_MPSC_UNLOCK(q);
+    n = timui_mpsc_pop_node_(q);
     if(!n) return 0;
     if(out_type) *out_type = n->type;
     if(inout_size){
@@ -1121,9 +1132,7 @@ TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, s
         if(out_buf && copy > 0) memcpy(out_buf, n->data, copy);
         *inout_size = n->size;
     }
-    TIMUI_MPSC_LOCK(q);
-    q->alloc.free(q->alloc.userdata, n, sizeof(*n) + n->size);
-    TIMUI_MPSC_UNLOCK(q);
+    timui_mpsc_free_node_(q, n);
     return 1;
 }
 TIMUI_API int timui_mpsc_empty(TimuiMpsc *q){
