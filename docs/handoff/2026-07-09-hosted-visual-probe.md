@@ -10,9 +10,10 @@ date: 2026-07-09
 
 - Branch: `runner-capture-research`
 - Follow-up branch: `windows-visual-rca`
-- Latest follow-up commit: `d683b5b`
-  (`examples: keep Sixel smoke visible without cell pixels`)
-- Remote push: `github windows-visual-rca` pushed through `d683b5b`
+- Latest inspected hosted-run commit: `3acbd66`
+  (`docs: record hosted runner visual RCA`)
+- Remote push before the iTerm2 API probe: `github windows-visual-rca` pushed
+  through `3acbd66`
 - GitHub workflow: `Hosted visual probes`
 - Latest run inspected: `28982641529`
 - Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28982641529`
@@ -52,13 +53,22 @@ date: 2026-07-09
 
 ## Rejected / Inconclusive State
 
-- Hosted iTerm2 image evidence is still rejected. iTerm2 installs, but
-  `osascript.status` is `1`; screenshots show a macOS TCC prompt for `bash` to
-  access screen/audio instead of the timui iTerm2 smoke.
-- macOS iTerm2 privacy/TCC RCA: on hosted `macos-15`, the prompt is real user
+- Hosted iTerm2 OS-level image evidence is still rejected. iTerm2 installs, but
+  earlier direct `screencapture` screenshots showed a macOS TCC prompt for
+  `bash` to access screen/audio instead of the timui iTerm2 smoke.
+- macOS iTerm2 direct-capture RCA: on hosted `macos-15`, the prompt is real user
   consent for direct screen/audio capture. It is not solved by `sudo`, Homebrew,
   or TCC.db sqlite edits; Apple PPPC does not provide a supported silent allow
-  path for this hosted runner case. Prefer Terminal.app hosted screenshots.
+  path for this direct hosted runner case. Prefer Terminal.app for OS-level
+  screenshot mechanics.
+- New unverified iTerm2 path: `tools/ci/hosted_visual_macos.sh` now enables the
+  iTerm2 Python API, creates the documented root-owned
+  `disable-automation-auth` marker, overlays the upstream iTerm2 Python API
+  package because PyPI `iterm2` 2.20 does not yet expose
+  `Session.async_screenshot()`, opens an iTerm2 session, and asks
+  `Session.async_screenshot()` for `iterm2-api-session.png`. This should avoid
+  macOS global screen capture/TCC entirely, but it is not accepted until a
+  hosted run produces and manually verifies the PNG.
 - Historical Windows Sixel rejection was fixture-size, not renderer failure.
   Run `28982372688` showed direct Sixel rendered, while timui emitted three
   `4x4` rasters because the smoke fixture was 4x4 and MSYS/Windows Terminal did
@@ -119,9 +129,14 @@ date: 2026-07-09
 ## Next Safe Move
 
 - Integrate `windows-visual-rca` into `master` after review/verification.
-- For accepted iTerm2 evidence: avoid hosted iTerm2 unless a future macOS/TCC
-  change makes the prompt disappear. Use Terminal.app hosted screenshots for
-  GUI mechanics and deterministic protocol-byte evidence for iTerm2.
+- For accepted iTerm2 evidence: trigger `Hosted visual probes` again and inspect
+  `iterm2-api-session.png`, `iterm2-api-session.json`, and
+  `iterm2-api-capture.status`. Accept only if `iterm2-api-overlay.status` also
+  passed, `iterm2-api-source-commit.txt` records the upstream API package
+  commit, the PNG visibly shows the live iTerm2 image smoke with PNG-backed
+  image tiles, and the JSON records matched screen text. Keep direct
+  `screencapture` artifacts diagnostic unless they show no TCC prompt and
+  visible iTerm2 payload.
 - For ConPTY: debug `tools/conpty_smoke_win32.c` on an interactive Windows host
   with live byte-stream logging before treating hosted ConPTY as an acceptance
   gate.

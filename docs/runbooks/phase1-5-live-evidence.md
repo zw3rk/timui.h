@@ -24,6 +24,8 @@ as evidence, what does not, and the artifact text to record afterward.
   `terminal-sanity.png` or `cmd-sanity.png` prove capture mechanics only; they
   are not image-protocol evidence. Raw escape streams, DCS/OSC marker counts,
   process lists, session diagnostics, and launch logs are diagnostics only.
+  iTerm2's own Python API screenshot artifact is a native-terminal visual
+  artifact, but still requires manual inspection before acceptance.
 - Hosted Windows GUI screenshots count when the artifact clearly shows the
   expected terminal payload and records an active interactive session. Run
   `28982641529` is accepted Sixel evidence. If a future Windows GUI predicate
@@ -99,10 +101,18 @@ Hosted runner probe:
 - First inspect `terminal-sanity.png`. It should show the
   `TIMUI_HOSTED_SCREENSHOT_SANITY` Terminal.app window; if it does not, the
   hosted macOS screenshot path is inconclusive before iTerm2 is considered.
-- Accept only if an `iterm2-screen-*.png` visibly shows the iTerm2 live smoke
-  with PNG-backed image tiles. Treat `iterm2.typescript`,
-  `osc1337-count.txt`, and the Terminal.app sanity screenshot as diagnostics,
-  not iTerm2 protocol evidence.
+- Prefer `iterm2-api-session.png`. Accept it only if
+  `iterm2-api-overlay.status` and `iterm2-api-capture.status` are `0`,
+  `iterm2-api-source-commit.txt` is present, `iterm2-api-session.json` records
+  `"screen_text_matched": true`, and the PNG visibly shows the iTerm2 live smoke
+  with PNG-backed image tiles. This path uses iTerm2's own session screenshot
+  API, not macOS global screen capture.
+- Direct macOS screenshots such as `iterm2-screen-*.png`,
+  `iterm2-window-*.png`, and `iterm2-region-*.png` may also count only if they
+  visibly show the iTerm2 live smoke with PNG-backed image tiles and no TCC
+  prompt. Treat `iterm2.typescript`, `osc1337-count.txt`, text dumps, window
+  lists, and the Terminal.app sanity screenshot as diagnostics, not iTerm2
+  protocol evidence.
 
 ## Windows ConPTY
 
