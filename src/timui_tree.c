@@ -128,7 +128,7 @@ TIMUI_API TimuiTreeScrollResult timui_tree_scroll(TimuiFrame *f, TimuiId id, Tim
 
     scroll = state.scroll < 0 ? 0 : state.scroll;
     wh = timui_mouse_wheel(f);
-    if(wh){
+    if(wh && timui_mouse_wheel_over_(ui, r)){
         scroll -= wh;
         scroll = timui_page_slice(nvis, vis, scroll).first;
         if(sel < scroll) sel = scroll;

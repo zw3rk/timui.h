@@ -290,7 +290,7 @@ TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r
 
     /* Mouse wheel scrolls the body and drags the selection into the new window. */
     wh = timui_mouse_wheel(f);
-    if(wh){
+    if(wh && timui_mouse_wheel_over_(ui, r)){
         scroll -= wh;
         scroll = timui_page_slice(nrows, vis, scroll).first;
         if(sel < scroll) sel = scroll;

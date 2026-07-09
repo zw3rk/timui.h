@@ -562,6 +562,8 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->key_pressed = TIMUI_KEY_UNKNOWN;
     ui->key_mods = 0;
     ui->mouse_wheel = 0;
+    ui->mouse_wheel_x = -1;
+    ui->mouse_wheel_y = -1;
     ui->mouse_clicked = 0;
     {
         TimuiEvent ev;
@@ -573,6 +575,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 int mx = ev.as.mouse.x - 1;
                 int my = ev.as.mouse.y - 1;
                 ui->mouse_wheel += ev.as.mouse.wheel_y;   /* expose wheel to the app */
+                if(ev.as.mouse.wheel_y){
+                    ui->mouse_wheel_x = mx;
+                    ui->mouse_wheel_y = my;
+                }
                 ui->mouse_x = mx; ui->mouse_y = my;
                 if(ev.as.mouse.wheel_y == 0 &&
                    (ev.as.mouse.motion || ev.as.mouse.button == 0 || ev.as.mouse.released)){
