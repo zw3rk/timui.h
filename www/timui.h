@@ -331,6 +331,11 @@ typedef struct {
     TimuiUpdateFn update;
 } TimuiApp;
 
+/* Run one functional app frame on an already-open Timui. Useful when the caller
+ * owns the outer loop; returns 1 when a frame was rendered, 0 on invalid args,
+ * a quit state, or begin failure. Posted messages are delivered to update()
+ * after timui_end(), so terminal/image flushes see the model used by view(). */
+TIMUI_API int  timui_app_frame(Timui *ui, TimuiApp *app);
 TIMUI_API int  timui_run(const TimuiConfig *cfg, TimuiApp *app);
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size);
@@ -1396,6 +1401,16 @@ TIMUI_API void     timui_code(TimuiFrame *f, TimuiRect r, const char *src, int l
 /* Internal structs (completed only in the implementing TU). */
 typedef struct { int read_fd; int write_fd; } TimuiFdCtx;
 
+enum { TIMUI_EDIT_TEXT = 1, TIMUI_EDIT_KEY = 2 };
+#define TIMUI_EDIT_KEY_ENTER_ 0x80000000u
+typedef struct TimuiEditOp {
+    int kind;
+    unsigned key;
+    int start;
+    int len;
+    uint32_t mods;
+} TimuiEditOp;
+
 struct TimuiFrame { Timui *ui; };
 
 struct Timui {
@@ -1449,10 +1464,13 @@ struct Timui {
     int               pending_enter_at[32];
     uint32_t          pending_enter_mods[32];
     int               pending_enter_count;
+    TimuiEditOp       edit_ops[512];
+    int               edit_count;
     unsigned          key_in;
     TimuiKey          key_pressed;
     uint32_t          key_mods;     /* modifiers of the last key event */
     int               mouse_wheel;  /* accumulated wheel delta this frame (+up/-down) */
+    int               mouse_wheel_x, mouse_wheel_y; /* cell of the wheel event */
     int               mouse_x, mouse_y;   /* last reported cell (0-based) */
     int               mouse_clicked;      /* a button press occurred this frame */
     int               mouse_click_x, mouse_click_y; /* press cell for mouse_clicked */
@@ -1540,6 +1558,11 @@ static int timui_rect_contains_(TimuiRect r, int x, int y){
     ry2 = (int64_t)r.y + (int64_t)r.h;
     return (int64_t)x >= (int64_t)r.x && (int64_t)x < rx2 &&
            (int64_t)y >= (int64_t)r.y && (int64_t)y < ry2;
+}
+
+static int timui_mouse_wheel_over_(const Timui *ui, TimuiRect r){
+    return ui && ui->mouse_wheel &&
+           timui_rect_contains_(r, ui->mouse_wheel_x, ui->mouse_wheel_y);
 }
 
 static void timui_draw_text_clipped_(TimuiCellBuffer *buf, TimuiRect clip, int x, int y,
@@ -1636,21 +1659,93 @@ static void ui_event_cb(void *ctx, const TimuiEvent *ev){
     else
         ui->events_dropped++;
 }
-static void timui_append_text_cp_(Timui *ui, uint32_t cp){
+static void timui_edit_add_text_(Timui *ui, int start, int len){
+    TimuiEditOp *op;
+    if(!ui || len <= 0) return;
+    if(ui->edit_count >= (int)(sizeof(ui->edit_ops) / sizeof(ui->edit_ops[0]))){
+        ui->events_dropped++;
+        return;
+    }
+    op = &ui->edit_ops[ui->edit_count++];
+    op->kind = TIMUI_EDIT_TEXT;
+    op->key = 0;
+    op->start = start;
+    op->len = len;
+    op->mods = 0;
+}
+static void timui_edit_add_key_(Timui *ui, unsigned key, uint32_t mods){
+    TimuiEditOp *op;
+    if(!ui || key == 0) return;
+    if(ui->edit_count >= (int)(sizeof(ui->edit_ops) / sizeof(ui->edit_ops[0]))){
+        ui->events_dropped++;
+        return;
+    }
+    op = &ui->edit_ops[ui->edit_count++];
+    op->kind = TIMUI_EDIT_KEY;
+    op->key = key;
+    op->start = 0;
+    op->len = 0;
+    op->mods = mods;
+}
+static void timui_edit_rebuild_from_text_(Timui *ui){
+    int j = 0, e;
+    if(!ui) return;
+    ui->edit_count = 0;
+    for(e = 0; e < ui->enter_count; e++){
+        int at = ui->enter_at[e];
+        if(at < j) at = j;
+        if(at > ui->text_in_len) at = ui->text_in_len;
+        timui_edit_add_text_(ui, j, at - j);
+        timui_edit_add_key_(ui, TIMUI_EDIT_KEY_ENTER_, ui->enter_mods[e]);
+        j = at;
+    }
+    timui_edit_add_text_(ui, j, ui->text_in_len - j);
+}
+static void timui_defer_edit_ops_after_(Timui *ui, int first){
+    int i, text_len = 0, enter_count = 0;
+    if(!ui) return;
+    if(first < 0) first = 0;
+    if(first > ui->edit_count) first = ui->edit_count;
+    for(i = first; i < ui->edit_count; i++){
+        TimuiEditOp *op = &ui->edit_ops[i];
+        if(op->kind == TIMUI_EDIT_TEXT && op->len > 0){
+            int n = op->len;
+            if(n > (int)sizeof(ui->pending_in) - text_len) n = (int)sizeof(ui->pending_in) - text_len;
+            if(n > 0){
+                memcpy(ui->pending_in + text_len, ui->text_in + op->start, (size_t)n);
+                text_len += n;
+            }
+            if(n < op->len) ui->events_dropped++;
+        } else if(op->kind == TIMUI_EDIT_KEY && op->key == TIMUI_EDIT_KEY_ENTER_){
+            if(enter_count < (int)(sizeof(ui->pending_enter_at) / sizeof(ui->pending_enter_at[0]))){
+                ui->pending_enter_at[enter_count] = text_len;
+                ui->pending_enter_mods[enter_count] = op->mods;
+                enter_count++;
+            } else ui->events_dropped++;
+        }
+    }
+    ui->pending_in_len = text_len;
+    ui->pending_enter_count = enter_count;
+}
+static int timui_append_text_cp_(Timui *ui, uint32_t cp){
     char enc[4];
     int enclen;
-    if(!ui) return;
-    if(cp < 0x20 || cp == 0x7f || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return;
+    if(!ui) return 0;
+    if(cp < 0x20 || cp == 0x7f || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return 0;
     enclen = timui_utf8_encode_(cp, enc);
     if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
         int ei;
         for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
+        return enclen;
     } else if(enclen > 0) ui->events_dropped++;
+    return 0;
 }
-static void timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
+static int timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
     char bytes[sizeof(((Timui *)0)->paste_buf) + 4];
     size_t total = 0, pk = 0;
-    if(!ui || (!ptr && len > 0)) return;
+    int start;
+    if(!ui || (!ptr && len > 0)) return 0;
+    start = ui->text_in_len;
     if(ui->paste_utf8_tail_len > 0){
         memcpy(bytes, ui->paste_utf8_tail, (size_t)ui->paste_utf8_tail_len);
         total = (size_t)ui->paste_utf8_tail_len;
@@ -1685,14 +1780,18 @@ static void timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
             break;
         }
         if(adv < 0) adv = 1;
-        timui_append_text_cp_(ui, cp);
+        (void)timui_append_text_cp_(ui, cp);
         pk += (size_t)adv;
     }
+    return ui->text_in_len - start;
 }
 static void timui_flush_paste_utf8_tail_(Timui *ui){
+    int start, n;
     if(!ui || ui->paste_utf8_tail_len <= 0) return;
+    start = ui->text_in_len;
     ui->paste_utf8_tail_len = 0;
-    timui_append_text_cp_(ui, 0xFFFD);
+    n = timui_append_text_cp_(ui, 0xFFFD);
+    if(n > 0) timui_edit_add_text_(ui, start, n);
 }
 /* Write ALL n bytes to fd. The output fd typically SHARES its open file
  * description with the input fd (fd 0/1 on a tty), which we set O_NONBLOCK for
@@ -2049,14 +2148,18 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         ui->enter_count = ui->pending_enter_count;
         ui->pending_in_len = 0;
         ui->pending_enter_count = 0;
+        timui_edit_rebuild_from_text_(ui);
     } else {
         ui->text_in_len = 0;
         ui->enter_count = 0;
+        ui->edit_count = 0;
     }
     ui->key_in = 0;
     ui->key_pressed = TIMUI_KEY_UNKNOWN;
     ui->key_mods = 0;
     ui->mouse_wheel = 0;
+    ui->mouse_wheel_x = -1;
+    ui->mouse_wheel_y = -1;
     ui->mouse_clicked = 0;
     {
         TimuiEvent ev;
@@ -2068,6 +2171,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 int mx = ev.as.mouse.x - 1;
                 int my = ev.as.mouse.y - 1;
                 ui->mouse_wheel += ev.as.mouse.wheel_y;   /* expose wheel to the app */
+                if(ev.as.mouse.wheel_y){
+                    ui->mouse_wheel_x = mx;
+                    ui->mouse_wheel_y = my;
+                }
                 ui->mouse_x = mx; ui->mouse_y = my;
                 if(ev.as.mouse.wheel_y == 0 &&
                    (ev.as.mouse.motion || ev.as.mouse.button == 0 || ev.as.mouse.released)){
@@ -2088,6 +2195,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 if(ev.as.key.key == TIMUI_KEY_TAB) timui_interact_set_keys(&ui->ia, 1, 0);
                 else if(ev.as.key.key == TIMUI_KEY_ENTER){
                     timui_interact_set_keys(&ui->ia, 0, 1);
+                    timui_edit_add_key_(ui, TIMUI_EDIT_KEY_ENTER_, ev.as.key.mods);
                     /* record the Enter's position in the text stream (input_field
                      * segments submits on these; excess past the cap just merges). */
                     if(ui->enter_count < (int)(sizeof(ui->enter_at)/sizeof(ui->enter_at[0]))){
@@ -2096,31 +2204,33 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                         ui->enter_count++;
                     }
                 }
-                else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
-                else if(ev.as.key.key == TIMUI_KEY_LEFT)   ui->key_in |= TIMUI_KEYIN_LEFT;
-                else if(ev.as.key.key == TIMUI_KEY_RIGHT)  ui->key_in |= TIMUI_KEYIN_RIGHT;
-                else if(ev.as.key.key == TIMUI_KEY_HOME)   ui->key_in |= TIMUI_KEYIN_HOME;
-                else if(ev.as.key.key == TIMUI_KEY_END)    ui->key_in |= TIMUI_KEYIN_END;
-                else if(ev.as.key.key == TIMUI_KEY_DELETE) ui->key_in |= TIMUI_KEYIN_DELETE;
+                else if(ev.as.key.key == TIMUI_KEY_BACKSPACE){ ui->key_in |= TIMUI_KEYIN_BACKSPACE; timui_edit_add_key_(ui, TIMUI_KEYIN_BACKSPACE, ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_LEFT)   { ui->key_in |= TIMUI_KEYIN_LEFT;      timui_edit_add_key_(ui, TIMUI_KEYIN_LEFT,      ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_RIGHT)  { ui->key_in |= TIMUI_KEYIN_RIGHT;     timui_edit_add_key_(ui, TIMUI_KEYIN_RIGHT,     ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_HOME)   { ui->key_in |= TIMUI_KEYIN_HOME;      timui_edit_add_key_(ui, TIMUI_KEYIN_HOME,      ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_END)    { ui->key_in |= TIMUI_KEYIN_END;       timui_edit_add_key_(ui, TIMUI_KEYIN_END,       ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_DELETE) { ui->key_in |= TIMUI_KEYIN_DELETE;    timui_edit_add_key_(ui, TIMUI_KEYIN_DELETE,    ev.as.key.mods); }
                 else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
                 else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
                 else if(ev.as.key.key == TIMUI_KEY_UNKNOWN &&
                         (ev.as.key.mods & ~TIMUI_MOD_SHIFT) == TIMUI_MOD_NONE){
                     uint32_t cp = ev.as.key.codepoint;
-                    timui_append_text_cp_(ui, cp);
+                    int start = ui->text_in_len;
+                    int n = timui_append_text_cp_(ui, cp);
+                    if(n > 0) timui_edit_add_text_(ui, start, n);
                 }
                 else if(ev.as.key.key == TIMUI_KEY_UNKNOWN && (ev.as.key.mods & TIMUI_MOD_CTRL)){
                     /* emacs / readline line editing (ubiquitous on macOS). Ctrl-H
                      * (backspace) already arrives as KEY_BACKSPACE from the parser. */
                     switch(ev.as.key.codepoint){
-                        case 'a': ui->key_in |= TIMUI_KEYIN_HOME;      break;  /* start of line */
-                        case 'e': ui->key_in |= TIMUI_KEYIN_END;       break;  /* end of line   */
-                        case 'b': ui->key_in |= TIMUI_KEYIN_LEFT;      break;  /* back one char */
-                        case 'f': ui->key_in |= TIMUI_KEYIN_RIGHT;     break;  /* forward       */
-                        case 'd': ui->key_in |= TIMUI_KEYIN_DELETE;    break;  /* delete at cursor */
-                        case 'k': ui->key_in |= TIMUI_KEYIN_KILL_EOL;  break;  /* kill to EOL    */
-                        case 'u': ui->key_in |= TIMUI_KEYIN_KILL_BOL;  break;  /* kill to BOL    */
-                        case 'w': ui->key_in |= TIMUI_KEYIN_KILL_WORD; break;  /* kill word back */
+                        case 'a': ui->key_in |= TIMUI_KEYIN_HOME;      timui_edit_add_key_(ui, TIMUI_KEYIN_HOME,      ev.as.key.mods); break;  /* start of line */
+                        case 'e': ui->key_in |= TIMUI_KEYIN_END;       timui_edit_add_key_(ui, TIMUI_KEYIN_END,       ev.as.key.mods); break;  /* end of line   */
+                        case 'b': ui->key_in |= TIMUI_KEYIN_LEFT;      timui_edit_add_key_(ui, TIMUI_KEYIN_LEFT,      ev.as.key.mods); break;  /* back one char */
+                        case 'f': ui->key_in |= TIMUI_KEYIN_RIGHT;     timui_edit_add_key_(ui, TIMUI_KEYIN_RIGHT,     ev.as.key.mods); break;  /* forward       */
+                        case 'd': ui->key_in |= TIMUI_KEYIN_DELETE;    timui_edit_add_key_(ui, TIMUI_KEYIN_DELETE,    ev.as.key.mods); break;  /* delete at cursor */
+                        case 'k': ui->key_in |= TIMUI_KEYIN_KILL_EOL;  timui_edit_add_key_(ui, TIMUI_KEYIN_KILL_EOL,  ev.as.key.mods); break;  /* kill to EOL    */
+                        case 'u': ui->key_in |= TIMUI_KEYIN_KILL_BOL;  timui_edit_add_key_(ui, TIMUI_KEYIN_KILL_BOL,  ev.as.key.mods); break;  /* kill to BOL    */
+                        case 'w': ui->key_in |= TIMUI_KEYIN_KILL_WORD; timui_edit_add_key_(ui, TIMUI_KEYIN_KILL_WORD, ev.as.key.mods); break;  /* kill word back */
                         default: break;
                     }
                 }
@@ -2128,9 +2238,13 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 /* UTF-8 encode the codepoint into text_in (supports international
                  * input) via the single shared encoder (Z6). */
                 uint32_t cp = ev.as.text.codepoint;
-                timui_append_text_cp_(ui, cp);
+                int start = ui->text_in_len;
+                int n = timui_append_text_cp_(ui, cp);
+                if(n > 0) timui_edit_add_text_(ui, start, n);
             } else if(ev.kind == TIMUI_EVENT_PASTE){
-                timui_append_paste_bytes_(ui, ev.as.paste.ptr, ev.as.paste.len);
+                int start = ui->text_in_len;
+                int n = timui_append_paste_bytes_(ui, ev.as.paste.ptr, ev.as.paste.len);
+                if(n > 0) timui_edit_add_text_(ui, start, n);
             } else if(ev.kind == TIMUI_EVENT_FOCUS){
                 if(focus_count < (int)(sizeof(focus_events) / sizeof(focus_events[0])))
                     focus_events[focus_count++] = ev;
@@ -2536,9 +2650,30 @@ TIMUI_API TimuiResult timui_mpsc_init(TimuiMpsc *q, const TimuiAllocator *alloc)
 #endif
     return TIMUI_OK;
 }
+static TimuiMpscNode *timui_mpsc_pop_node_(TimuiMpsc *q){
+    TimuiMpscNode *n;
+    if(!q) return NULL;
+#ifndef TIMUI_NO_THREADS
+    if(!q->lock) return NULL;
+#endif
+    TIMUI_MPSC_LOCK(q);
+    n = q->head;
+    if(n){
+        q->head = n->next;
+        if(!q->head) q->tail = NULL;
+        q->pending--;
+    }
+    TIMUI_MPSC_UNLOCK(q);
+    return n;
+}
+static void timui_mpsc_free_node_(TimuiMpsc *q, TimuiMpscNode *n){
+    if(!q || !n) return;
+    TIMUI_MPSC_LOCK(q);
+    q->alloc.free(q->alloc.userdata, n, sizeof(*n) + n->size);
+    TIMUI_MPSC_UNLOCK(q);
+}
 TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
-    uint32_t t;
-    size_t s = 0;
+    TimuiMpscNode *n;
     if(!q) return;
 #ifndef TIMUI_NO_THREADS
     if(!q->lock){
@@ -2548,7 +2683,8 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
         return;
     }
 #endif
-    while(timui_mpsc_recv(q, &t, NULL, &s)){ }       /* drain remaining nodes */
+    while((n = timui_mpsc_pop_node_(q)) != NULL)
+        timui_mpsc_free_node_(q, n);                 /* drain remaining nodes */
 #ifndef TIMUI_NO_THREADS
     if(q->lock){
         pthread_mutex_destroy((pthread_mutex_t *)q->lock);
@@ -2583,18 +2719,7 @@ TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, siz
 TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, size_t *inout_size){
     TimuiMpscNode *n;
     size_t copy;
-    if(!q) return 0;
-#ifndef TIMUI_NO_THREADS
-    if(!q->lock) return 0;
-#endif
-    TIMUI_MPSC_LOCK(q);
-    n = q->head;
-    if(n){
-        q->head = n->next;
-        if(!q->head) q->tail = NULL;
-        q->pending--;
-    }
-    TIMUI_MPSC_UNLOCK(q);
+    n = timui_mpsc_pop_node_(q);
     if(!n) return 0;
     if(out_type) *out_type = n->type;
     if(inout_size){
@@ -2603,9 +2728,7 @@ TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, s
         if(out_buf && copy > 0) memcpy(out_buf, n->data, copy);
         *inout_size = n->size;
     }
-    TIMUI_MPSC_LOCK(q);
-    q->alloc.free(q->alloc.userdata, n, sizeof(*n) + n->size);
-    TIMUI_MPSC_UNLOCK(q);
+    timui_mpsc_free_node_(q, n);
     return 1;
 }
 TIMUI_API int timui_mpsc_empty(TimuiMpsc *q){
@@ -4935,6 +5058,50 @@ static void text_pos_(const char *buf, size_t cursor, int *out_row, int *out_col
     *out_row = row;
     *out_col = display_col_(buf + line_start, cursor - line_start);
 }
+static void input_field_insert_span_(TimuiInputState *st, const char *src, int nbytes){
+    int j = 0;
+    while(st && src && j < nbytes){
+        int n = utf8_lead_len((unsigned char)src[j]);
+        size_t m = (size_t)(n > 0 ? n : 1);
+        if(!single_line_text_byte_((unsigned char)src[j])){ j++; continue; }
+        if(j + (int)m > nbytes) m = (size_t)(nbytes - j);
+        if(!text_insert_(st->text, st->cap, st->cursor, src + j, m)) break;
+        st->cursor += m;
+        j += (int)m;
+    }
+}
+static void input_field_apply_key_(TimuiInputState *st, unsigned key){
+    size_t len;
+    if(!st || !st->text) return;
+    len = strlen(st->text);
+    if(key == TIMUI_KEYIN_LEFT)  st->cursor = utf8_drop_last(st->text, st->cursor);
+    if(key == TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, len);
+    if(key == TIMUI_KEYIN_HOME)  st->cursor = 0;
+    if(key == TIMUI_KEYIN_END)   st->cursor = len;
+    if(key == TIMUI_KEYIN_BACKSPACE && st->cursor > 0){
+        size_t prev = utf8_drop_last(st->text, st->cursor);
+        st->cursor = text_erase_(st->text, prev, st->cursor);
+    }
+    if(key == TIMUI_KEYIN_DELETE){
+        size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
+        (void)text_erase_(st->text, st->cursor, nxt);
+    }
+    if(key == TIMUI_KEYIN_KILL_EOL){
+        st->text[st->cursor] = '\0';
+    }
+    if(key == TIMUI_KEYIN_KILL_BOL){
+        size_t rest = strlen(st->text + st->cursor);
+        memmove(st->text, st->text + st->cursor, rest + 1);
+        st->cursor = 0;
+    }
+    if(key == TIMUI_KEYIN_KILL_WORD){
+        size_t c = st->cursor, w = c;
+        while(w > 0 && st->text[w-1] == ' ') w--;
+        while(w > 0 && st->text[w-1] != ' ') w--;
+        memmove(st->text + w, st->text + c, strlen(st->text + c) + 1);
+        st->cursor = w;
+    }
+}
 static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st,
                              const TimuiStyle *ovr){
     Timui *ui;
@@ -4949,66 +5116,22 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
     {
         ir = timui_interact_button(&ui->ia, id, r);
         if(ir.focused){
-            /* Insert typed text UP TO the first Enter this frame; on an Enter,
-             * submit and DEFER the post-Enter tail (and any further Enters) to
-             * the next frame — one submit per frame, so a burst "a\rb\r" yields
-             * "a" then "b" instead of the merged "ab". */
-            int first_enter = (ui->enter_count > 0) ? ui->enter_at[0] : -1;
-            int upto = (first_enter >= 0) ? first_enter : ui->text_in_len;
-            int j = 0;
-            size_t len;
-            if(upto > ui->text_in_len) upto = ui->text_in_len;
-            while(j < upto){
-                int n = utf8_lead_len((unsigned char)ui->text_in[j]);
-                size_t m = (size_t)(n > 0 ? n : 1);
-                if(!single_line_text_byte_((unsigned char)ui->text_in[j])){ j++; continue; }
-                if(j + (int)m > upto) m = (size_t)(upto - j);
-                if(!text_insert_(st->text, st->cap, st->cursor, ui->text_in + j, m)) break;
-                st->cursor += m; j += (int)m;
-            }
-            len = strlen(st->text);
-            if(ui->key_in & TIMUI_KEYIN_LEFT)  st->cursor = utf8_drop_last(st->text, st->cursor);
-            if(ui->key_in & TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, len);
-            if(ui->key_in & TIMUI_KEYIN_HOME)  st->cursor = 0;              /* single line */
-            if(ui->key_in & TIMUI_KEYIN_END)   st->cursor = len;
-            if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st->cursor > 0){
-                size_t prev = utf8_drop_last(st->text, st->cursor);
-                st->cursor = text_erase_(st->text, prev, st->cursor);
-            }
-            if(ui->key_in & TIMUI_KEYIN_DELETE){
-                size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
-                (void)text_erase_(st->text, st->cursor, nxt);
-            }
-            if(ui->key_in & TIMUI_KEYIN_KILL_EOL){          /* Ctrl-K: cursor..end */
-                st->text[st->cursor] = '\0';                /* cursor is a cluster boundary */
-            }
-            if(ui->key_in & TIMUI_KEYIN_KILL_BOL){          /* Ctrl-U: start..cursor */
-                size_t rest = strlen(st->text + st->cursor);
-                memmove(st->text, st->text + st->cursor, rest + 1);
-                st->cursor = 0;
-            }
-            if(ui->key_in & TIMUI_KEYIN_KILL_WORD){         /* Ctrl-W: the word before the cursor */
-                size_t c = st->cursor, w = c;
-                while(w > 0 && st->text[w-1] == ' ') w--;    /* trailing spaces */
-                while(w > 0 && st->text[w-1] != ' ') w--;    /* the word */
-                memmove(st->text + w, st->text + c, strlen(st->text + c) + 1);
-                st->cursor = w;
-            }
-            if(first_enter >= 0){
-                int tail = ui->text_in_len - upto, k;
-                submitted = true;
-                if(tail < 0) tail = 0;
-                if(tail > (int)sizeof(ui->pending_in)) tail = (int)sizeof(ui->pending_in);
-                memcpy(ui->pending_in, ui->text_in + upto, (size_t)tail);
-                ui->pending_in_len = tail;
-                ui->pending_enter_count = ui->enter_count - 1;
-                for(k = 0; k < ui->pending_enter_count; k++){
-                    ui->pending_enter_at[k] = ui->enter_at[k + 1] - upto;
-                    ui->pending_enter_mods[k] = ui->enter_mods[k + 1];
+            int oi;
+            for(oi = 0; oi < ui->edit_count; oi++){
+                TimuiEditOp *op = &ui->edit_ops[oi];
+                if(op->kind == TIMUI_EDIT_TEXT){
+                    input_field_insert_span_(st, ui->text_in + op->start, op->len);
+                } else if(op->kind == TIMUI_EDIT_KEY && op->key == TIMUI_EDIT_KEY_ENTER_){
+                    submitted = true;
+                    timui_defer_edit_ops_after_(ui, oi + 1);
+                    break;
+                } else if(op->kind == TIMUI_EDIT_KEY){
+                    input_field_apply_key_(st, op->key);
                 }
             }
             ui->text_in_len = 0;
             ui->enter_count = 0;
+            ui->edit_count = 0;
             ui->key_in = 0;
         }
     }
@@ -5564,10 +5687,22 @@ TIMUI_API int timui_fit_cell(const char *s, int width, char *out, size_t cap, in
         return 0;
     }
     if(full <= width){                         /* fits whole — copy verbatim */
-        size_t n = len < cap - 1 ? len : cap - 1;
-        memcpy(out, s, n);
-        out[n] = '\0';
-        return full;
+        for(i = 0; i < len;){
+            size_t n = timui_grapheme_next(s, len, i);
+            int gw;
+            if(n <= i) n = i + 1;
+            if(o + (n - i) >= cap){
+                if(ellipsis) *ellipsis = 1;
+                break;
+            }
+            gw = timui_grapheme_width(s + i, n - i);
+            memcpy(out + o, s + i, n - i);
+            o += n - i;
+            used += gw;
+            i = n;
+        }
+        out[o] = '\0';
+        return used;
     }
     if(cap < sizeof(TIMUI_ELLIPSIS_)){         /* no room for ellipsis + NUL */
         if(ellipsis) *ellipsis = 1;
@@ -5644,6 +5779,14 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
     if(state.scroll < 0) state.scroll = 0;
     if(state.selected < state.scroll) state.scroll = state.selected;
     if(state.selected >= state.scroll + vis) state.scroll = state.selected - vis + 1;
+    /* Keyboard nav only when focused — process before drawing so the highlight
+     * and returned state agree in the same frame. */
+    { TimuiInteractResult tir = timui_interact_button(&ui->ia, id, r);
+      res.focused = tir.focused;
+      if(tir.focused) state.selected = timui_updown_nav_(f, state.selected, nrows);
+    }
+    if(state.selected < state.scroll) state.scroll = state.selected;
+    if(state.selected >= state.scroll + vis) state.scroll = state.selected - vis + 1;
     /* header row */
     { TimuiStyle hs = timui_widget_style_(ui, TIMUI_WIDGET_TABLE, TIMUI_SLOT_PANEL_TITLE, 0);
       x = r.x;
@@ -5668,12 +5811,6 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
         }
     }
     timui_scroll_end(f);
-    /* keyboard nav only when focused — call interact_button once to avoid
-     * double-registering the table id in the tab order */
-    { TimuiInteractResult tir = timui_interact_button(&ui->ia, id, r);
-      res.focused = tir.focused;
-      if(tir.focused) state.selected = timui_updown_nav_(f, state.selected, nrows);
-    }
     res.state = state;
     res.state_changed = (state.selected != orig);
     return res;
@@ -5777,7 +5914,7 @@ TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r
 
     /* Mouse wheel scrolls the body and drags the selection into the new window. */
     wh = timui_mouse_wheel(f);
-    if(wh){
+    if(wh && timui_mouse_wheel_over_(ui, r)){
         scroll -= wh;
         scroll = timui_page_slice(nrows, vis, scroll).first;
         if(sel < scroll) sel = scroll;
@@ -5937,6 +6074,12 @@ TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
     if(selected < 0) selected = 0;
     if(selected >= count) selected = count - 1;
     orig = selected;                       /* post-clamp: a pure clamp is not a change */
+    /* Keyboard nav only when focused — process before drawing so the visible
+     * selection and returned value cannot diverge for a frame. */
+    { TimuiInteractResult ir2 = timui_interact_button(&ui->ia, id, r);
+      res.focused = ir2.focused;
+      if(ir2.focused) selected = timui_updown_nav_(f, selected, count);
+    }
     content = timui_scroll_begin(f, r, 0);
     for(i = 0; i < count; i++){
         int y = content.y + i;
@@ -5946,11 +6089,6 @@ TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
         timui_tree_draw_node_(ui, &nodes[i], TIMUI_RECT(content.x, y, r.w, 1), y, st);
     }
     timui_scroll_end(f);
-    /* keyboard nav only when focused */
-    { TimuiInteractResult ir2 = timui_interact_button(&ui->ia, id, r);
-      res.focused = ir2.focused;
-      if(ir2.focused) selected = timui_updown_nav_(f, selected, count);
-    }
     res.selected = selected;
     res.state_changed = (selected != orig);
     return res;
@@ -5992,7 +6130,7 @@ TIMUI_API TimuiTreeScrollResult timui_tree_scroll(TimuiFrame *f, TimuiId id, Tim
 
     scroll = state.scroll < 0 ? 0 : state.scroll;
     wh = timui_mouse_wheel(f);
-    if(wh){
+    if(wh && timui_mouse_wheel_over_(ui, r)){
         scroll -= wh;
         scroll = timui_page_slice(nvis, vis, scroll).first;
         if(sel < scroll) sel = scroll;
@@ -6064,6 +6202,16 @@ static int cmd_matches(TimuiStr cmd, const char *filter){
     }
     return 0;
 }
+static int cmd_filter_(const TimuiStr *commands, int count, const char *filter,
+                       int *matched_idx, int max){
+    int i, matched_count = 0;
+    if(!commands || !matched_idx || max <= 0 || count <= 0) return 0;
+    for(i = 0; i < count && matched_count < max; i++){
+        TimuiStr cmd = commands[i].ptr ? commands[i] : (TimuiStr){ "", 0 };
+        if(cmd_matches(cmd, filter)) matched_idx[matched_count++] = i;
+    }
+    return matched_count;
+}
 TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *commands, int count, TimuiCmdPaletteState state){
     TimuiCmdPaletteResult res;
@@ -6080,13 +6228,23 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
     input_r = TIMUI_RECT(r.x + 1, r.y + 1, r.w - 2, 1);
     list_r  = TIMUI_RECT(r.x + 1, r.y + 2, r.w - 2, r.h - 3);
     timui_input_line_buf(f, id + 1, input_r, state.filter, sizeof state.filter);
-    /* filter */
-    for(i = 0; i < count && matched_count < 256; i++){
-        TimuiStr cmd = commands[i].ptr ? commands[i] : (TimuiStr){ "", 0 };
-        if(cmd_matches(cmd, state.filter)) matched_idx[matched_count++] = i;
-    }
+    matched_count = cmd_filter_(commands, count, state.filter, matched_idx,
+                                (int)(sizeof matched_idx / sizeof matched_idx[0]));
     if(state.selected < 0) state.selected = 0;
     if(state.selected >= matched_count) state.selected = matched_count > 0 ? matched_count - 1 : 0;
+    /* V18: only steer the palette when its filter input is focused, so drawing
+     * the palette without focusing it doesn't swallow arrow/Enter from siblings.
+     * Process before drawing so selection/activation state and pixels agree. */
+    if(ui->ia.focus == id + 1){
+        state.selected = timui_updown_nav_(f, state.selected, matched_count);
+        if(timui_key_pressed(f, TIMUI_KEY_ENTER) && matched_count > 0){
+            res.activated = matched_idx[state.selected];
+            state.filter[0] = '\0';
+            state.selected = 0;
+            matched_count = cmd_filter_(commands, count, state.filter, matched_idx,
+                                        (int)(sizeof matched_idx / sizeof matched_idx[0]));
+        }
+    }
     /* draw matched commands */
     { TimuiRect content = timui_scroll_begin(f, list_r, 0);
       for(i = 0; i < matched_count; i++){
@@ -6097,16 +6255,6 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
           timui_draw_row_(&ui->curr, TIMUI_RECT(content.x, content.y + i, list_r.w, 1), 1, commands[orig], st);
       }
       timui_scroll_end(f);
-    }
-    /* V18: only steer the palette when its filter input is focused, so drawing
-     * the palette without focusing it doesn't swallow arrow/Enter from siblings. */
-    if(ui->ia.focus == id + 1){
-        state.selected = timui_updown_nav_(f, state.selected, matched_count);
-        if(timui_key_pressed(f, TIMUI_KEY_ENTER) && matched_count > 0){
-            res.activated = matched_idx[state.selected];
-            state.filter[0] = '\0';
-            state.selected = 0;
-        }
     }
     timui_panel_end(f);
     res.state = state;
@@ -6212,7 +6360,9 @@ TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRec
     res.focused = 0;
     if(!f || !f->ui || !state.query || state.cap == 0 || count < 0) return res;
     ui = f->ui;
-    if(state.cursor >= state.cap) state.cursor = state.cap - 1;
+    { size_t len = text_len_bounded_(state.query, state.cap);
+      if(len >= state.cap){ len = state.cap - 1; state.query[len] = '\0'; }
+      if(state.cursor > len) state.cursor = len; }
     field = TIMUI_RECT(r.x, r.y, r.w, r.h > 0 ? 1 : 0);
     popup = TIMUI_RECT(r.x, r.y + 1, r.w, r.h > 1 ? r.h - 1 : 0);
     ir = timui_interact_button(&ui->ia, id, r);
@@ -6713,42 +6863,57 @@ static int text_area_insert_newline_(TimuiTextAreaState *st){
     st->cursor++;
     return 1;
 }
-static int text_area_enter_submits_(const Timui *ui, int enter_index, uint32_t flags){
+static int text_area_enter_submits_(uint32_t mods, uint32_t flags){
     if(!(flags & TIMUI_TEXT_AREA_ENTER_SUBMITS)) return 0;
-    return !(ui->enter_mods[enter_index] & TIMUI_MOD_SHIFT);
+    return !(mods & TIMUI_MOD_SHIFT);
 }
-static void text_area_defer_after_enter_(Timui *ui, int at, int enter_index){
-    int tail = ui->text_in_len - at;
-    int k;
-    if(tail < 0) tail = 0;
-    if(tail > (int)sizeof(ui->pending_in)) tail = (int)sizeof(ui->pending_in);
-    memcpy(ui->pending_in, ui->text_in + at, (size_t)tail);
-    ui->pending_in_len = tail;
-    ui->pending_enter_count = ui->enter_count - enter_index - 1;
-    if(ui->pending_enter_count < 0) ui->pending_enter_count = 0;
-    for(k = 0; k < ui->pending_enter_count; k++){
-        ui->pending_enter_at[k] = ui->enter_at[enter_index + 1 + k] - at;
-        ui->pending_enter_mods[k] = ui->enter_mods[enter_index + 1 + k];
+static void text_area_apply_key_(TimuiTextAreaState *st, unsigned key, TimuiTextAreaResult *res){
+    if(key == TIMUI_KEYIN_LEFT)  st->cursor = utf8_drop_last(st->text, st->cursor);
+    if(key == TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, strlen(st->text));
+    if(key == TIMUI_KEYIN_HOME)  st->cursor = line_start_(st->text, st->cursor);
+    if(key == TIMUI_KEYIN_END)   st->cursor = line_end_(st->text, st->cursor);
+    if(key == TIMUI_KEYIN_BACKSPACE && st->cursor > 0){
+        size_t prev = utf8_drop_last(st->text, st->cursor);
+        st->cursor = text_erase_(st->text, prev, st->cursor);
+        res->changed = 1;
     }
-}
-static void text_area_process_text_(Timui *ui, TimuiTextAreaState *st,
-                                    uint32_t flags, TimuiTextAreaResult *res){
-    int j = 0;
-    int e;
-    for(e = 0; e < ui->enter_count; e++){
-        int at = ui->enter_at[e];
-        if(at < j) at = j;
-        if(at > ui->text_in_len) at = ui->text_in_len;
-        if(text_area_insert_span_(st, ui->text_in + j, at - j)) res->changed = 1;
-        if(text_area_enter_submits_(ui, e, flags)){
-            res->submitted = 1;
-            text_area_defer_after_enter_(ui, at, e);
-            return;
+    if(key == TIMUI_KEYIN_DELETE){
+        size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
+        if(nxt > st->cursor){
+            (void)text_erase_(st->text, st->cursor, nxt);
+            res->changed = 1;
         }
-        if(text_area_insert_newline_(st)) res->changed = 1;
-        j = at;
     }
-    if(text_area_insert_span_(st, ui->text_in + j, ui->text_in_len - j)) res->changed = 1;
+}
+static void text_area_process_edit_ops_(Timui *ui, TimuiTextAreaState *st,
+                                        uint32_t flags, TimuiTextAreaResult *res){
+    int oi;
+    for(oi = 0; oi < ui->edit_count; oi++){
+        TimuiEditOp *op = &ui->edit_ops[oi];
+        if(op->kind == TIMUI_EDIT_TEXT){
+            if(text_area_insert_span_(st, ui->text_in + op->start, op->len)) res->changed = 1;
+        } else if(op->kind == TIMUI_EDIT_KEY && op->key == TIMUI_EDIT_KEY_ENTER_){
+            if(text_area_enter_submits_(op->mods, flags)){
+                res->submitted = 1;
+                timui_defer_edit_ops_after_(ui, oi + 1);
+                return;
+            }
+            if(text_area_insert_newline_(st)) res->changed = 1;
+        } else if(op->kind == TIMUI_EDIT_KEY){
+            text_area_apply_key_(st, op->key, res);
+        }
+    }
+}
+static int text_area_cursor_row_(const TimuiTextAreaState *st){
+    int cursor_row = 0;
+    size_t ci;
+    for(ci = 0; ci < st->cursor && ci < st->cap; ci++){
+        if(st->text[ci] == '\n' || st->text[ci] == '\r'){
+            cursor_row++;
+            if(st->text[ci] == '\r' && ci + 1 < st->cap && st->text[ci + 1] == '\n') ci++;
+        }
+    }
+    return cursor_row;
 }
 TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, TimuiRect r,
                                                  TimuiTextAreaState st, uint32_t flags){
@@ -6770,39 +6935,21 @@ TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, Timu
     ir = timui_interact_button(&ui->ia, id, r);
     res.focused = ir.focused;
     if(ir.focused){
-        /* Insert typed codepoints at the cursor. Deletion/movement below is
-         * grapheme-aware; insertion remains codepoint-by-codepoint and
-         * cap-bounded, so invalid partial UTF-8 is not created.
-         * The edit helpers live in the widgets section, in scope via the unity
-         * build. */
-        text_area_process_text_(ui, &st, flags, &res);
-        /* cursor movement (one step per frame — the key_in bitmask can't count
-         * repeats; key auto-repeat delivers one per frame). */
-        if(ui->key_in & TIMUI_KEYIN_LEFT)  st.cursor = utf8_drop_last(st.text, st.cursor);
-        if(ui->key_in & TIMUI_KEYIN_RIGHT) st.cursor = utf8_next_(st.text, st.cursor, strlen(st.text));
-        if(ui->key_in & TIMUI_KEYIN_HOME)  st.cursor = line_start_(st.text, st.cursor);
-        if(ui->key_in & TIMUI_KEYIN_END)   st.cursor = line_end_(st.text, st.cursor);
-        /* deletion: backspace removes the cluster before the cursor, DELETE
-         * the one at the cursor. */
-        if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st.cursor > 0){
-            size_t prev = utf8_drop_last(st.text, st.cursor);
-            st.cursor = text_erase_(st.text, prev, st.cursor);
-            res.changed = 1;
-        }
-        if(ui->key_in & TIMUI_KEYIN_DELETE){
-            size_t nxt = utf8_next_(st.text, st.cursor, strlen(st.text));
-            if(nxt > st.cursor){
-                (void)text_erase_(st.text, st.cursor, nxt);
-                res.changed = 1;
-            }
-        }
+        text_area_process_edit_ops_(ui, &st, flags, &res);
         ui->text_in_len = 0;
         ui->enter_count = 0;
+        ui->edit_count = 0;
         ui->key_in = 0;
     }
     { TimuiStyle sst = timui_widget_style_(ui, TIMUI_WIDGET_TEXT_AREA,
           ir.focused ? TIMUI_SLOT_INPUT_FOCUSED : TIMUI_SLOT_INPUT,
           ir.focused ? TIMUI_STYLE_STATE_FOCUSED : 0);
+      {  int cursor_row = text_area_cursor_row_(&st);
+         if(st.scroll_y < 0) st.scroll_y = 0;
+         if(cursor_row < st.scroll_y) st.scroll_y = cursor_row;
+         if(cursor_row >= st.scroll_y + r.h) st.scroll_y = cursor_row - r.h + 1;
+         if(st.scroll_y < 0) st.scroll_y = 0;
+      }
       content = timui_scroll_begin(f, r, st.scroll_y);
       i = 0;
       while(i < st.cap && st.text[i]){
@@ -6818,18 +6965,6 @@ TIMUI_API TimuiTextAreaResult timui_text_area_ex(TimuiFrame *f, TimuiId id, Timu
               i++;
           }
           y++;
-      }
-      /* auto-scroll to keep the cursor visible (computed before scroll_begin next frame) */
-      {  int cursor_row = 0;
-         size_t ci;
-         for(ci = 0; ci < st.cursor && ci < st.cap; ci++)
-             if(st.text[ci] == '\n' || st.text[ci] == '\r'){
-                 cursor_row++;
-                 if(st.text[ci] == '\r' && ci + 1 < st.cap && st.text[ci+1] == '\n') ci++;
-             }
-         if(cursor_row < st.scroll_y) st.scroll_y = cursor_row;
-         if(cursor_row >= st.scroll_y + r.h) st.scroll_y = cursor_row - r.h + 1;
-         if(st.scroll_y < 0) st.scroll_y = 0;
       }
       timui_scroll_end(f);
       if(ir.focused){                                 /* F1.4: request the hardware cursor */
@@ -16617,10 +16752,6 @@ TIMUI_API void timui_spinner(TimuiFrame *f, int x, int y, int tick, TimuiStyle s
 }
 /* ---- optional functional runner --------------------------------------- *
  * UI-thread message queue (emit during view, recv into update) + the runner. */
-/* timui_run delivers each posted message via a fixed internal buffer. Messages
- * larger than TIMUI_RUN_BUF are truncated (W5) — keep posts small, or call
- * timui_recv directly with your own buffer for large payloads. */
-#define TIMUI_RUN_BUF 4096
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size){
     return f && f->ui && timui_mpsc_post(&f->ui->postq, type, data, size) != 0;
 }
@@ -16633,28 +16764,32 @@ TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *
 TIMUI_API void timui_frame_quit(TimuiFrame *f){
     if(f && f->ui) timui_quit(f->ui);
 }
+static void timui_app_drain_updates_(Timui *ui, TimuiApp *app){
+    TimuiMpscNode *n;
+    if(!ui || !app) return;
+    while((n = timui_mpsc_pop_node_(&ui->postq)) != NULL){
+        if(app->update) app->update(app->model, n->type, n->data, n->size);
+        timui_mpsc_free_node_(&ui->postq, n);
+    }
+}
+TIMUI_API int timui_app_frame(Timui *ui, TimuiApp *app){
+    TimuiFrame *f = NULL;
+    if(!ui || !app || !app->view || timui_should_quit(ui)) return 0;
+    if(!timui_begin(ui, &f)) return 0;
+    app->view(f, app->model);
+    timui_end(f);
+    timui_app_drain_updates_(ui, app);
+    return 1;
+}
 TIMUI_API int timui_run(const TimuiConfig *cfg, TimuiApp *app){
     Timui *ui = NULL;
     if(!cfg || !app || !app->view || timui_open(cfg, &ui) != TIMUI_OK) return 1;
     while(!timui_should_quit(ui)){
-        TimuiFrame *f = NULL;
-        uint32_t type = 0;
-        unsigned char buf[TIMUI_RUN_BUF];
-        size_t sz;
-        if(!timui_begin(ui, &f)) break;
-        app->view(f, app->model);
-        sz = sizeof buf;
-        while(timui_recv(ui, &type, buf, &sz)){
-            if(sz > sizeof buf) sz = sizeof buf;   /* clamp to prevent stack over-read */
-            if(app->update) app->update(app->model, type, buf, sz);
-            sz = sizeof buf;
-        }
-        timui_end(f);
+        if(!timui_app_frame(ui, app)) break;
     }
     timui_close(ui);
     return 0;
 }
-#undef TIMUI_RUN_BUF   /* Z10: impl-only macro must not leak into the consumer TU */
 /*
  * timui_syntax.c — table-driven syntax highlighter + read-only code viewer (W4).
  *

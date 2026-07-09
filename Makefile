@@ -745,13 +745,14 @@ www: amalgamate ## Refresh static website assets under www/
 	@$(MAKE) check-www-assets
 	@printf "$(C_GREEN)✓ refreshed $(WWW_HEADER) and $(WWW_LICENSE)$(C_RESET)\n"
 
-check-www: check-www-assets ## Verify static website license, agent links, and assets
+check-www: amalgamate check-www-assets ## Verify static website license, agent links, header freshness, and assets
 	@grep -q '<h2>LICENSE</h2>' $(WWWDIR)/index.html
 	@grep -q 'href="LICENSE"' $(WWWDIR)/index.html
 	@grep -q 'Apache-2.0' $(WWWDIR)/index.html
 	@grep -q '^## License$$' $(WWWDIR)/llms.txt
 	@grep -q 'https://timui.dev/LICENSE' $(WWWDIR)/llms.txt
 	@grep -q 'SPDX-License-Identifier: Apache-2.0' $(WWW_HEADER)
+	@cmp -s $(RELDIR)/timui.h $(WWW_HEADER) || { printf "$(C_YELL)✗ www$(C_RESET) timui.h is stale; run make www\n"; exit 1; }
 	@cmp -s LICENSE $(WWW_LICENSE)
 	@printf "$(C_GREEN)✓ website license links$(C_RESET)\n"
 
