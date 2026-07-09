@@ -54,6 +54,8 @@ struct Timui {
     char              paste_buf[256];   /* bracketed-paste accumulator (ev ptr is transient; a paste
                                          * can also span several reads -> several events per frame) */
     int               paste_len;
+    char              paste_utf8_tail[4];
+    int               paste_utf8_tail_len;
     int               trace_fd;         /* TIMUI_TRACE input trace fd, -1 = off */
     /* Submit segmentation for timui_input_field: byte offsets in text_in where
      * Enter fired this frame, in order. Lets the field submit ONE segment per
@@ -87,8 +89,9 @@ struct Timui {
      * deferred ESC — 16 dropped all but the first 16 chars of a dropped path. */
     TimuiEvent        events[512];
     int               event_count;
-    struct { TimuiRect clip; int has_clip; } clip_stack[8];
+    struct TimuiClipSnapshot { TimuiRect clip; int has_clip; } *clip_stack;
     int               clip_count;
+    int               clip_cap;
     /* Terminal-image placements recorded this frame by timui_image_draw;
      * emitted ON TOP of the cell diff in timui_end, so they compose with the
      * renderer. Protocol-specific lifecycle state is tracked separately. */

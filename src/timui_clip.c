@@ -27,11 +27,21 @@ TIMUI_API void timui_push_clip(TimuiFrame *f, TimuiRect rect){
     if(!f || !f->ui) return;
     ui = f->ui;
     b = &ui->curr;
-    if(ui->clip_count < 8){
-        ui->clip_stack[ui->clip_count].clip = b->clip;
-        ui->clip_stack[ui->clip_count].has_clip = b->has_clip;
-        ui->clip_count++;
+    if(ui->clip_count >= ui->clip_cap){
+        int nc;
+        void *ns;
+        if(ui->clip_cap > INT_MAX / 2) return;
+        nc = ui->clip_cap ? ui->clip_cap * 2 : 8;
+        ns = ui->alloc.realloc(ui->alloc.userdata, ui->clip_stack,
+                               (size_t)ui->clip_cap * sizeof(*ui->clip_stack),
+                               (size_t)nc * sizeof(*ui->clip_stack));
+        if(!ns) return;
+        ui->clip_stack = ns;
+        ui->clip_cap = nc;
     }
+    ui->clip_stack[ui->clip_count].clip = b->clip;
+    ui->clip_stack[ui->clip_count].has_clip = b->has_clip;
+    ui->clip_count++;
     active = b->has_clip ? b->clip : TIMUI_RECT(0, 0, b->w, b->h);
     b->clip = clip_intersect(active, rect);
     b->has_clip = 1;

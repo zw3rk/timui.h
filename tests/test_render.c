@@ -108,6 +108,45 @@ TIMUI_TEST(test_render_diff_wide_to_narrow){
     timui_cells_destroy(&prev); timui_cells_destroy(&curr); timui_fake_destroy(&f);
 }
 
+TIMUI_TEST(test_draw_overwrites_repair_wide_pairs){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiCellBuffer prev, curr;
+    TimuiFakeTransport f;
+    TimuiTransport t;
+    TimuiRenderer r;
+    TimuiStr out;
+    TimuiStyle s = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
+
+    timui_cells_init(&prev, 4, 1, &al);
+    timui_cells_init(&curr, 4, 1, &al);
+    timui_draw_text(&prev, 0, 0, TIMUI_STR_LIT("ZZ"), s);
+    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("\xE4\xB8\xAD"), s); /* 中 */
+    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("A"), s);
+
+    TIMUI_CHECK(timui_cells_get(&curr, 0, 0)->codepoint == 'A');
+    TIMUI_CHECK(timui_cells_get(&curr, 0, 0)->width == 1);
+    TIMUI_CHECK(timui_cells_get(&curr, 1, 0)->flags == TIMUI_CELL_EMPTY);
+
+    timui_fake_init(&f, &al);
+    t = timui_fake_transport(&f);
+    timui_renderer_reset(&r);
+    timui_render_diff(&t, &prev, &curr, &r);
+    out = timui_fake_output(&f);
+    TIMUI_CHECK(memchr(out.ptr, ' ', out.len) != NULL);
+    timui_fake_destroy(&f);
+
+    timui_cells_clear(&curr);
+    timui_draw_text(&curr, 0, 0, TIMUI_STR_LIT("\xE4\xB8\xAD"), s); /* 中 */
+    timui_draw_text(&curr, 1, 0, TIMUI_STR_LIT("B"), s);
+    TIMUI_CHECK(timui_cells_get(&curr, 0, 0)->codepoint == 0);
+    TIMUI_CHECK(timui_cells_get(&curr, 0, 0)->flags == TIMUI_CELL_EMPTY);
+    TIMUI_CHECK(timui_cells_get(&curr, 1, 0)->codepoint == 'B');
+    TIMUI_CHECK(timui_cells_get(&curr, 1, 0)->width == 1);
+
+    timui_cells_destroy(&prev);
+    timui_cells_destroy(&curr);
+}
+
 static int r_contains(const char *h, size_t hl, const char *needle){
     size_t nl = strlen(needle), i;
     if(nl == 0 || hl < nl) return 0;

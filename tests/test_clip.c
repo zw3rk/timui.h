@@ -55,6 +55,30 @@ TIMUI_TEST(test_clip_nested_intersect){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_clip_stack_overflow_preserves_pop_symmetry){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL; TimuiCellBuffer *buf;
+    int i;
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 3, &al);
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+
+    for(i = 0; i < 9; i++) timui_push_clip(f, TIMUI_RECT(i, 0, 20 - i, 3));
+    timui_pop_clip(f);
+
+    timui_draw_text(buf, 6, 0, TIMUI_STR_LIT("X"), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
+    timui_draw_text(buf, 7, 0, TIMUI_STR_LIT("Y"), timui_style_make(0xFFFFFF, TIMUI_COLOR_DEFAULT, 0));
+
+    TIMUI_CHECK(timui_cells_get(buf, 6, 0)->codepoint == 0);
+    TIMUI_CHECK(timui_cells_get(buf, 7, 0)->codepoint == 'Y');
+
+    timui_end(f);
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_clip_wide_glyph_requires_full_width){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake; TimuiTransport t;

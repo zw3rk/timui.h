@@ -25,10 +25,16 @@
  * rather than silently truncated. */
 #define TIMUI_LAYOUT_MAX 128
 
+static int timui_sat_i64_(int64_t v){
+    if(v < INT_MIN) return INT_MIN;
+    if(v > INT_MAX) return INT_MAX;
+    return (int)v;
+}
+
 /* Round a * num / den to the nearest integer (den > 0; a, num >= 0). */
-static int timui_round_div_(long a, long num, long den){
+static int64_t timui_round_div_(int64_t a, int64_t num, int64_t den){
     if(den <= 0) return 0;
-    return (int)((a * num + den / 2) / den);
+    return (a * num + den / 2) / den;
 }
 
 /* A flexible constraint shares in the leftover space (FLEX/MIN/MAX). */
@@ -38,19 +44,20 @@ static int timui_con_is_flex_(TimuiConstraintKind k){
 
 /* Weight of a flexible constraint: FLEX uses its value (clamped >= 0); MIN/MAX
  * are single-weight fill segments. */
-static int timui_con_weight_(const TimuiConstraint *c){
+static int64_t timui_con_weight_(const TimuiConstraint *c){
     if(c->kind == TIMUI_CON_FLEX) return c->value > 0 ? c->value : 0;
     return 1;   /* MIN / MAX */
 }
 
 TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstraint *cons,
                              int n, TimuiLayoutOpts opts, TimuiRect *out){
-    int  size[TIMUI_LAYOUT_MAX];
+    int64_t size[TIMUI_LAYOUT_MAX];
     char locked[TIMUI_LAYOUT_MAX];
-    int  i, gap, margin;
-    int  axis_start, axis_len, cross_start, cross_len;
-    int  inner_start, inner_len, cross_inner_start, cross_inner_len;
-    int  avail, fixed_sum, leftover, remaining, pos, end;
+    int  i;
+    int64_t gap, margin;
+    int64_t axis_start, axis_len, cross_start, cross_len;
+    int64_t inner_start, inner_len, cross_inner_start, cross_inner_len;
+    int64_t avail, fixed_sum, leftover, remaining, pos, end;
 
     if(!cons || !out || n <= 0 || n > TIMUI_LAYOUT_MAX) return 0;
 
@@ -81,7 +88,7 @@ TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstrai
             size[i] = cons[i].value > 0 ? cons[i].value : 0;
             fixed_sum += size[i];
         } else if(cons[i].kind == TIMUI_CON_PCT){
-            int p = cons[i].value < 0 ? 0 : cons[i].value;
+            int64_t p = cons[i].value < 0 ? 0 : cons[i].value;
             size[i] = timui_round_div_(avail, p, 100);
             fixed_sum += size[i];
         } else {
@@ -95,13 +102,15 @@ TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstrai
      * honouring MIN/MAX bounds via freeze-and-redistribute. */
     remaining = leftover;
     for(;;){
-        int free_weight = 0, last_free = -1, assigned = 0, changed = 0;
+        int64_t free_weight = 0, assigned = 0;
+        int last_free = -1, changed = 0;
         for(i = 0; i < n; i++)
             if(timui_con_is_flex_(cons[i].kind) && !locked[i]){
                 free_weight += timui_con_weight_(&cons[i]);
                 last_free = i;
             }
         if(last_free < 0) break;   /* no free flexible children left */
+        if(free_weight <= 0) break; /* all remaining flex children asked for zero */
 
         /* Provisional shares — the last free child gets the exact remainder so
          * the free children always sum to `remaining` (no rounding gap). */
@@ -136,17 +145,17 @@ TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstrai
     pos = inner_start;
     end = inner_start + inner_len;
     for(i = 0; i < n; i++){
-        int s = size[i], rem;
+        int64_t s = size[i], rem;
         if(i > 0) pos += gap;
         rem = end - pos; if(rem < 0) rem = 0;
         if(s > rem) s = rem;
         if(s < 0) s = 0;
         if(axis == TIMUI_AXIS_V){
-            out[i].x = cross_inner_start; out[i].w = cross_inner_len;
-            out[i].y = pos;               out[i].h = s;
+            out[i].x = timui_sat_i64_(cross_inner_start); out[i].w = timui_sat_i64_(cross_inner_len);
+            out[i].y = timui_sat_i64_(pos);               out[i].h = timui_sat_i64_(s);
         } else {
-            out[i].x = pos;               out[i].w = s;
-            out[i].y = cross_inner_start; out[i].h = cross_inner_len;
+            out[i].x = timui_sat_i64_(pos);               out[i].w = timui_sat_i64_(s);
+            out[i].y = timui_sat_i64_(cross_inner_start); out[i].h = timui_sat_i64_(cross_inner_len);
         }
         pos += s;
     }
@@ -168,7 +177,8 @@ TIMUI_API int timui_grid_ex(TimuiRect area, const TimuiConstraint *rows, int nr,
                             const TimuiConstraint *cols, int nc, TimuiLayoutOpts opts, TimuiRect *out){
     TimuiRect rowrects[TIMUI_LAYOUT_MAX];
     int r;
-    if(!rows || !cols || !out || nr <= 0 || nc <= 0 || nr > TIMUI_LAYOUT_MAX) return 0;
+    if(!rows || !cols || !out || nr <= 0 || nc <= 0 ||
+       nr > TIMUI_LAYOUT_MAX || nc > TIMUI_LAYOUT_MAX || nr > INT_MAX / nc) return 0;
     /* Rows carve `area` into vertical bands; each band is then split into cells
      * by the column constraints. Output is row-major: out[r*nc + c]. */
     if(timui_split_ex(area, TIMUI_AXIS_V, rows, nr, opts, rowrects) != nr) return 0;
