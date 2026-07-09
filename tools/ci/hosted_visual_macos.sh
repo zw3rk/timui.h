@@ -623,7 +623,7 @@ note ""
 note "## Outcome"
 note "- Accepted: manual inspection required."
 note "- terminal-sanity.png only proves hosted macOS screenshot mechanics. It is not image-protocol evidence."
-note "- Count this as iTerm2 live visual evidence only if an iterm2-screen-*.png visibly shows the timui image smoke with PNG-backed image tiles, not placeholders."
+note "- Count this as iTerm2 live visual evidence only if iterm2-api-session.png, iterm2-window-*.png, iterm2-region-*.png, or iterm2-screen-*.png visibly shows the timui image smoke with PNG-backed image tiles, not placeholders."
 note "- The typescript and OSC 1337 count are diagnostics only; they do not replace a visual screenshot or recording."
 
 exit 0

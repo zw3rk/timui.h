@@ -101,24 +101,31 @@ Hosted runner probe:
 - First inspect `terminal-sanity.png`. It should show the
   `TIMUI_HOSTED_SCREENSHOT_SANITY` Terminal.app window; if it does not, the
   hosted macOS screenshot path is inconclusive before iTerm2 is considered.
-- Prefer `iterm2-api-session.png`. Accept it only if
-  `iterm2-api-overlay.status` and `iterm2-api-capture.status` are `0`,
-  `iterm2-api-source-commit.txt` is present, `iterm2-api-session.json` records
-  `"screen_text_matched": true`, and the PNG visibly shows the iTerm2 live smoke
-  with PNG-backed image tiles. This path uses iTerm2's own session screenshot
-  API, not macOS global screen capture.
-- If the iTerm2 API path fails before connection, inspect
+- Prefer `iterm2-window-12s.png`. Accept it if it visibly shows the iTerm2 live
+  smoke with `active: iterm2 (forced)` and PNG-backed image tiles for
+  `plain png` and `png+rgba sidecar`. Run `28985469159` is the accepted hosted
+  macOS iTerm2 baseline. The `raw rgba` tile may remain `[img]`; iTerm2 inline
+  images are PNG-backed in this implementation.
+- `iterm2-region-12s.png` and `iterm2-screen-*.png` may also count only if they
+  visibly show the same live iTerm2 payload without TCC or other permission
+  prompts obscuring the evidence.
+- Treat `iterm2-api-session.json` as a supporting text predicate when it records
+  `"screen_text_matched": true`. On run `28985469159`, the Python API connected
+  and matched the screen text, but Homebrew iTerm2 3.6.11 rejected
+  `Session.async_screenshot()` as too old for the screenshot RPC. If a future
+  run produces `iterm2-api-session.png`, accept it only if the JSON predicate is
+  true and the PNG visibly shows the live smoke with PNG-backed image tiles.
+- If the iTerm2 path fails before window capture, inspect
   `iterm2-first-launch.*`, `iterm2-open.*`, `iterm2-direct-launch.*`, and the
   full-display screenshots first. Run `28984631494` failed because the
   Homebrew-installed iTerm2 cask was stopped at macOS first-launch/Gatekeeper
   confirmation, so a screenshot showing that prompt is diagnostic, not protocol
+  evidence. Run `28985212786` then exposed the iTerm2
+  `Allow Terminal-Initiated Display?` prompt, fixed by pre-seeding
+  `NoSyncSuppressDownloadConfirmation`.
+- Treat `iterm2.typescript`, `osc1337-count.txt`, text dumps, window lists, and
+  the Terminal.app sanity screenshot as diagnostics, not iTerm2 protocol
   evidence.
-- Direct macOS screenshots such as `iterm2-screen-*.png`,
-  `iterm2-window-*.png`, and `iterm2-region-*.png` may also count only if they
-  visibly show the iTerm2 live smoke with PNG-backed image tiles and no TCC
-  prompt. Treat `iterm2.typescript`, `osc1337-count.txt`, text dumps, window
-  lists, and the Terminal.app sanity screenshot as diagnostics, not iTerm2
-  protocol evidence.
 
 ## Windows ConPTY
 

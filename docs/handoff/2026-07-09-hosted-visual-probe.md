@@ -10,13 +10,12 @@ date: 2026-07-09
 
 - Branch: `runner-capture-research`
 - Follow-up branch: `windows-visual-rca`
-- Latest inspected hosted-run commit: `7b38a1a`
-  (`ci: bound hosted iTerm2 API launch`)
-- Remote push before the iTerm2 API probe: `github windows-visual-rca` pushed
-  through `3acbd66`
+- Latest inspected hosted-run commit: `c744e2a`
+  (`ci: preapprove iTerm2 inline display`)
+- Remote push: `github windows-visual-rca` pushed through `c744e2a`
 - GitHub workflow: `Hosted visual probes`
-- Latest run inspected: `28984631494`
-- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28984631494`
+- Latest run inspected: `28985469159`
+- Run URL: `https://github.com/zw3rk/timui.h/actions/runs/28985469159`
 
 ## Read First
 
@@ -45,6 +44,11 @@ date: 2026-07-09
   `28982641529` produced `windows-terminal-sixel-12s.png` with all three
   `image_smoke` tiles visibly rendered; `timui-sixel-dcs-metrics.txt` records
   three `64x24` Sixel rasters.
+- Hosted macOS iTerm2 now has accepted timui OSC 1337 visual evidence. Run
+  `28985469159` produced `iterm2-window-12s.png`, visibly showing the
+  `timui image smoke` UI in iTerm2 with `active: iterm2 (forced)` and both
+  PNG-backed image tiles rendered. The raw RGBA tile remains `[img]`, which is
+  expected for this iTerm2 path.
 - The Windows POSIX image-smoke build now succeeds under MSYS2 after passing the
   setup action's `msys2-location` output into the script and overriding
   `POSIX_CFLAGS` for MSYS C99 feature visibility.
@@ -53,29 +57,27 @@ date: 2026-07-09
 
 ## Rejected / Inconclusive State
 
-- Hosted iTerm2 OS-level image evidence is still rejected. iTerm2 installs, but
-  earlier direct `screencapture` screenshots showed a macOS TCC prompt for
-  `bash` to access screen/audio instead of the timui iTerm2 smoke.
-- macOS iTerm2 direct-capture RCA: on hosted `macos-15`, the prompt is real user
-  consent for direct screen/audio capture. It is not solved by `sudo`, Homebrew,
-  or TCC.db sqlite edits; Apple PPPC does not provide a supported silent allow
-  path for this direct hosted runner case. Prefer Terminal.app for OS-level
-  screenshot mechanics.
-- New unverified iTerm2 path: `tools/ci/hosted_visual_macos.sh` now enables the
-  iTerm2 Python API, creates the documented root-owned
-  `disable-automation-auth` marker, overlays the upstream iTerm2 Python API
-  package because PyPI `iterm2` 2.20 does not yet expose
-  `Session.async_screenshot()`, opens an iTerm2 session, and asks
-  `Session.async_screenshot()` for `iterm2-api-session.png`. This should avoid
-  macOS global screen capture/TCC entirely, but it is not accepted until a
-  hosted run produces and manually verifies the PNG.
+- Earlier hosted iTerm2 OS-level image evidence remains rejected. Those older
+  full-screen `screencapture` artifacts showed macOS TCC prompts or first-launch
+  prompts instead of the timui iTerm2 smoke.
+- macOS direct full-screen capture can still trigger a real user-consent prompt
+  for direct screen/audio capture. The accepted path is the targeted iTerm2
+  window capture from run `28985469159`, not the full-screen diagnostic when it
+  contains a TCC overlay.
+- The iTerm2 Python API connection path is useful as a text predicate, but not
+  as screenshot evidence on current hosted images. Run `28985469159` connected
+  to iTerm2, `iterm2-api-session.json` recorded `"screen_text_matched": true`,
+  and the upstream API overlay exposed `Session.async_screenshot()`, but
+  Homebrew iTerm2 3.6.11 rejected that RPC as too old for Python API session
+  screenshots. Use `iterm2-window-*.png` for accepted native visual evidence
+  unless the hosted cask gains screenshot support.
 - Run `28984631494` proved the upstream iTerm2 Python API overlay works, but
   iTerm2 did not reach the API server because the just-installed Homebrew cask
   hit macOS first-launch/Gatekeeper confirmation:
   `iterm2-screen-12s.png` and `iterm2-screen-24s.png` show the
-  `"iTerm" is an app downloaded from the Internet` prompt. The next probe
-  removes `com.apple.quarantine`, registers the app, installs PyObjC for the
-  AppKit prelaunch path, and falls back to direct executable launch.
+  `"iTerm" is an app downloaded from the Internet` prompt. This was fixed by
+  removing `com.apple.quarantine`, registering the app, installing PyObjC for
+  the AppKit prelaunch path, and retaining a direct executable launch fallback.
 - Historical Windows Sixel rejection was fixture-size, not renderer failure.
   Run `28982372688` showed direct Sixel rendered, while timui emitted three
   `4x4` rasters because the smoke fixture was 4x4 and MSYS/Windows Terminal did
@@ -93,7 +95,25 @@ date: 2026-07-09
   - `artifacts/gh-runs/28982372688/`
   - `artifacts/gh-runs/28982641529/`
   - `artifacts/gh-runs/28984631494/`
+  - `artifacts/gh-runs/28985212786/`
+  - `artifacts/gh-runs/28985469159/`
 - `/artifacts/` is gitignored scratch.
+- Run `28985469159` macOS iTerm2:
+  - `image-smoke-build.status`: `0`
+  - `iterm2-first-launch.status`: `0`
+  - `iterm2-defaults-allow-inline-display.status`: `0`
+  - `iterm2-open.status`: `0`
+  - `iterm2-api-session.json`: `"screen_text_matched": true`
+  - `iterm2-api-capture.status`: `1`, because iTerm2 3.6.11 is too old for the
+    Python API screenshot RPC.
+  - `iterm2-window-12s.png`: accepted native iTerm2 visual evidence; visible
+    PNG-backed `plain png` and `png+rgba sidecar` tiles.
+- Run `28985212786` macOS iTerm2:
+  - First-launch Gatekeeper prompt was cleared and iTerm2 launched.
+  - `iterm2-window-12s.png` showed the next blocker:
+    `Allow Terminal-Initiated Display?`.
+  - This was fixed by pre-seeding `NoSyncSuppressDownloadConfirmation` and its
+    saved selection before iTerm2 launch.
 - Run `28984631494` macOS iTerm2:
   - `iterm2-api-overlay.status`: `0`
   - `iterm2-open.status`: `124`
@@ -139,19 +159,15 @@ date: 2026-07-09
 - `nix develop -c make check-image-smoke` - failed after adding the visible
   Sixel predicate, then passed after the 64x24 smoke fixture change.
 - GitHub hosted workflow runs: `28980999976`, `28981256095`, `28981426012`,
-  `28982372688`, `28982641529`, `28984631494`
+  `28982372688`, `28982641529`, `28984631494`, `28985212786`, `28985469159`
 
 ## Next Safe Move
 
-- For accepted iTerm2 evidence: trigger `Hosted visual probes` again after the
-  first-launch remediation commit and inspect
-  `iterm2-api-session.png`, `iterm2-api-session.json`, and
-  `iterm2-api-capture.status`. Accept only if `iterm2-api-overlay.status` also
-  passed, `iterm2-api-source-commit.txt` records the upstream API package
-  commit, the PNG visibly shows the live iTerm2 image smoke with PNG-backed
-  image tiles, and the JSON records matched screen text. Keep direct
-  `screencapture` artifacts diagnostic unless they show no TCC prompt and
-  visible iTerm2 payload.
+- For future iTerm2 evidence: prefer `iterm2-window-12s.png` or
+  `iterm2-region-12s.png` from `Hosted visual probes`. The accepted baseline is
+  run `28985469159` at `c744e2a`. Treat `iterm2-api-session.json` as a useful
+  text predicate, but not screenshot evidence while Homebrew iTerm2 3.6.11
+  reports the screenshot RPC unsupported.
 - For ConPTY: debug `tools/conpty_smoke_win32.c` on an interactive Windows host
   with live byte-stream logging before treating hosted ConPTY as an acceptance
   gate.

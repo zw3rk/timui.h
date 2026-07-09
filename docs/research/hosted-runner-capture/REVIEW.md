@@ -47,12 +47,13 @@ usable as timui.h terminal visual evidence?
   runner images pre-seed Screen Recording/TCC grants for shell/runner paths and
   Terminal.app. Prefer opening an executable `.command` file with
   `open -a Terminal`, then capture with `screencapture`.
-- Hosted iTerm2 OS-level capture is weaker than Terminal.app. iTerm2 is not
-  part of the standard macOS image, and a just-installed copy does not inherit
-  Terminal.app's seeded TCC grants. On `macos-15`, direct `screencapture`
-  attempts produced a privacy prompt attributed to `bash` requesting direct
-  screen/audio access. Apple PPPC/TCC does not provide a supported silent allow
-  path for this direct-capture case on GitHub-hosted macOS.
+- Hosted iTerm2 OS-level capture is possible when the probe targets the iTerm2
+  window rather than relying only on full-screen diagnostics. Run `28985469159`
+  on `macos-15` produced accepted native iTerm2 visual evidence in
+  `iterm2-window-12s.png`: `timui image smoke`, `active: iterm2 (forced)`, and
+  both PNG-backed OSC 1337 tiles were visible. Full-screen diagnostic captures
+  may still include macOS TCC overlays and should not count when they obscure
+  the terminal payload.
 - iTerm2's Python API is a separate promising path. Current upstream source
   exposes `Session.async_screenshot()`, which asks iTerm2 for a PNG of the
   session's visible screen rather than asking macOS for global screen capture.
@@ -62,16 +63,17 @@ usable as timui.h terminal visual evidence?
   The API is disabled by default and external scripts normally need
   authentication; the documented root-owned
   `~/Library/Application Support/iTerm2/disable-automation-auth` marker lets CI
-  avoid an AppleScript auth prompt after `EnableAPIServer` is set. Treat this as
-  accepted iTerm2 visual evidence only after the PNG artifact is manually
-  inspected and visibly shows the `image_smoke` iTerm2 inline-image tiles.
+  avoid an AppleScript auth prompt after `EnableAPIServer` is set. On the
+  current Homebrew iTerm2 3.6.11 cask this path connects and confirms screen
+  text, but `Session.async_screenshot()` is rejected as too new for the app, so
+  use it as a text predicate rather than visual evidence.
 - Run `28984631494` narrowed the next iTerm2 blocker to first launch, not
   desktop availability: the runner had a logged-in GUI session and
   `screencapture` produced desktop PNGs, but the visible iTerm2 artifact was the
   macOS `"downloaded from the Internet"` confirmation for the Homebrew cask.
-  The next probe removes `com.apple.quarantine`, registers the bundle with
-  LaunchServices, installs PyObjC for AppKit launch diagnostics, and falls back
-  to direct executable launch before retrying the iTerm2 API screenshot.
+- Run `28985212786` then cleared first launch and found the iTerm2 inline-image
+  consent prompt. Run `28985469159` fixed that by pre-seeding
+  `NoSyncSuppressDownloadConfirmation` and its saved selection before launch.
 - Hosted Windows can run screen-capture code and can render Windows Terminal UI
   in the active `runneradmin` console session. Run `28982641529` proved
   Windows Terminal Sixel rendering on hosted Windows Server 2025:
@@ -98,10 +100,11 @@ usable as timui.h terminal visual evidence?
 - macOS protocol evidence:
   - use `macos-15`;
   - prefer Terminal.app for hosted OS-level GUI screenshots;
-  - first try iTerm2's Python API `Session.async_screenshot()` path because it
-    avoids macOS direct screen capture;
-  - treat direct `screencapture` iTerm2 artifacts as diagnostics unless a future
-    run shows no TCC prompt and visibly shows the live iTerm2 payload.
+  - use the iTerm2 window capture artifacts for OSC 1337 evidence;
+  - use the iTerm2 Python API connection as a supporting text predicate while
+    the hosted cask lacks screenshot RPC support;
+  - treat full-screen `screencapture` iTerm2 artifacts as diagnostics unless
+    they visibly show the live iTerm2 payload without a TCC overlay.
 - Windows hosted evidence:
   - record `query user`, `qwinsta`, process lists, and full virtual-screen PNGs;
   - count Windows Terminal Sixel evidence when the screenshot visibly shows the
@@ -118,9 +121,7 @@ usable as timui.h terminal visual evidence?
 
 - Add protocol-level Sixel decode predicates so hosted Windows can still prove
   Sixel payload correctness without depending on visible desktop capture.
-- Hosted iTerm2 direct OS capture remains weaker than Terminal.app and may
-  still hit macOS privacy/TCC after first launch succeeds. The next safe
-  experiment is the de-quarantined Python API session PNG path; if that fails,
-  use Terminal.app hosted screenshots for capture mechanics and deterministic
-  protocol-byte evidence, or use a persistent Mac with pre-approved permissions
-  if native iTerm2 pixels become a release requirement.
+- Hosted iTerm2 visual evidence has an accepted baseline in run `28985469159`.
+  Remaining work is to make the predicate more automatic, for example by adding
+  ROI/pixel checks against `iterm2-window-12s.png` or by revisiting
+  `Session.async_screenshot()` when the hosted iTerm2 cask supports that RPC.
