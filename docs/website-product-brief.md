@@ -117,7 +117,7 @@ Evidence: `README.md:8-24`, `include/timui.h:225-330`,
 
 Use proof, not just claims:
 
-- `nix develop -c make test` currently passes with over 200 tests.
+- `nix develop -c make test` currently passes with over 300 tests.
 - CI runs `make check`, `make release-check`, golden staleness checks,
   libvterm round-trip tests, and address/undefined/thread sanitizers.
 - `make build` compiles all examples in single-header mode.
@@ -131,7 +131,7 @@ Evidence: `Makefile:68-83`, `Makefile:131-156`, `Makefile:161-248`,
 `Makefile:289-336`, `.github/workflows/ci.yml:20-55`,
 `docs/visual-tests.md:3-13`, `docs/visual-tests.md:60-85`.
 
-Important copy cleanup: keep proof current. Prefer "over 200 tests" in planning
+Important copy cleanup: keep proof current. Prefer "over 300 tests" in planning
 docs, or update any exact public count together with `make test`.
 
 ## Demo story
@@ -254,7 +254,7 @@ Avoid:
    ncurses.
 5. Feature grid: terminal protocols, widgets, async messages, images/links,
    testing/rendering, single-header release.
-6. Quality proof: over 200 tests, CI gates, sanitizers, libvterm, goldens,
+6. Quality proof: over 300 tests, CI gates, sanitizers, libvterm, goldens,
    release-check.
 7. Honest limitations: Windows smoke pending, terminal-dependent images/Shift+Enter,
    limited bidi/grapheme support, pre-1.0 API movement.
@@ -344,8 +344,9 @@ int main(void) {
   grapheme clusters, ZWJ emoji, and skin-tone sequences remain future work.
 - Do not say "images work everywhere." They are terminal-protocol-dependent
   (Kitty graphics, iTerm2 inline images, or raw-RGBA / PNG+RGBA sidecar /
-  bounded plain-PNG Sixel today), with a fallback placeholder. Live iTerm2/Sixel
-  terminal evidence remains open.
+  bounded plain-PNG Sixel today), with a fallback placeholder. Hosted Windows
+  Terminal Sixel and iTerm2 visual evidence has been accepted; unsupported or
+  malformed image paths still fall back to placeholders.
 - Do not imply `make check` alone is the whole project gate. CI also runs
   `release-check`, golden staleness checks, `vt-test`, and sanitizers.
 - Do not claim a website build system exists. This repo has product docs and
