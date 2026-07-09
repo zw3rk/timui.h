@@ -38,6 +38,29 @@ TIMUI_TEST(test_table_renders){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_table_draws_keyboard_selection_same_frame){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiTableState ts = {0, 0, 0};
+    TimuiTableResult res;
+    TimuiStr hdrs[2] = { TIMUI_STR_LIT("Name"), TIMUI_STR_LIT("Val") };
+    TimuiCellBuffer *buf;
+    TimuiTheme th = timui_theme_builtin(TIMUI_THEME_DOS_BLUE);
+    uint32_t sel_bg = timui_theme_style(&th, TIMUI_SLOT_SELECTION).bg;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    SETIN(&fake, "\x1b[B");
+    timui_begin(ui, &f); buf = timui_frame_buffer(f);
+    timui_set_focus(f, TIMUI_ID("t"));
+    res = timui_table_mut(f, TIMUI_ID("t"), TIMUI_RECT(0, 0, 20, 5), hdrs, 2, 3, tbl_cell, 0, &ts);
+    TIMUI_CHECK(res.state.selected == 1 && ts.selected == 1);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->bg != sel_bg);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 2)->bg == sel_bg);
+    timui_end(f);
+    timui_close(ui);
+}
+
 /* ---- tree (#48) ---- */
 TIMUI_TEST(test_tree_renders){
     TimuiAllocator al = timui_default_allocator();
@@ -57,6 +80,31 @@ TIMUI_TEST(test_tree_renders){
     TIMUI_CHECK(timui_cells_get(buf, 2, 0)->codepoint == 'r');
     /* child at row 1: depth-1 indent (4 chars) then "child" at x=4 */
     TIMUI_CHECK(timui_cells_get(buf, 4, 1)->codepoint == 'c');
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_tree_draws_keyboard_selection_same_frame){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiTreeNode nodes[] = {
+        {0, "root", 1, 1}, {1, "child", 0, 0}, {1, "peer", 0, 0}
+    };
+    TimuiTreeResult res;
+    TimuiCellBuffer *buf;
+    TimuiTheme th = timui_theme_builtin(TIMUI_THEME_DOS_BLUE);
+    uint32_t sel_bg = timui_theme_style(&th, TIMUI_SLOT_SELECTION).bg;
+    int sel = 0;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    SETIN(&fake, "\x1b[B");
+    timui_begin(ui, &f); buf = timui_frame_buffer(f);
+    timui_set_focus(f, TIMUI_ID("tr"));
+    res = timui_tree_mut(f, TIMUI_ID("tr"), TIMUI_RECT(0, 0, 20, 5), nodes, 3, &sel);
+    TIMUI_CHECK(res.selected == 1 && sel == 1);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->bg != sel_bg);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->bg == sel_bg);
     timui_end(f);
     timui_close(ui);
 }
@@ -96,6 +144,29 @@ TIMUI_TEST(test_cmd_palette_filter){
     TIMUI_CHECK(r == -1);             /* not activated yet (no Enter) */
     /* "Open" visible in the list at row 2 (inside the panel body) */
     TIMUI_CHECK(timui_cells_get(buf, 2, 2)->codepoint == 'O');
+    timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_cmd_palette_draws_keyboard_selection_same_frame){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr cmds[3] = { TIMUI_STR_LIT("Save"), TIMUI_STR_LIT("Open"), TIMUI_STR_LIT("Quit") };
+    TimuiCmdPaletteState cps = {0};
+    TimuiCmdPaletteResult res;
+    TimuiCellBuffer *buf;
+    TimuiTheme th = timui_theme_builtin(TIMUI_THEME_DOS_BLUE);
+    uint32_t sel_bg = timui_theme_style(&th, TIMUI_SLOT_SELECTION).bg;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    SETIN(&fake, "\x1b[B");
+    timui_begin(ui, &f); buf = timui_frame_buffer(f);
+    timui_set_focus(f, TIMUI_ID("cp") + 1);
+    res = timui_command_palette_mut(f, TIMUI_ID("cp"), TIMUI_RECT(0, 0, 20, 6), cmds, 3, &cps);
+    TIMUI_CHECK(res.state.selected == 1 && cps.selected == 1);
+    TIMUI_CHECK(timui_cells_get(buf, 1, 2)->bg != sel_bg);
+    TIMUI_CHECK(timui_cells_get(buf, 1, 3)->bg == sel_bg);
     timui_end(f);
     timui_close(ui);
 }
