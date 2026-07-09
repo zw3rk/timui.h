@@ -225,6 +225,26 @@ TIMUI_TEST(test_combobox_cursor_movement_updates_state){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_combobox_clamps_cursor_to_query_len_before_edit){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr opts[1] = { TIMUI_STR_LIT("abcQ") };
+    char query[8] = { 'a', 'b', 'c', '\0', 'X', 'Y', 'Z', '\0' };
+    TimuiComboboxState st = { query, sizeof query, 6, 0, 0, 0, 0 };
+    TimuiComboboxResult res;
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 40, 10, &al);
+    SETIN(&fake, "Q");
+    timui_begin(ui, &f);
+    timui_set_focus(f, TIMUI_ID("stale"));
+    res = timui_combobox_mut(f, TIMUI_ID("stale"), TIMUI_RECT(0, 0, 20, 3), opts, 1, &st);
+    timui_end(f);
+    TIMUI_CHECK(res.query_changed && strcmp(query, "abcQ") == 0);
+    TIMUI_CHECK(st.cursor == 4);
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_combobox_guards_empty_options){
     TimuiComboboxState st;
     TimuiComboboxResult res;

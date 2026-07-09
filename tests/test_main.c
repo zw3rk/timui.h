@@ -267,6 +267,7 @@ int main(void){
         test_combobox_query_cap_utf8_no_split,
         test_combobox_escape_closes_without_clearing_query,
         test_combobox_cursor_movement_updates_state,
+        test_combobox_clamps_cursor_to_query_len_before_edit,
         test_combobox_guards_empty_options,
         test_combobox_accept_cap_limited,
         test_toast_order_timeout_dismiss,

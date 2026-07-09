@@ -278,6 +278,7 @@ void test_combobox_mouse_accept_duplicate(void);
 void test_combobox_query_cap_utf8_no_split(void);
 void test_combobox_escape_closes_without_clearing_query(void);
 void test_combobox_cursor_movement_updates_state(void);
+void test_combobox_clamps_cursor_to_query_len_before_edit(void);
 void test_combobox_guards_empty_options(void);
 void test_combobox_accept_cap_limited(void);
 void test_toast_order_timeout_dismiss(void);
