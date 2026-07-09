@@ -124,6 +124,7 @@ static int image_fmt_size_(char *buf, size_t v){
     return n;
 }
 
+#ifndef TIMUI_NO_IMAGES
 static int image_png_header_(const void *data, size_t size, int *out_w, int *out_h){
     const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
     const unsigned char *d;
@@ -139,13 +140,18 @@ static int image_png_header_(const void *data, size_t size, int *out_w, int *out
     if(out_h) *out_h = (int)h;
     return 1;
 }
+#endif
 
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size){
     TimuiImage *img;
     TimuiAllocator al;
     int w = 0, h = 0;
     (void)ui;
+#ifdef TIMUI_NO_IMAGES
+    if(!data || size == 0) return NULL;
+#else
     if(!image_png_header_(data, size, &w, &h)) return NULL;
+#endif
     al = timui_default_allocator();
     img = (TimuiImage *)al.alloc(al.userdata, sizeof(TimuiImage));
     if(!img) return NULL;
