@@ -261,9 +261,16 @@ TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
     TimuiAllocator al;
     size_t row = 0, total = 0;
     const unsigned char *src;
+#ifndef TIMUI_NO_IMAGES
+    int png_w = 0, png_h = 0;
+#endif
     (void)ui;
     if(!png || png_size == 0 || !rgba || !image_rgba_size_(w, h, stride, &row, &total))
         return NULL;
+#ifndef TIMUI_NO_IMAGES
+    if(!image_png_header_(png, png_size, &png_w, &png_h)) return NULL;
+    if(png_w != w || png_h != h) return NULL;
+#endif
     al = timui_default_allocator();
     img = (TimuiImage *)al.alloc(al.userdata, sizeof(TimuiImage));
     if(!img) return NULL;
@@ -815,6 +822,8 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
             ui->img_place[ui->img_place_count].rect = visible;
             ui->img_place[ui->img_place_count].full = full;
             ui->img_place_count++;
+        } else {
+            image_placeholder_(ui, visible);
         }
     } else {
         image_placeholder_(ui, visible);

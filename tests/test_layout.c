@@ -133,6 +133,31 @@ static void test_split_edges(void){
       timui_split(TIMUI_RECT(0, 0, 100, 5), TIMUI_AXIS_H, c, 1, o);
       CHECK_RECT(o[0], 0, 0, 20, 5); }       /* fixed underfill: trailing space unused */
 
+    /* Zero-weight flex children are explicit spacers of size 0; the rounding
+     * remainder must not be handed to the last zero-weight child. */
+    { TimuiConstraint c[] = { TIMUI_FLEX(0), TIMUI_FLEX(0) };
+      TimuiRect o[2];
+      CHECK(timui_split(TIMUI_RECT(0, 0, 100, 1), TIMUI_AXIS_H, c, 2, o) == 2);
+      CHECK_RECT(o[0], 0, 0, 0, 1);
+      CHECK_RECT(o[1], 0, 0, 0, 1); }
+
+    /* Extreme, still-valid public geometry must not use signed-overflow
+     * arithmetic while placing contiguous children. */
+    { TimuiConstraint c[] = { TIMUI_LEN(5), TIMUI_FLEX(1) };
+      TimuiRect o[2];
+      CHECK(timui_split(TIMUI_RECT(INT_MAX - 2, 0, 10, 1), TIMUI_AXIS_H, c, 2, o) == 2);
+      CHECK_RECT(o[0], INT_MAX - 2, 0, 5, 1);
+      CHECK_RECT(o[1], INT_MAX,     0, 5, 1); }
+
+    /* Huge gap/margin options collapse the inner area safely instead of
+     * overflowing 2*margin or gap*(n-1). */
+    { TimuiConstraint c[] = { TIMUI_FLEX(1), TIMUI_FLEX(1) };
+      TimuiLayoutOpts opts; TimuiRect o[2];
+      opts.gap = INT_MAX; opts.margin = INT_MAX;
+      CHECK(timui_split_ex(TIMUI_RECT(0, 0, 10, 10), TIMUI_AXIS_H, c, 2, opts, o) == 2);
+      CHECK_RECT(o[0], INT_MAX, INT_MAX, 0, 0);
+      CHECK_RECT(o[1], INT_MAX, INT_MAX, 0, 0); }
+
     /* n == 0 and bad pointers return 0 and write nothing. */
     { TimuiConstraint c[] = { TIMUI_FLEX(1) };
       TimuiRect o[1] = { { -1, -1, -1, -1 } };
@@ -198,6 +223,16 @@ static void test_grid(void){
       CHECK_RECT(g[1], 20, 0, 20, 2);   /* row0 col1 (flex 20) */
       CHECK_RECT(g[2], 0,  2, 20, 5);   /* row1 (flex h = 10-2-3 = 5) col0 */
       CHECK_RECT(g[5], 20, 7, 20, 3); } /* row2 (h3, y=7) col1 */
+
+    /* Column count is capped before row-major pointer arithmetic. */
+    { TimuiConstraint r1[] = { TIMUI_FLEX(1) };
+      TimuiConstraint many[129];
+      TimuiRect sentinel = { -1, -1, -1, -1 };
+      int i;
+      for(i = 0; i < 129; i++) many[i] = TIMUI_FLEX(1);
+      o[0] = sentinel;
+      CHECK(timui_grid(TIMUI_RECT(0, 0, 10, 10), r1, 1, many, 129, o) == 0);
+      CHECK(rect_eq(o[0], -1, -1, -1, -1)); }
 }
 
 /* ---- timui_border: inner rect + drawn glyphs --------------------------- */

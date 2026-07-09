@@ -368,6 +368,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 break;
             }
             p->state = 0;          /* unexpected: resync */
+            if(c >= 0x80) i--;     /* non-ASCII may be a UTF-8 lead; do not drop it */
             break;
         case 3: /* SS3 (ESC O X) */
             /* Z3: an ESC here aborts the truncated SS3 and restarts a fresh
@@ -377,6 +378,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 TimuiKey k = ss3_final(c);
                 if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, 0, 0); count++; }
                 p->state = 0;
+                if(k == TIMUI_KEY_UNKNOWN && c >= 0x80) i--;
             }
             break;
         case 4: /* UTF-8 continuation */

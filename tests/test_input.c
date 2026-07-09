@@ -164,6 +164,25 @@ TIMUI_TEST(test_input_utf8_resync_no_loss){
     TIMUI_CHECK(s.ev[1].kind == TIMUI_EVENT_TEXT && s.ev[1].as.text.codepoint == 'A');
 }
 
+TIMUI_TEST(test_input_csi_ss3_non_ascii_resync_no_loss){
+    TimuiInputParser p;
+    Sink s;
+
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\x1b[", 2, sink_cb, &s);
+    timui_input_feed(&p, "\xC3\xA9", 2, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == 0xE9);
+
+    s.n = 0;
+    timui_input_init(&p);
+    timui_input_feed(&p, "\x1bO", 2, sink_cb, &s);
+    timui_input_feed(&p, "\xC3\xA9", 2, sink_cb, &s);
+    TIMUI_CHECK(s.n == 1);
+    TIMUI_CHECK(s.ev[0].kind == TIMUI_EVENT_TEXT && s.ev[0].as.text.codepoint == 0xE9);
+}
+
 /* V5: modifier-tagged mouse wheel must keep its direction. Shift+wheel-up is
  * SGR code 0x40|0x04 = 68; old exact-match (==64) zeroed the delta. */
 TIMUI_TEST(test_mouse_wheel_with_mods){

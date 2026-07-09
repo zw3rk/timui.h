@@ -382,6 +382,27 @@ TIMUI_TEST(test_input_field_paste_split){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_field_paste_split_utf8){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[64] = {0};
+    TimuiInputState is = { text, sizeof text, 0, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 40, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 50, 5, &al);
+#define PFU() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("in"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); PFU();
+    SETIN(&fake, "\x1b[<0;2;1m"); PFU();
+    SETIN(&fake, "\x1b[200~\xC3"); PFU();
+    TIMUI_CHECK(text[0] == '\0');
+    SETIN(&fake, "\xA9\x1b[201~"); PFU();
+    TIMUI_CHECK(strcmp(text, "\xC3\xA9") == 0);
+    TIMUI_CHECK(is.cursor == 2);
+#undef PFU
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_input_field_paste_drops_controls){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake; TimuiTransport t;

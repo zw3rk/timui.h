@@ -194,10 +194,13 @@ static int caps_is_kitty_family(const char *tp){
     return caps_streq(tp, "kitty") || caps_streq(tp, "xterm-kitty")
         || caps_streq(tp, "ghostty") || caps_streq(tp, "xterm-ghostty");
 }
+static int caps_is_iterm2(const char *tp){
+    return caps_streq(tp, "iTerm.app") || caps_streq(tp, "iTerm2");
+}
 static int caps_is_modern(const char *tp){
     return caps_is_kitty_family(tp) || caps_streq(tp, "WezTerm")
         || caps_streq(tp, "alacritty") || caps_streq(tp, "foot")
-        || caps_streq(tp, "rio");
+        || caps_streq(tp, "rio") || caps_is_iterm2(tp);
 }
 static void caps_set_str(char *dst, size_t cap, const char *src){
     size_t n;
@@ -230,6 +233,8 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         if(caps_is_kitty_family(term_program) || caps_is_kitty_family(term)){
             c->flags |= TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
         }
+        if(caps_is_iterm2(term_program) || caps_is_iterm2(term))
+            c->flags |= TIMUI_CAP_ITERM2_IMAGES | TIMUI_CAP_UNICODE_CORE;
     } else if(term && strstr(term, "256color")){
         c->flags |= TIMUI_CAP_256_COLOR;
         c->colors = 256;
