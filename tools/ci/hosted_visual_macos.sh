@@ -266,7 +266,28 @@ PY
     printf 'venv python unavailable\n' > "${out}/iterm2-api-pip.skip"
   fi
 
-  capture iterm2-open open -n "${iterm_app}" || true
+  {
+    open -b com.googlecode.iterm2 || open -a iTerm || open "${iterm_app}"
+  } > "${out}/iterm2-open.stdout" 2> "${out}/iterm2-open.stderr" &
+  open_pid=$!
+  open_status=""
+  open_waited=0
+  while kill -0 "${open_pid}" 2>/dev/null; do
+    if [ "${open_waited}" -ge 15 ]; then
+      kill "${open_pid}" 2>/dev/null || true
+      wait "${open_pid}" 2>/dev/null || true
+      open_status=124
+      break
+    fi
+    sleep 1
+    open_waited=$((open_waited + 1))
+  done
+  if [ -z "${open_status}" ]; then
+    wait "${open_pid}"
+    open_status=$?
+  fi
+  printf '%s\n' "${open_status}" > "${out}/iterm2-open.status"
+  note "- iTerm2 open: exit ${open_status}"
   sleep 6
 
   api_script="${out}/iterm2-api-capture.py"
@@ -275,12 +296,25 @@ import hashlib
 import json
 import os
 import pathlib
+import signal
 import shlex
 import struct
 import sys
 import time
 
 import iterm2
+
+
+def prelaunch_iterm():
+    try:
+        import AppKit
+        bundle = "com.googlecode.iterm2"
+        running = AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle)
+        if not running:
+            AppKit.NSWorkspace.sharedWorkspace().launchApplication_("iTerm")
+        return "ok"
+    except Exception as exc:
+        return repr(exc)
 
 
 def png_size(data):
@@ -364,12 +398,25 @@ async def main(connection):
 
 import asyncio
 
-iterm2.run_until_complete(main, True)
+def api_timeout(_signum, _frame):
+    raise TimeoutError("timed out waiting for iTerm2 Python API")
+
+
+signal.signal(signal.SIGALRM, api_timeout)
+signal.alarm(int(os.environ.get("TIMUI_HOSTED_API_TIMEOUT", "90")))
+try:
+    out_dir = pathlib.Path(os.environ.get("TIMUI_HOSTED_OUT", "."))
+    (out_dir / "iterm2-api-prelaunch.txt").write_text(prelaunch_iterm() + "\n",
+                                                      encoding="utf-8")
+    iterm2.run_until_complete(main, True)
+finally:
+    signal.alarm(0)
 PY
 
   if [ -x "${api_python}" ]; then
     TIMUI_HOSTED_OUT="${out}" \
       TIMUI_HOSTED_GUI_RUNNER="${gui_runner}" \
+      TIMUI_HOSTED_API_TIMEOUT=90 \
       IT2_APP_PATH="${iterm_app}" \
       "${api_python}" "${api_script}" \
       > "${out}/iterm2-api-capture.stdout" \
