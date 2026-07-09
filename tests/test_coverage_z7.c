@@ -286,6 +286,95 @@ TIMUI_TEST(test_run_negative_guards){
     TIMUI_CHECK(timui_run(&cfg, &app) == 1);
 }
 
+typedef struct {
+    TimuiFakeTransport *fake;
+    size_t out_len_at_update;
+    size_t msg_size;
+    unsigned char first;
+    unsigned char last;
+    int updates;
+} AppFrameProbe;
+
+static void app_frame_view(TimuiFrame *f, void *model){
+    AppFrameProbe *p = (AppFrameProbe *)model;
+    (void)p;
+    timui_label(f, 0, 0, TIMUI_STR_LIT("X"), timui_style_make(0xFFFFFF, 0x000000, 0));
+    timui_emit(f, 11, "z", 1);
+}
+
+static void app_frame_large_view(TimuiFrame *f, void *model){
+    AppFrameProbe *p = (AppFrameProbe *)model;
+    unsigned char payload[5000];
+    size_t i;
+    for(i = 0; i < sizeof payload; i++) payload[i] = (unsigned char)(i & 0xffu);
+    timui_label(f, 0, 0, TIMUI_STR_LIT("L"), timui_style_make(0xFFFFFF, 0x000000, 0));
+    timui_emit(f, 22, payload, sizeof payload);
+    (void)p;
+}
+
+static void app_frame_update(void *model, uint32_t type, const void *msg, size_t msg_size){
+    AppFrameProbe *p = (AppFrameProbe *)model;
+    TimuiStr out = timui_fake_output(p->fake);
+    p->updates++;
+    p->out_len_at_update = out.len;
+    p->msg_size = msg_size;
+    if(msg_size > 0 && msg){
+        const unsigned char *b = (const unsigned char *)msg;
+        p->first = b[0];
+        p->last = b[msg_size - 1];
+    }
+    (void)type;
+}
+
+TIMUI_TEST(test_app_frame_updates_after_end){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    AppFrameProbe probe;
+    TimuiApp app;
+    memset(&probe, 0, sizeof probe);
+    memset(&app, 0, sizeof app);
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+    probe.fake = &fake;
+    app.model = &probe;
+    app.view = app_frame_view;
+    app.update = app_frame_update;
+    TIMUI_CHECK(timui_app_frame(ui, &app) == 1);
+    TIMUI_CHECK(probe.updates == 1);
+    TIMUI_CHECK(probe.out_len_at_update > 0);
+    TIMUI_CHECK(probe.msg_size == 1 && probe.first == 'z' && probe.last == 'z');
+    timui_close(ui);
+    timui_fake_destroy(&fake);
+}
+
+TIMUI_TEST(test_app_frame_delivers_large_messages){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    AppFrameProbe probe;
+    TimuiApp app;
+    memset(&probe, 0, sizeof probe);
+    memset(&app, 0, sizeof app);
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+    probe.fake = &fake;
+    app.model = &probe;
+    app.view = app_frame_large_view;
+    app.update = app_frame_update;
+    TIMUI_CHECK(timui_app_frame(ui, &app) == 1);
+    TIMUI_CHECK(probe.updates == 1);
+    TIMUI_CHECK(probe.msg_size == 5000);
+    TIMUI_CHECK(probe.first == 0);
+    TIMUI_CHECK(probe.last == (unsigned char)((5000 - 1) & 0xff));
+    timui_close(ui);
+    timui_fake_destroy(&fake);
+}
+
 /* Z24: the trivial getters str_len / now_ms. */
 TIMUI_TEST(test_getters){
     uint64_t a, b;
