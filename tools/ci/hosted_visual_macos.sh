@@ -227,7 +227,6 @@ if [ -d "${iterm_app}" ]; then
   cat > "${gui_runner}" <<EOF
 #!/usr/bin/env bash
 cd '${root}' || exit 1
-printf '\033[8;30;100t'
 ./build/image_smoke --protocol iterm2 --frames ${gui_frames}
 status=\$?
 sleep 8
@@ -238,6 +237,10 @@ EOF
   note ""
   note "## iTerm2 Python API screenshot attempt"
   capture iterm2-defaults-enable-api defaults write com.googlecode.iterm2 EnableAPIServer -bool true || true
+  capture iterm2-defaults-allow-inline-display defaults write com.googlecode.iterm2 NoSyncSuppressDownloadConfirmation -bool true || true
+  capture iterm2-defaults-allow-inline-display-selection defaults write com.googlecode.iterm2 NoSyncSuppressDownloadConfirmation_selection -int 0 || true
+  capture iterm2-defaults-allow-big-download defaults write com.googlecode.iterm2 NoSyncAllowBigDownload -bool true || true
+  capture iterm2-defaults-allow-big-download-selection defaults write com.googlecode.iterm2 NoSyncAllowBigDownload_selection -int 0 || true
 
   {
     noauth="${HOME}/Library/Application Support/iTerm2/disable-automation-auth"
