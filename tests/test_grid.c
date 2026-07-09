@@ -165,6 +165,21 @@ static void test_fit_cell(void)
       CHECK(e == 1);
       CHECK(out[0] == '\0' && out[1] == 'Y');
       CHECK(out[2] == 'G'); }
+
+    /* adversarial: the full-fit path must also copy by whole grapheme, not by
+     * cap-1 raw bytes. "é" is 2 bytes but one display column; out[2] can hold
+     * only one byte plus NUL, so emitting C3 00 would be invalid UTF-8. */
+    { char out[2] = { 'X', 'G' }; int e = 0;
+      int c = timui_fit_cell("\xC3\xA9", 2, out, sizeof out, &e);
+      CHECK(c == 0);
+      CHECK(e == 1);
+      CHECK(out[0] == '\0');
+      CHECK(out[1] == 'G'); }
+    { char out[3] = { 'X', 'Y', 'G' }; int e = 0;
+      int c = timui_fit_cell("\xC3\xA9", 2, out, sizeof out, &e);
+      CHECK(c == 1);
+      CHECK(e == 0);
+      CHECK(strcmp(out, "\xC3\xA9") == 0); }
 }
 
 /* ----------------------------------------------------------------------- */

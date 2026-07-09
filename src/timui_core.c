@@ -63,21 +63,93 @@ static void ui_event_cb(void *ctx, const TimuiEvent *ev){
     else
         ui->events_dropped++;
 }
-static void timui_append_text_cp_(Timui *ui, uint32_t cp){
+static void timui_edit_add_text_(Timui *ui, int start, int len){
+    TimuiEditOp *op;
+    if(!ui || len <= 0) return;
+    if(ui->edit_count >= (int)(sizeof(ui->edit_ops) / sizeof(ui->edit_ops[0]))){
+        ui->events_dropped++;
+        return;
+    }
+    op = &ui->edit_ops[ui->edit_count++];
+    op->kind = TIMUI_EDIT_TEXT;
+    op->key = 0;
+    op->start = start;
+    op->len = len;
+    op->mods = 0;
+}
+static void timui_edit_add_key_(Timui *ui, unsigned key, uint32_t mods){
+    TimuiEditOp *op;
+    if(!ui || key == 0) return;
+    if(ui->edit_count >= (int)(sizeof(ui->edit_ops) / sizeof(ui->edit_ops[0]))){
+        ui->events_dropped++;
+        return;
+    }
+    op = &ui->edit_ops[ui->edit_count++];
+    op->kind = TIMUI_EDIT_KEY;
+    op->key = key;
+    op->start = 0;
+    op->len = 0;
+    op->mods = mods;
+}
+static void timui_edit_rebuild_from_text_(Timui *ui){
+    int j = 0, e;
+    if(!ui) return;
+    ui->edit_count = 0;
+    for(e = 0; e < ui->enter_count; e++){
+        int at = ui->enter_at[e];
+        if(at < j) at = j;
+        if(at > ui->text_in_len) at = ui->text_in_len;
+        timui_edit_add_text_(ui, j, at - j);
+        timui_edit_add_key_(ui, TIMUI_EDIT_KEY_ENTER_, ui->enter_mods[e]);
+        j = at;
+    }
+    timui_edit_add_text_(ui, j, ui->text_in_len - j);
+}
+static void timui_defer_edit_ops_after_(Timui *ui, int first){
+    int i, text_len = 0, enter_count = 0;
+    if(!ui) return;
+    if(first < 0) first = 0;
+    if(first > ui->edit_count) first = ui->edit_count;
+    for(i = first; i < ui->edit_count; i++){
+        TimuiEditOp *op = &ui->edit_ops[i];
+        if(op->kind == TIMUI_EDIT_TEXT && op->len > 0){
+            int n = op->len;
+            if(n > (int)sizeof(ui->pending_in) - text_len) n = (int)sizeof(ui->pending_in) - text_len;
+            if(n > 0){
+                memcpy(ui->pending_in + text_len, ui->text_in + op->start, (size_t)n);
+                text_len += n;
+            }
+            if(n < op->len) ui->events_dropped++;
+        } else if(op->kind == TIMUI_EDIT_KEY && op->key == TIMUI_EDIT_KEY_ENTER_){
+            if(enter_count < (int)(sizeof(ui->pending_enter_at) / sizeof(ui->pending_enter_at[0]))){
+                ui->pending_enter_at[enter_count] = text_len;
+                ui->pending_enter_mods[enter_count] = op->mods;
+                enter_count++;
+            } else ui->events_dropped++;
+        }
+    }
+    ui->pending_in_len = text_len;
+    ui->pending_enter_count = enter_count;
+}
+static int timui_append_text_cp_(Timui *ui, uint32_t cp){
     char enc[4];
     int enclen;
-    if(!ui) return;
-    if(cp < 0x20 || cp == 0x7f || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return;
+    if(!ui) return 0;
+    if(cp < 0x20 || cp == 0x7f || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return 0;
     enclen = timui_utf8_encode_(cp, enc);
     if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
         int ei;
         for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
+        return enclen;
     } else if(enclen > 0) ui->events_dropped++;
+    return 0;
 }
-static void timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
+static int timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
     char bytes[sizeof(((Timui *)0)->paste_buf) + 4];
     size_t total = 0, pk = 0;
-    if(!ui || (!ptr && len > 0)) return;
+    int start;
+    if(!ui || (!ptr && len > 0)) return 0;
+    start = ui->text_in_len;
     if(ui->paste_utf8_tail_len > 0){
         memcpy(bytes, ui->paste_utf8_tail, (size_t)ui->paste_utf8_tail_len);
         total = (size_t)ui->paste_utf8_tail_len;
@@ -112,14 +184,18 @@ static void timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
             break;
         }
         if(adv < 0) adv = 1;
-        timui_append_text_cp_(ui, cp);
+        (void)timui_append_text_cp_(ui, cp);
         pk += (size_t)adv;
     }
+    return ui->text_in_len - start;
 }
 static void timui_flush_paste_utf8_tail_(Timui *ui){
+    int start, n;
     if(!ui || ui->paste_utf8_tail_len <= 0) return;
+    start = ui->text_in_len;
     ui->paste_utf8_tail_len = 0;
-    timui_append_text_cp_(ui, 0xFFFD);
+    n = timui_append_text_cp_(ui, 0xFFFD);
+    if(n > 0) timui_edit_add_text_(ui, start, n);
 }
 /* Write ALL n bytes to fd. The output fd typically SHARES its open file
  * description with the input fd (fd 0/1 on a tty), which we set O_NONBLOCK for
@@ -476,9 +552,11 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
         ui->enter_count = ui->pending_enter_count;
         ui->pending_in_len = 0;
         ui->pending_enter_count = 0;
+        timui_edit_rebuild_from_text_(ui);
     } else {
         ui->text_in_len = 0;
         ui->enter_count = 0;
+        ui->edit_count = 0;
     }
     ui->key_in = 0;
     ui->key_pressed = TIMUI_KEY_UNKNOWN;
@@ -515,6 +593,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 if(ev.as.key.key == TIMUI_KEY_TAB) timui_interact_set_keys(&ui->ia, 1, 0);
                 else if(ev.as.key.key == TIMUI_KEY_ENTER){
                     timui_interact_set_keys(&ui->ia, 0, 1);
+                    timui_edit_add_key_(ui, TIMUI_EDIT_KEY_ENTER_, ev.as.key.mods);
                     /* record the Enter's position in the text stream (input_field
                      * segments submits on these; excess past the cap just merges). */
                     if(ui->enter_count < (int)(sizeof(ui->enter_at)/sizeof(ui->enter_at[0]))){
@@ -523,31 +602,33 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                         ui->enter_count++;
                     }
                 }
-                else if(ev.as.key.key == TIMUI_KEY_BACKSPACE) ui->key_in |= TIMUI_KEYIN_BACKSPACE;
-                else if(ev.as.key.key == TIMUI_KEY_LEFT)   ui->key_in |= TIMUI_KEYIN_LEFT;
-                else if(ev.as.key.key == TIMUI_KEY_RIGHT)  ui->key_in |= TIMUI_KEYIN_RIGHT;
-                else if(ev.as.key.key == TIMUI_KEY_HOME)   ui->key_in |= TIMUI_KEYIN_HOME;
-                else if(ev.as.key.key == TIMUI_KEY_END)    ui->key_in |= TIMUI_KEYIN_END;
-                else if(ev.as.key.key == TIMUI_KEY_DELETE) ui->key_in |= TIMUI_KEYIN_DELETE;
+                else if(ev.as.key.key == TIMUI_KEY_BACKSPACE){ ui->key_in |= TIMUI_KEYIN_BACKSPACE; timui_edit_add_key_(ui, TIMUI_KEYIN_BACKSPACE, ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_LEFT)   { ui->key_in |= TIMUI_KEYIN_LEFT;      timui_edit_add_key_(ui, TIMUI_KEYIN_LEFT,      ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_RIGHT)  { ui->key_in |= TIMUI_KEYIN_RIGHT;     timui_edit_add_key_(ui, TIMUI_KEYIN_RIGHT,     ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_HOME)   { ui->key_in |= TIMUI_KEYIN_HOME;      timui_edit_add_key_(ui, TIMUI_KEYIN_HOME,      ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_END)    { ui->key_in |= TIMUI_KEYIN_END;       timui_edit_add_key_(ui, TIMUI_KEYIN_END,       ev.as.key.mods); }
+                else if(ev.as.key.key == TIMUI_KEY_DELETE) { ui->key_in |= TIMUI_KEYIN_DELETE;    timui_edit_add_key_(ui, TIMUI_KEYIN_DELETE,    ev.as.key.mods); }
                 else if(ev.as.key.key == TIMUI_KEY_UP) ui->key_in |= TIMUI_KEYIN_UP;
                 else if(ev.as.key.key == TIMUI_KEY_DOWN) ui->key_in |= TIMUI_KEYIN_DOWN;
                 else if(ev.as.key.key == TIMUI_KEY_UNKNOWN &&
                         (ev.as.key.mods & ~TIMUI_MOD_SHIFT) == TIMUI_MOD_NONE){
                     uint32_t cp = ev.as.key.codepoint;
-                    timui_append_text_cp_(ui, cp);
+                    int start = ui->text_in_len;
+                    int n = timui_append_text_cp_(ui, cp);
+                    if(n > 0) timui_edit_add_text_(ui, start, n);
                 }
                 else if(ev.as.key.key == TIMUI_KEY_UNKNOWN && (ev.as.key.mods & TIMUI_MOD_CTRL)){
                     /* emacs / readline line editing (ubiquitous on macOS). Ctrl-H
                      * (backspace) already arrives as KEY_BACKSPACE from the parser. */
                     switch(ev.as.key.codepoint){
-                        case 'a': ui->key_in |= TIMUI_KEYIN_HOME;      break;  /* start of line */
-                        case 'e': ui->key_in |= TIMUI_KEYIN_END;       break;  /* end of line   */
-                        case 'b': ui->key_in |= TIMUI_KEYIN_LEFT;      break;  /* back one char */
-                        case 'f': ui->key_in |= TIMUI_KEYIN_RIGHT;     break;  /* forward       */
-                        case 'd': ui->key_in |= TIMUI_KEYIN_DELETE;    break;  /* delete at cursor */
-                        case 'k': ui->key_in |= TIMUI_KEYIN_KILL_EOL;  break;  /* kill to EOL    */
-                        case 'u': ui->key_in |= TIMUI_KEYIN_KILL_BOL;  break;  /* kill to BOL    */
-                        case 'w': ui->key_in |= TIMUI_KEYIN_KILL_WORD; break;  /* kill word back */
+                        case 'a': ui->key_in |= TIMUI_KEYIN_HOME;      timui_edit_add_key_(ui, TIMUI_KEYIN_HOME,      ev.as.key.mods); break;  /* start of line */
+                        case 'e': ui->key_in |= TIMUI_KEYIN_END;       timui_edit_add_key_(ui, TIMUI_KEYIN_END,       ev.as.key.mods); break;  /* end of line   */
+                        case 'b': ui->key_in |= TIMUI_KEYIN_LEFT;      timui_edit_add_key_(ui, TIMUI_KEYIN_LEFT,      ev.as.key.mods); break;  /* back one char */
+                        case 'f': ui->key_in |= TIMUI_KEYIN_RIGHT;     timui_edit_add_key_(ui, TIMUI_KEYIN_RIGHT,     ev.as.key.mods); break;  /* forward       */
+                        case 'd': ui->key_in |= TIMUI_KEYIN_DELETE;    timui_edit_add_key_(ui, TIMUI_KEYIN_DELETE,    ev.as.key.mods); break;  /* delete at cursor */
+                        case 'k': ui->key_in |= TIMUI_KEYIN_KILL_EOL;  timui_edit_add_key_(ui, TIMUI_KEYIN_KILL_EOL,  ev.as.key.mods); break;  /* kill to EOL    */
+                        case 'u': ui->key_in |= TIMUI_KEYIN_KILL_BOL;  timui_edit_add_key_(ui, TIMUI_KEYIN_KILL_BOL,  ev.as.key.mods); break;  /* kill to BOL    */
+                        case 'w': ui->key_in |= TIMUI_KEYIN_KILL_WORD; timui_edit_add_key_(ui, TIMUI_KEYIN_KILL_WORD, ev.as.key.mods); break;  /* kill word back */
                         default: break;
                     }
                 }
@@ -555,9 +636,13 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                 /* UTF-8 encode the codepoint into text_in (supports international
                  * input) via the single shared encoder (Z6). */
                 uint32_t cp = ev.as.text.codepoint;
-                timui_append_text_cp_(ui, cp);
+                int start = ui->text_in_len;
+                int n = timui_append_text_cp_(ui, cp);
+                if(n > 0) timui_edit_add_text_(ui, start, n);
             } else if(ev.kind == TIMUI_EVENT_PASTE){
-                timui_append_paste_bytes_(ui, ev.as.paste.ptr, ev.as.paste.len);
+                int start = ui->text_in_len;
+                int n = timui_append_paste_bytes_(ui, ev.as.paste.ptr, ev.as.paste.len);
+                if(n > 0) timui_edit_add_text_(ui, start, n);
             } else if(ev.kind == TIMUI_EVENT_FOCUS){
                 if(focus_count < (int)(sizeof(focus_events) / sizeof(focus_events[0])))
                     focus_events[focus_count++] = ev;

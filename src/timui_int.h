@@ -16,6 +16,16 @@
 /* Internal structs (completed only in the implementing TU). */
 typedef struct { int read_fd; int write_fd; } TimuiFdCtx;
 
+enum { TIMUI_EDIT_TEXT = 1, TIMUI_EDIT_KEY = 2 };
+#define TIMUI_EDIT_KEY_ENTER_ 0x80000000u
+typedef struct TimuiEditOp {
+    int kind;
+    unsigned key;
+    int start;
+    int len;
+    uint32_t mods;
+} TimuiEditOp;
+
 struct TimuiFrame { Timui *ui; };
 
 struct Timui {
@@ -69,6 +79,8 @@ struct Timui {
     int               pending_enter_at[32];
     uint32_t          pending_enter_mods[32];
     int               pending_enter_count;
+    TimuiEditOp       edit_ops[512];
+    int               edit_count;
     unsigned          key_in;
     TimuiKey          key_pressed;
     uint32_t          key_mods;     /* modifiers of the last key event */
