@@ -15,6 +15,7 @@ ifeq ($(UNAME_S),Linux)
 endif
 CFLAGS     ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O2 -pthread
 TESTCFLAGS ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O0 -g -pthread
+SAN        ?= address
 CONPTY_WIN_CC ?= x86_64-w64-mingw32-gcc
 CONPTY_WIN_CFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -Werror -D_WIN32_WINNT=0x0A00
 

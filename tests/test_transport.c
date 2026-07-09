@@ -92,6 +92,72 @@ TIMUI_TEST(test_transport_close_hook){
     TIMUI_CHECK(p.closed == 1);
 }
 
+TIMUI_TEST(test_open_failure_clears_output_handle){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport f;
+    TimuiTransport t;
+    char stale;
+    Timui *ui = (Timui *)&stale;
+
+    TIMUI_CHECK(timui_fake_init(&f, &al) == TIMUI_OK);
+    t = timui_fake_transport(&f);
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 0, 1, &al) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(ui == NULL);
+
+    ui = (Timui *)&stale;
+    TIMUI_CHECK(timui_open(NULL, &ui) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(ui == NULL);
+    timui_fake_destroy(&f);
+}
+
+typedef struct FailAllocProbe {
+    TimuiAllocator base;
+    int calls;
+    int fail_on;
+} FailAllocProbe;
+
+static void *fail_probe_alloc(void *userdata, size_t size){
+    FailAllocProbe *p = (FailAllocProbe *)userdata;
+    p->calls++;
+    if(p->calls == p->fail_on) return NULL;
+    return p->base.alloc(p->base.userdata, size);
+}
+static void *fail_probe_realloc(void *userdata, void *ptr, size_t old_size, size_t new_size){
+    FailAllocProbe *p = (FailAllocProbe *)userdata;
+    return p->base.realloc(p->base.userdata, ptr, old_size, new_size);
+}
+static void fail_probe_free(void *userdata, void *ptr, size_t size){
+    FailAllocProbe *p = (FailAllocProbe *)userdata;
+    p->base.free(p->base.userdata, ptr, size);
+}
+
+TIMUI_TEST(test_open_for_test_failure_does_not_close_injected_transport){
+    TimuiAllocator base = timui_default_allocator();
+    FailAllocProbe fp;
+    TimuiAllocator fail_al;
+    CloseProbe cp = {0};
+    TimuiTransport t;
+    Timui *ui = NULL;
+
+    fp.base = base;
+    fp.calls = 0;
+    fp.fail_on = 2;  /* Timui allocation succeeds; first cell-buffer allocation fails. */
+    fail_al.alloc = fail_probe_alloc;
+    fail_al.realloc = fail_probe_realloc;
+    fail_al.free = fail_probe_free;
+    fail_al.userdata = &fp;
+
+    t.write = close_probe_write;
+    t.read = close_probe_read;
+    t.flush = close_probe_flush;
+    t.close = close_probe_close;
+    t.ctx = &cp;
+
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 4, 4, &fail_al) == TIMUI_ERR_OUT_OF_MEMORY);
+    TIMUI_CHECK(ui == NULL);
+    TIMUI_CHECK(cp.closed == 0);
+}
+
 /* The real-fd transport must write EVERY byte even when the fd is non-blocking
  * and its buffer is full (heavy render + fast typing) — a single write() that
  * dropped the remainder loses render bytes and garbles the screen. Drive a pipe

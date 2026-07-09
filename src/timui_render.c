@@ -117,6 +117,30 @@ TIMUI_API int timui_utf8_width(uint32_t cp){
 }
 
 /* ---- drawing primitives ----------------------------------------------- */
+static void clear_cell_default_(TimuiCellBuffer *buf, int x, int y){
+    TimuiCell c;
+    if(!timui_cells_get(buf, x, y)) return;
+    memset(&c, 0, sizeof c);
+    c.fg = TIMUI_COLOR_DEFAULT;
+    c.bg = TIMUI_COLOR_DEFAULT;
+    timui_cells_put(buf, x, y, &c);
+}
+
+static void clear_wide_pair_touching_(TimuiCellBuffer *buf, int x, int y){
+    TimuiCell *c = timui_cells_get(buf, x, y);
+    if(!c) return;
+    if(c->flags & TIMUI_CELL_CONTINUATION){
+        if(x > 0){
+            TimuiCell *lead = timui_cells_get(buf, x - 1, y);
+            if(lead && lead->width >= 2) clear_cell_default_(buf, x - 1, y);
+        }
+        clear_cell_default_(buf, x, y);
+    } else if(c->width >= 2){
+        clear_cell_default_(buf, x, y);
+        clear_cell_default_(buf, x + 1, y);
+    }
+}
+
 /* Z7: the single glyph-emit primitive. Writes cp at (x,y) with style st and an
  * optional hyperlink id, and blanks the continuation cell for a wide glyph.
  * This is the one place the subtle wide-glyph continuation logic lives (the
@@ -132,6 +156,8 @@ static void put_glyph_link(TimuiCellBuffer *buf, int x, int y, uint32_t cp, Timu
     w = timui_utf8_width(cp);
     if(w > 1 && (x + 1 >= buf->w ||
        (buf->has_clip && (x + 1 < buf->clip.x || x + 1 >= buf->clip.x + buf->clip.w)))) return;
+    clear_wide_pair_touching_(buf, x, y);
+    if(w > 1) clear_wide_pair_touching_(buf, x + 1, y);
     c.codepoint = cp;
     c.fg = st.fg;
     c.bg = st.bg;

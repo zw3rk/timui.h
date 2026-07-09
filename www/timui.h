@@ -1239,8 +1239,7 @@ TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba,
 /* Original PNG bytes plus caller-supplied decoded RGBA pixels. This lets apps
  * avoid the lazy PNG decode path while preserving PNG passthrough for
  * Kitty/iTerm2 and giving Sixel exact pixels for emission and clipping. The
- * supplied RGBA dimensions are expected to match the PNG and drive source
- * cropping. */
+ * supplied RGBA dimensions must match the PNG and drive source cropping. */
 TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
                                                 size_t png_size,
                                                 const void *rgba,
@@ -1435,6 +1434,8 @@ struct Timui {
     char              paste_buf[256];   /* bracketed-paste accumulator (ev ptr is transient; a paste
                                          * can also span several reads -> several events per frame) */
     int               paste_len;
+    char              paste_utf8_tail[4];
+    int               paste_utf8_tail_len;
     int               trace_fd;         /* TIMUI_TRACE input trace fd, -1 = off */
     /* Submit segmentation for timui_input_field: byte offsets in text_in where
      * Enter fired this frame, in order. Lets the field submit ONE segment per
@@ -1468,8 +1469,9 @@ struct Timui {
      * deferred ESC — 16 dropped all but the first 16 chars of a dropped path. */
     TimuiEvent        events[512];
     int               event_count;
-    struct { TimuiRect clip; int has_clip; } clip_stack[8];
+    struct TimuiClipSnapshot { TimuiRect clip; int has_clip; } *clip_stack;
     int               clip_count;
+    int               clip_cap;
     /* Terminal-image placements recorded this frame by timui_image_draw;
      * emitted ON TOP of the cell diff in timui_end, so they compose with the
      * renderer. Protocol-specific lifecycle state is tracked separately. */
@@ -1643,27 +1645,54 @@ static void timui_append_text_cp_(Timui *ui, uint32_t cp){
     if(enclen > 0 && ui->text_in_len + enclen <= (int)sizeof(ui->text_in)){
         int ei;
         for(ei = 0; ei < enclen; ei++) ui->text_in[ui->text_in_len++] = enc[ei];
-    }
+    } else if(enclen > 0) ui->events_dropped++;
 }
 static void timui_append_paste_bytes_(Timui *ui, const char *ptr, size_t len){
-    size_t pk = 0;
-    while(ui && pk < len && ui->text_in_len < (int)sizeof(ui->text_in)){
-        unsigned char pc = (unsigned char)ptr[pk];
+    char bytes[sizeof(((Timui *)0)->paste_buf) + 4];
+    size_t total = 0, pk = 0;
+    if(!ui || (!ptr && len > 0)) return;
+    if(ui->paste_utf8_tail_len > 0){
+        memcpy(bytes, ui->paste_utf8_tail, (size_t)ui->paste_utf8_tail_len);
+        total = (size_t)ui->paste_utf8_tail_len;
+        ui->paste_utf8_tail_len = 0;
+    }
+    if(len > sizeof(bytes) - total){
+        len = sizeof(bytes) - total;
+        ui->events_dropped++;
+    }
+    if(len > 0){
+        memcpy(bytes + total, ptr, len);
+        total += len;
+    }
+    while(pk < total){
+        unsigned char pc = (unsigned char)bytes[pk];
         uint32_t cp = 0;
         int adv;
         if(pc == 0 || pc == 0x7f){ pk++; continue; }
         if(pc < 0x20){
             if(pc != '\n' && pc != '\r' && pc != '\t'){ pk++; continue; }
             if(ui->text_in_len < (int)sizeof(ui->text_in)) ui->text_in[ui->text_in_len++] = (char)pc;
+            else ui->events_dropped++;
             pk++;
             continue;
         }
-        adv = timui_utf8_decode(ptr + pk, len - pk, &cp);
-        if(adv == 0){ cp = 0xFFFD; adv = (int)(len - pk); }
+        adv = timui_utf8_decode(bytes + pk, total - pk, &cp);
+        if(adv == 0){
+            size_t rem = total - pk;
+            if(rem > sizeof(ui->paste_utf8_tail)) rem = sizeof(ui->paste_utf8_tail);
+            memcpy(ui->paste_utf8_tail, bytes + pk, rem);
+            ui->paste_utf8_tail_len = (int)rem;
+            break;
+        }
         if(adv < 0) adv = 1;
         timui_append_text_cp_(ui, cp);
         pk += (size_t)adv;
     }
+}
+static void timui_flush_paste_utf8_tail_(Timui *ui){
+    if(!ui || ui->paste_utf8_tail_len <= 0) return;
+    ui->paste_utf8_tail_len = 0;
+    timui_append_text_cp_(ui, 0xFFFD);
 }
 /* Write ALL n bytes to fd. The output fd typically SHARES its open file
  * description with the input fd (fd 0/1 on a tty), which we set O_NONBLOCK for
@@ -1756,8 +1785,9 @@ static void timui_set_terminal_pixels_(Timui *ui, int cols, int rows, int px_w, 
 TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transport, int w, int h, const TimuiAllocator *alloc){
     Timui *ui;
     TimuiResult r;
-    if(!out_ui || w <= 0 || h <= 0 || !timui_allocator_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
+    if(w <= 0 || h <= 0 || !timui_allocator_valid_(alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
     ui = (Timui *)alloc->alloc(alloc->userdata, sizeof(Timui));
     if(!ui) return TIMUI_ERR_OUT_OF_MEMORY;
     memset(ui, 0, sizeof *ui);
@@ -1769,7 +1799,6 @@ TIMUI_API TimuiResult timui_open_for_test(Timui **out_ui, TimuiTransport transpo
     timui_caps_detect(&ui->caps, NULL, NULL, NULL);
     r = timui_setup(ui, w, h);
     if(r != TIMUI_OK){
-        if(transport.close) transport.close(&transport);
         alloc->free(alloc->userdata, ui, sizeof *ui);
         return r;
     }
@@ -1888,8 +1917,9 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     int w = 80, h = 24;
     int px_w = 0, px_h = 0;
     TimuiResult r;
-    if(!cfg || !out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
+    if(!cfg) return TIMUI_ERR_INVALID_ARGUMENT;
     if(cfg->input_fd < 0 || cfg->output_fd < 0) return TIMUI_ERR_INVALID_ARGUMENT;
     input_flags = fcntl(cfg->input_fd, F_GETFL, 0);
     if(input_flags < 0) return TIMUI_ERR_OS;
@@ -1966,6 +1996,9 @@ TIMUI_API void timui_close(Timui *ui){
     if(ui->have_postq) timui_mpsc_destroy(&ui->postq);
     timui_interact_destroy(&ui->ia);   /* V24: free the dynamic tab_order */
     if(ui->have_ids) timui_id_stack_destroy(&ui->ids);
+    if(ui->clip_stack)
+        ui->alloc.free(ui->alloc.userdata, ui->clip_stack,
+                       (size_t)ui->clip_cap * sizeof(*ui->clip_stack));
     if(ui->trace_fd >= 0) close(ui->trace_fd);
     if(ui->have_transport && ui->transport.close) ui->transport.close(&ui->transport);
     al = ui->alloc;
@@ -2103,6 +2136,7 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
                     focus_events[focus_count++] = ev;
             }
         }
+        if(!ui->input.pasting) timui_flush_paste_utf8_tail_(ui);
         if(focus_count > 0){
             int fi;
             ui->event_count = 0;
@@ -2855,6 +2889,30 @@ TIMUI_API int timui_utf8_width(uint32_t cp){
 }
 
 /* ---- drawing primitives ----------------------------------------------- */
+static void clear_cell_default_(TimuiCellBuffer *buf, int x, int y){
+    TimuiCell c;
+    if(!timui_cells_get(buf, x, y)) return;
+    memset(&c, 0, sizeof c);
+    c.fg = TIMUI_COLOR_DEFAULT;
+    c.bg = TIMUI_COLOR_DEFAULT;
+    timui_cells_put(buf, x, y, &c);
+}
+
+static void clear_wide_pair_touching_(TimuiCellBuffer *buf, int x, int y){
+    TimuiCell *c = timui_cells_get(buf, x, y);
+    if(!c) return;
+    if(c->flags & TIMUI_CELL_CONTINUATION){
+        if(x > 0){
+            TimuiCell *lead = timui_cells_get(buf, x - 1, y);
+            if(lead && lead->width >= 2) clear_cell_default_(buf, x - 1, y);
+        }
+        clear_cell_default_(buf, x, y);
+    } else if(c->width >= 2){
+        clear_cell_default_(buf, x, y);
+        clear_cell_default_(buf, x + 1, y);
+    }
+}
+
 /* Z7: the single glyph-emit primitive. Writes cp at (x,y) with style st and an
  * optional hyperlink id, and blanks the continuation cell for a wide glyph.
  * This is the one place the subtle wide-glyph continuation logic lives (the
@@ -2870,6 +2928,8 @@ static void put_glyph_link(TimuiCellBuffer *buf, int x, int y, uint32_t cp, Timu
     w = timui_utf8_width(cp);
     if(w > 1 && (x + 1 >= buf->w ||
        (buf->has_clip && (x + 1 < buf->clip.x || x + 1 >= buf->clip.x + buf->clip.w)))) return;
+    clear_wide_pair_touching_(buf, x, y);
+    if(w > 1) clear_wide_pair_touching_(buf, x + 1, y);
     c.codepoint = cp;
     c.fg = st.fg;
     c.bg = st.bg;
@@ -4000,10 +4060,13 @@ static int caps_is_kitty_family(const char *tp){
     return caps_streq(tp, "kitty") || caps_streq(tp, "xterm-kitty")
         || caps_streq(tp, "ghostty") || caps_streq(tp, "xterm-ghostty");
 }
+static int caps_is_iterm2(const char *tp){
+    return caps_streq(tp, "iTerm.app") || caps_streq(tp, "iTerm2");
+}
 static int caps_is_modern(const char *tp){
     return caps_is_kitty_family(tp) || caps_streq(tp, "WezTerm")
         || caps_streq(tp, "alacritty") || caps_streq(tp, "foot")
-        || caps_streq(tp, "rio");
+        || caps_streq(tp, "rio") || caps_is_iterm2(tp);
 }
 static void caps_set_str(char *dst, size_t cap, const char *src){
     size_t n;
@@ -4036,6 +4099,8 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
         if(caps_is_kitty_family(term_program) || caps_is_kitty_family(term)){
             c->flags |= TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
         }
+        if(caps_is_iterm2(term_program) || caps_is_iterm2(term))
+            c->flags |= TIMUI_CAP_ITERM2_IMAGES | TIMUI_CAP_UNICODE_CORE;
     } else if(term && strstr(term, "256color")){
         c->flags |= TIMUI_CAP_256_COLOR;
         c->colors = 256;
@@ -4469,6 +4534,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 break;
             }
             p->state = 0;          /* unexpected: resync */
+            if(c >= 0x80) i--;     /* non-ASCII may be a UTF-8 lead; do not drop it */
             break;
         case 3: /* SS3 (ESC O X) */
             /* Z3: an ESC here aborts the truncated SS3 and restarts a fresh
@@ -4478,6 +4544,7 @@ TIMUI_API size_t timui_input_feed(TimuiInputParser *p, const void *data, size_t 
                 TimuiKey k = ss3_final(c);
                 if(k != TIMUI_KEY_UNKNOWN){ emit_key(cb, ctx, k, 0, 0); count++; }
                 p->state = 0;
+                if(k == TIMUI_KEY_UNKNOWN && c >= 0x80) i--;
             }
             break;
         case 4: /* UTF-8 continuation */
@@ -5307,11 +5374,21 @@ TIMUI_API void timui_push_clip(TimuiFrame *f, TimuiRect rect){
     if(!f || !f->ui) return;
     ui = f->ui;
     b = &ui->curr;
-    if(ui->clip_count < 8){
-        ui->clip_stack[ui->clip_count].clip = b->clip;
-        ui->clip_stack[ui->clip_count].has_clip = b->has_clip;
-        ui->clip_count++;
+    if(ui->clip_count >= ui->clip_cap){
+        int nc;
+        void *ns;
+        if(ui->clip_cap > INT_MAX / 2) return;
+        nc = ui->clip_cap ? ui->clip_cap * 2 : 8;
+        ns = ui->alloc.realloc(ui->alloc.userdata, ui->clip_stack,
+                               (size_t)ui->clip_cap * sizeof(*ui->clip_stack),
+                               (size_t)nc * sizeof(*ui->clip_stack));
+        if(!ns) return;
+        ui->clip_stack = ns;
+        ui->clip_cap = nc;
     }
+    ui->clip_stack[ui->clip_count].clip = b->clip;
+    ui->clip_stack[ui->clip_count].has_clip = b->has_clip;
+    ui->clip_count++;
     active = b->has_clip ? b->clip : TIMUI_RECT(0, 0, b->w, b->h);
     b->clip = clip_intersect(active, rect);
     b->has_clip = 1;
@@ -15324,9 +15401,16 @@ TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
     TimuiAllocator al;
     size_t row = 0, total = 0;
     const unsigned char *src;
+#ifndef TIMUI_NO_IMAGES
+    int png_w = 0, png_h = 0;
+#endif
     (void)ui;
     if(!png || png_size == 0 || !rgba || !image_rgba_size_(w, h, stride, &row, &total))
         return NULL;
+#ifndef TIMUI_NO_IMAGES
+    if(!image_png_header_(png, png_size, &png_w, &png_h)) return NULL;
+    if(png_w != w || png_h != h) return NULL;
+#endif
     al = timui_default_allocator();
     img = (TimuiImage *)al.alloc(al.userdata, sizeof(TimuiImage));
     if(!img) return NULL;
@@ -15878,6 +15962,8 @@ static void image_record_(Timui *ui, TimuiImage *img, TimuiRect visible, TimuiRe
             ui->img_place[ui->img_place_count].rect = visible;
             ui->img_place[ui->img_place_count].full = full;
             ui->img_place_count++;
+        } else {
+            image_placeholder_(ui, visible);
         }
     } else {
         image_placeholder_(ui, visible);
@@ -15995,10 +16081,16 @@ TIMUI_API void timui_menu_bar_end(TimuiFrame *f, TimuiMenuBar *bar){
  * rather than silently truncated. */
 #define TIMUI_LAYOUT_MAX 128
 
+static int timui_sat_i64_(int64_t v){
+    if(v < INT_MIN) return INT_MIN;
+    if(v > INT_MAX) return INT_MAX;
+    return (int)v;
+}
+
 /* Round a * num / den to the nearest integer (den > 0; a, num >= 0). */
-static int timui_round_div_(long a, long num, long den){
+static int64_t timui_round_div_(int64_t a, int64_t num, int64_t den){
     if(den <= 0) return 0;
-    return (int)((a * num + den / 2) / den);
+    return (a * num + den / 2) / den;
 }
 
 /* A flexible constraint shares in the leftover space (FLEX/MIN/MAX). */
@@ -16008,19 +16100,20 @@ static int timui_con_is_flex_(TimuiConstraintKind k){
 
 /* Weight of a flexible constraint: FLEX uses its value (clamped >= 0); MIN/MAX
  * are single-weight fill segments. */
-static int timui_con_weight_(const TimuiConstraint *c){
+static int64_t timui_con_weight_(const TimuiConstraint *c){
     if(c->kind == TIMUI_CON_FLEX) return c->value > 0 ? c->value : 0;
     return 1;   /* MIN / MAX */
 }
 
 TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstraint *cons,
                              int n, TimuiLayoutOpts opts, TimuiRect *out){
-    int  size[TIMUI_LAYOUT_MAX];
+    int64_t size[TIMUI_LAYOUT_MAX];
     char locked[TIMUI_LAYOUT_MAX];
-    int  i, gap, margin;
-    int  axis_start, axis_len, cross_start, cross_len;
-    int  inner_start, inner_len, cross_inner_start, cross_inner_len;
-    int  avail, fixed_sum, leftover, remaining, pos, end;
+    int  i;
+    int64_t gap, margin;
+    int64_t axis_start, axis_len, cross_start, cross_len;
+    int64_t inner_start, inner_len, cross_inner_start, cross_inner_len;
+    int64_t avail, fixed_sum, leftover, remaining, pos, end;
 
     if(!cons || !out || n <= 0 || n > TIMUI_LAYOUT_MAX) return 0;
 
@@ -16051,7 +16144,7 @@ TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstrai
             size[i] = cons[i].value > 0 ? cons[i].value : 0;
             fixed_sum += size[i];
         } else if(cons[i].kind == TIMUI_CON_PCT){
-            int p = cons[i].value < 0 ? 0 : cons[i].value;
+            int64_t p = cons[i].value < 0 ? 0 : cons[i].value;
             size[i] = timui_round_div_(avail, p, 100);
             fixed_sum += size[i];
         } else {
@@ -16065,13 +16158,15 @@ TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstrai
      * honouring MIN/MAX bounds via freeze-and-redistribute. */
     remaining = leftover;
     for(;;){
-        int free_weight = 0, last_free = -1, assigned = 0, changed = 0;
+        int64_t free_weight = 0, assigned = 0;
+        int last_free = -1, changed = 0;
         for(i = 0; i < n; i++)
             if(timui_con_is_flex_(cons[i].kind) && !locked[i]){
                 free_weight += timui_con_weight_(&cons[i]);
                 last_free = i;
             }
         if(last_free < 0) break;   /* no free flexible children left */
+        if(free_weight <= 0) break; /* all remaining flex children asked for zero */
 
         /* Provisional shares — the last free child gets the exact remainder so
          * the free children always sum to `remaining` (no rounding gap). */
@@ -16106,17 +16201,17 @@ TIMUI_API int timui_split_ex(TimuiRect area, TimuiAxis axis, const TimuiConstrai
     pos = inner_start;
     end = inner_start + inner_len;
     for(i = 0; i < n; i++){
-        int s = size[i], rem;
+        int64_t s = size[i], rem;
         if(i > 0) pos += gap;
         rem = end - pos; if(rem < 0) rem = 0;
         if(s > rem) s = rem;
         if(s < 0) s = 0;
         if(axis == TIMUI_AXIS_V){
-            out[i].x = cross_inner_start; out[i].w = cross_inner_len;
-            out[i].y = pos;               out[i].h = s;
+            out[i].x = timui_sat_i64_(cross_inner_start); out[i].w = timui_sat_i64_(cross_inner_len);
+            out[i].y = timui_sat_i64_(pos);               out[i].h = timui_sat_i64_(s);
         } else {
-            out[i].x = pos;               out[i].w = s;
-            out[i].y = cross_inner_start; out[i].h = cross_inner_len;
+            out[i].x = timui_sat_i64_(pos);               out[i].w = timui_sat_i64_(s);
+            out[i].y = timui_sat_i64_(cross_inner_start); out[i].h = timui_sat_i64_(cross_inner_len);
         }
         pos += s;
     }
@@ -16138,7 +16233,8 @@ TIMUI_API int timui_grid_ex(TimuiRect area, const TimuiConstraint *rows, int nr,
                             const TimuiConstraint *cols, int nc, TimuiLayoutOpts opts, TimuiRect *out){
     TimuiRect rowrects[TIMUI_LAYOUT_MAX];
     int r;
-    if(!rows || !cols || !out || nr <= 0 || nc <= 0 || nr > TIMUI_LAYOUT_MAX) return 0;
+    if(!rows || !cols || !out || nr <= 0 || nc <= 0 ||
+       nr > TIMUI_LAYOUT_MAX || nc > TIMUI_LAYOUT_MAX || nr > INT_MAX / nc) return 0;
     /* Rows carve `area` into vertical bands; each band is then split into cells
      * by the column constraints. Output is row-major: out[r*nc + c]. */
     if(timui_split_ex(area, TIMUI_AXIS_V, rows, nr, opts, rowrects) != nr) return 0;

@@ -1238,8 +1238,7 @@ TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba,
 /* Original PNG bytes plus caller-supplied decoded RGBA pixels. This lets apps
  * avoid the lazy PNG decode path while preserving PNG passthrough for
  * Kitty/iTerm2 and giving Sixel exact pixels for emission and clipping. The
- * supplied RGBA dimensions are expected to match the PNG and drive source
- * cropping. */
+ * supplied RGBA dimensions must match the PNG and drive source cropping. */
 TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
                                                 size_t png_size,
                                                 const void *rgba,

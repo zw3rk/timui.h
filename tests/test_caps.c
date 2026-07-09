@@ -79,3 +79,15 @@ TIMUI_TEST(test_caps_image_protocol_selection){
     c.flags = TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES;
     TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_KITTY);
 }
+
+TIMUI_TEST(test_caps_iterm2_detects_image_protocol){
+    TimuiCaps c;
+
+    timui_caps_detect(&c, "xterm-256color", "iTerm.app", "truecolor");
+    TIMUI_CHECK(timui_caps_has(&c, TIMUI_CAP_ITERM2_IMAGES));
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_ITERM2);
+
+    timui_caps_detect(&c, "tmux-256color", "iTerm.app", "truecolor");
+    TIMUI_CHECK(!timui_caps_has(&c, TIMUI_CAP_ITERM2_IMAGES));
+    TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_NONE);
+}
