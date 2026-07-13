@@ -18,7 +18,7 @@ not implemented; DEFERRED = intentionally outside this refinement pass.
 | Compatibility matrix | PARTIAL | `docs/TERMINAL_PROTOCOLS.md`, Phase 1.5 hosted evidence docs and runbooks. | Publish a compact compatibility matrix with supported/tested/compile-tested/experimental/unsupported states. |
 | Unicode contract | PARTIAL | UTF-8 decode, width, grapheme helpers and tests; `docs/API.md` describes covered clusters. | Add a dedicated docs section for responsibility boundaries, Unicode policy/version, emoji/combining behavior, bidi limitations, and future UAX #29/UAX #9 gaps. |
 | Image handling | PARTIAL | Protocol-neutral image API; Kitty/Sixel/iTerm2 emission; `TIMUI_NO_IMAGES`; many image protocol tests. | Document hard resource limits as public contract and add focused adversarial/fuzz-style image resource tests if gaps remain. |
-| Rendering ownership | TODO | Internal `timui_renderer_reset`; resize resets renderer. | Add public `timui_invalidate` and `timui_full_redraw` with tests and docs for external writes, terminal reset, suspend/resume, and subprocess output. |
+| Rendering ownership | DONE | `timui_invalidate` resets cached terminal state, `timui_full_redraw` forces the next frame to repaint every cell, and unit tests cover both semantics. `docs/API.md` documents external writes, terminal reset, suspend/resume, and subprocess output. | Revisit image cache recovery if a future live terminal reset test proves Kitty/iTerm2 image data needs retransmission hooks. |
 | Immediate-mode differentiator | DONE | Widgets use controlled results plus `_mut` wrappers; docs and examples follow caller-owned state. | Preserve this shape; avoid hidden global managers. |
 
 ## Notes

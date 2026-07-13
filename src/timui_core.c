@@ -762,6 +762,22 @@ TIMUI_API TimuiResult timui_ui_resize(Timui *ui, int w, int h){
     timui_renderer_reset(&ui->renderer);   /* cursor/SGR tracking invalidated */
     return TIMUI_OK;
 }
+TIMUI_API void timui_invalidate(Timui *ui){
+    if(!ui) return;
+    timui_renderer_reset(&ui->renderer);
+}
+TIMUI_API void timui_full_redraw(Timui *ui){
+    size_t i, n;
+    if(!ui) return;
+    timui_invalidate(ui);
+    if(!ui->have_buffers || !ui->prev.cells || ui->prev.w <= 0 || ui->prev.h <= 0) return;
+    n = (size_t)ui->prev.w * (size_t)ui->prev.h;
+    timui_cells_clear(&ui->prev);
+    for(i = 0; i < n; i++){
+        ui->prev.cells[i].codepoint = 0xFFFFFFFFu;   /* impossible live cell: force a diff, including blanks */
+        ui->prev.cells[i].width = 1;
+    }
+}
 TIMUI_API int timui_poll_event(Timui *ui, TimuiEvent *out_event){
     int i;
     if(!ui || !out_event || ui->event_count == 0) return 0;

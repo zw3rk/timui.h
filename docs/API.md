@@ -29,6 +29,8 @@ bool        timui_should_quit(const Timui *ui);
 TimuiRect   timui_root(const TimuiFrame *frame);
 int         timui_width/height(const TimuiFrame *frame);
 TimuiResult timui_ui_resize(Timui *ui, int w, int h);
+void        timui_invalidate(Timui *ui);
+void        timui_full_redraw(Timui *ui);
 TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
 TimuiResult timui_term_size_pixels(int fd, int *out_w, int *out_h,
                                    int *out_px_w, int *out_px_h);
@@ -54,6 +56,13 @@ frame, and resets the id stack; `timui_end` diff-renders and swaps. A
 
 Live terminal resize is explicit in v0.2: call `timui_term_size(output_fd, &w,
 &h)` and then `timui_ui_resize(ui, w, h)` when the dimensions change.
+
+The diff renderer assumes timui owns the terminal between frames. If an external
+write only resets terminal state such as SGR, cursor position, or OSC 8 link
+state, call `timui_invalidate(ui)` before the next frame. If a subprocess,
+shell escape, suspend/resume, terminal reset, or diagnostic print may have
+changed visible screen contents, call `timui_full_redraw(ui)`; the next frame
+will repaint every cell instead of relying on the previous cell buffer.
 
 ### Windows ConPTY
 

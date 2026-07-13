@@ -171,6 +171,8 @@ void test_render_cursor_visible(void);
 void test_render_cursor_hidden(void);
 void test_render_cursor_extreme_coords_safe(void);
 void test_frame_lifecycle(void);
+void test_invalidate_resets_terminal_state_cache(void);
+void test_full_redraw_repaints_unchanged_frame(void);
 void test_frame_quit_flag(void);
 void test_events_dropped(void);
 void test_begin_preserves_focus_events(void);

@@ -6,6 +6,18 @@
 #include "test.h"
 #include "timui.h"
 
+#include <string.h>
+
+static int frame_contains(const char *haystack, size_t haystack_len, const char *needle){
+    size_t needle_len = strlen(needle);
+    size_t i;
+    if(needle_len == 0) return 1;
+    if(!haystack || needle_len > haystack_len) return 0;
+    for(i = 0; i + needle_len <= haystack_len; i++)
+        if(memcmp(haystack + i, needle, needle_len) == 0) return 1;
+    return 0;
+}
+
 TIMUI_TEST(test_frame_lifecycle){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
@@ -44,6 +56,72 @@ TIMUI_TEST(test_frame_lifecycle){
     TIMUI_CHECK(timui_begin(ui, &f));
     TIMUI_CHECK(timui_width(f) == 20 && timui_height(f) == 10);
     timui_end(f);
+
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_invalidate_resets_terminal_state_cache){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiStr out;
+    TimuiStyle green = timui_style_make(0x59ee3f, TIMUI_COLOR_DEFAULT, 0);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 10, 5, &al) == TIMUI_OK);
+
+    TIMUI_CHECK(timui_begin(ui, &f));
+    timui_draw_text(timui_frame_buffer(f), 0, 0, TIMUI_STR_LIT("A"), green);
+    timui_end(f);
+    timui_fake_clear_output(&fake);
+
+    timui_invalidate(ui);
+    TIMUI_CHECK(timui_begin(ui, &f));
+    timui_draw_text(timui_frame_buffer(f), 0, 0, TIMUI_STR_LIT("AB"), green);
+    timui_end(f);
+    out = timui_fake_output(&fake);
+
+    TIMUI_CHECK(frame_contains(out.ptr, out.len, "\x1b[0m"));   /* SGR cache reset */
+    TIMUI_CHECK(frame_contains(out.ptr, out.len, "B"));
+    TIMUI_CHECK(!frame_contains(out.ptr, out.len, "AB"));       /* not a full redraw */
+
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_full_redraw_repaints_unchanged_frame){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = NULL;
+    TimuiStr out;
+    TimuiStyle st = timui_style_make(0xffffff, TIMUI_COLOR_DEFAULT, 0);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 10, 5, &al) == TIMUI_OK);
+
+    TIMUI_CHECK(timui_begin(ui, &f));
+    timui_draw_text(timui_frame_buffer(f), 0, 0, TIMUI_STR_LIT("Hi"), st);
+    timui_end(f);
+
+    timui_fake_clear_output(&fake);
+    TIMUI_CHECK(timui_begin(ui, &f));
+    timui_draw_text(timui_frame_buffer(f), 0, 0, TIMUI_STR_LIT("Hi"), st);
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(out.len == 0);
+
+    timui_full_redraw(ui);
+    TIMUI_CHECK(timui_begin(ui, &f));
+    timui_draw_text(timui_frame_buffer(f), 0, 0, TIMUI_STR_LIT("Hi"), st);
+    timui_end(f);
+    out = timui_fake_output(&fake);
+    TIMUI_CHECK(out.len > 0);
+    TIMUI_CHECK(frame_contains(out.ptr, out.len, "Hi"));
 
     timui_close(ui);
 }

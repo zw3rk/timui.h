@@ -160,6 +160,8 @@ int main(void){
         test_render_cursor_hidden,
         test_render_cursor_extreme_coords_safe,
         test_frame_lifecycle,
+        test_invalidate_resets_terminal_state_cache,
+        test_full_redraw_repaints_unchanged_frame,
         test_frame_quit_flag,
         test_events_dropped,
         test_begin_preserves_focus_events,

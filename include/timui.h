@@ -202,6 +202,13 @@ TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
  * NULL ui / non-positive size, or TIMUI_ERR_OUT_OF_MEMORY if a buffer can't grow
  * (dimensions are left unchanged in that case — see V10 rollback). */
 TIMUI_API TimuiResult      timui_ui_resize(Timui *ui, int w, int h);
+/* Reset cached terminal state after an external terminal mode/style reset.
+ * Does not force cell repaint by itself. */
+TIMUI_API void             timui_invalidate(Timui *ui);
+/* Force the next timui_end to repaint every cell. Use after subprocess output,
+ * terminal reset, suspend/resume, or any external write that may have changed
+ * screen contents behind timui's diff renderer. */
+TIMUI_API void             timui_full_redraw(Timui *ui);
 /* Advanced raw-event polling. timui_begin consumes key/text/mouse/paste into
  * frame aggregators (timui_text_input, key flags, mouse helpers). Events left
  * after begin are for out-of-band cases such as focus changes. */
