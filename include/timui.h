@@ -854,6 +854,19 @@ typedef enum {
     TIMUI_IMAGE_PROTOCOL_ITERM2
 } TimuiImageProtocol;
 
+typedef enum {
+    TIMUI_CAPS_NOTE_SAFE_FALLBACK      = 1u << 0,
+    TIMUI_CAPS_NOTE_TRUECOLOR_ENV      = 1u << 1,
+    TIMUI_CAPS_NOTE_MODERN_TERMINAL    = 1u << 2,
+    TIMUI_CAPS_NOTE_KITTY_FAMILY       = 1u << 3,
+    TIMUI_CAPS_NOTE_ITERM2             = 1u << 4,
+    TIMUI_CAPS_NOTE_256COLOR_TERM      = 1u << 5,
+    TIMUI_CAPS_NOTE_MULTIPLEXER        = 1u << 6,
+    TIMUI_CAPS_NOTE_KITTY_PASSTHROUGH  = 1u << 7,
+    TIMUI_CAPS_NOTE_SSH_SESSION        = 1u << 8,
+    TIMUI_CAPS_NOTE_IMAGES_COMPILED_OUT = 1u << 9
+} TimuiCapsNoteFlags;
+
 typedef struct {
     uint32_t flags;
     int      colors;
@@ -864,10 +877,22 @@ typedef struct {
     char     term_program_version[64];
 } TimuiCaps;
 
+typedef struct {
+    TimuiCaps caps;
+    uint32_t  notes;
+    uint32_t  enabled_by_env;
+    uint32_t  disabled_by_multiplexer;
+    uint32_t  disabled_by_build;
+} TimuiCapsReport;
+
 /* Pure, deterministic detection from environment strings (no I/O, no live
  * queries): known modern terminals get the modern cap set; multiplexers
  * (tmux/screen/zellij) reduce it; unknown terminals fall back to a safe
  * minimum. force_on / force_off override the result. */
+TIMUI_API void timui_caps_detect_report(TimuiCapsReport *report, const char *term,
+                                        const char *term_program,
+                                        const char *colorterm,
+                                        const char *ssh_connection);
 TIMUI_API void timui_caps_detect(TimuiCaps *caps, const char *term, const char *term_program, const char *colorterm);
 TIMUI_API void timui_caps_apply_force(TimuiCaps *caps, uint32_t force_on, uint32_t force_off);
 TIMUI_API int  timui_caps_has(const TimuiCaps *caps, TimuiCapFlags cap);

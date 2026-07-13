@@ -170,6 +170,9 @@ returns top/divider/bottom panes. State is caller-owned (`ratio`, `min_first`,
 ```c
 void timui_caps_detect(TimuiCaps *, const char *term,
                        const char *term_program, const char *colorterm);
+void timui_caps_detect_report(TimuiCapsReport *, const char *term,
+                              const char *term_program, const char *colorterm,
+                              const char *ssh_connection);
 int  timui_caps_has(const TimuiCaps *, TimuiCapFlags);
 TimuiImageProtocol timui_caps_image_protocol(const TimuiCaps *);
 const TimuiCaps *timui_caps(const Timui *);
@@ -189,9 +192,14 @@ void timui_image_free(Timui *, TimuiImage *);
 
 Capability detection is deterministic from `TERM`, `TERM_PROGRAM`, and
 `COLORTERM`, with multiplexers conservatively stripping image protocols unless
-the application explicitly forces them. Image protocol selection returns
-`NONE`, `KITTY`, `SIXEL`, or `ITERM2`; when several image caps are present,
-Kitty wins, then Sixel, then iTerm2.
+the application explicitly forces them. `timui_caps_detect_report` returns the
+same detected caps plus diagnostic bitmasks: `enabled_by_env`,
+`disabled_by_multiplexer`, `disabled_by_build`, and notes such as
+`TIMUI_CAPS_NOTE_MULTIPLEXER`, `TIMUI_CAPS_NOTE_SSH_SESSION`, and
+`TIMUI_CAPS_NOTE_IMAGES_COMPILED_OUT`. SSH is reported as context, not guessed
+support: the detector still trusts only the forwarded terminal environment.
+Image protocol selection returns `NONE`, `KITTY`, `SIXEL`, or `ITERM2`; when
+several image caps are present, Kitty wins, then Sixel, then iTerm2.
 
 The image API is protocol-neutral at the draw call. v0.2 emits Kitty graphics
 and iTerm2 inline images from PNG bytes supplied to `timui_image_from_png` or

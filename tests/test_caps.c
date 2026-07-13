@@ -91,3 +91,34 @@ TIMUI_TEST(test_caps_iterm2_detects_image_protocol){
     TIMUI_CHECK(!timui_caps_has(&c, TIMUI_CAP_ITERM2_IMAGES));
     TIMUI_CHECK(timui_caps_image_protocol(&c) == TIMUI_IMAGE_PROTOCOL_NONE);
 }
+
+TIMUI_TEST(test_caps_report_explains_multiplexer_reductions){
+    TimuiCapsReport r;
+
+    timui_caps_detect_report(&r, "tmux-256color", "kitty", "truecolor", NULL);
+    TIMUI_CHECK((r.notes & TIMUI_CAPS_NOTE_MULTIPLEXER) != 0);
+    TIMUI_CHECK((r.notes & TIMUI_CAPS_NOTE_KITTY_PASSTHROUGH) != 0);
+    TIMUI_CHECK((r.disabled_by_multiplexer & TIMUI_CAP_KITTY_GRAPHICS) != 0);
+    TIMUI_CHECK((r.disabled_by_multiplexer & TIMUI_CAP_KITTY_KEYBOARD) == 0);
+    TIMUI_CHECK(timui_caps_has(&r.caps, TIMUI_CAP_KITTY_KEYBOARD));
+    TIMUI_CHECK(timui_caps_image_protocol(&r.caps) == TIMUI_IMAGE_PROTOCOL_NONE);
+
+    timui_caps_detect_report(&r, "tmux-256color", "WezTerm", "truecolor", NULL);
+    TIMUI_CHECK((r.notes & TIMUI_CAPS_NOTE_MULTIPLEXER) != 0);
+    TIMUI_CHECK((r.disabled_by_multiplexer & TIMUI_CAP_SYNC_OUTPUT) != 0);
+    TIMUI_CHECK(!timui_caps_has(&r.caps, TIMUI_CAP_SYNC_OUTPUT));
+}
+
+TIMUI_TEST(test_caps_report_notes_ssh_and_safe_fallback){
+    TimuiCapsReport r;
+
+    timui_caps_detect_report(&r, "xterm-256color", NULL, NULL, "host 22 client 55555");
+    TIMUI_CHECK((r.notes & TIMUI_CAPS_NOTE_SSH_SESSION) != 0);
+    TIMUI_CHECK((r.enabled_by_env & TIMUI_CAP_256_COLOR) != 0);
+    TIMUI_CHECK(timui_caps_has(&r.caps, TIMUI_CAP_256_COLOR));
+
+    timui_caps_detect_report(&r, "dumb", NULL, NULL, NULL);
+    TIMUI_CHECK((r.notes & TIMUI_CAPS_NOTE_SAFE_FALLBACK) != 0);
+    TIMUI_CHECK(r.enabled_by_env == 0);
+    TIMUI_CHECK(r.caps.colors == 16);
+}

@@ -53,11 +53,15 @@ Detection (`timui_caps_detect`) is conservative and deterministic from
 `TERM` / `TERM_PROGRAM` / `COLORTERM`: modern terminals get the full set;
 multiplexers (**tmux / screen / zellij**) conservatively drop image protocols
 and, unless passthrough is known, kitty-keyboard / sync; unknown terminals fall
-back to a safe 16-colour, ASCII-friendly minimum. `force_on` / `force_off`
-masks override, and `timui_force_image_protocol` switches the active image cap
-set for tests or user overrides. With `TIMUI_NO_IMAGES`, image caps are stripped
-after detection and force masks; protocol selection always returns
-`TIMUI_IMAGE_PROTOCOL_NONE`.
+back to a safe 16-colour, ASCII-friendly minimum. `timui_caps_detect_report`
+returns the same caps plus `enabled_by_env`, `disabled_by_multiplexer`,
+`disabled_by_build`, and notes for mux, SSH, kitty passthrough, safe fallback,
+and images compiled out. SSH is diagnostic context only: timui does not infer
+remote terminal support beyond the environment strings the session forwarded.
+`force_on` / `force_off` masks override, and `timui_force_image_protocol`
+switches the active image cap set for tests or user overrides. With
+`TIMUI_NO_IMAGES`, image caps are stripped after detection and force masks;
+protocol selection always returns `TIMUI_IMAGE_PROTOCOL_NONE`.
 
 ## Platform Evidence
 

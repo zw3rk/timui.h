@@ -354,6 +354,8 @@ check-refinement-docs: ## Verify refinement contract docs exist and keep require
 	@grep -q 'timui_begin_result' docs/API.md
 	@grep -q 'TIMUI_ERR_EOF' docs/THREADING.md
 	@grep -q 'timui_post_result' docs/THREADING.md
+	@grep -q 'timui_caps_detect_report' docs/API.md
+	@grep -q 'disabled_by_multiplexer' docs/TERMINAL_PROTOCOLS.md
 	@printf "$(C_GREEN)✓ refinement contract docs$(C_RESET)\n"
 
 verify-conpty-evidence: tools/verify_conpty_evidence.py ## Validate downloaded hosted ConPTY evidence (ARTIFACT_DIR=... [COMMIT=...])

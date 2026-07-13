@@ -119,6 +119,8 @@ int main(void){
         test_caps_force_masks,
         test_caps_image_protocol_selection,
         test_caps_iterm2_detects_image_protocol,
+        test_caps_report_explains_multiplexer_reductions,
+        test_caps_report_notes_ssh_and_safe_fallback,
         test_kitty_csi_u_plain,
         test_kitty_csi_u_with_mods,
         test_kitty_special_codes,

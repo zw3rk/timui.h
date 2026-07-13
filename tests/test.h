@@ -130,6 +130,8 @@ void test_caps_unknown_fallback(void);
 void test_caps_force_masks(void);
 void test_caps_image_protocol_selection(void);
 void test_caps_iterm2_detects_image_protocol(void);
+void test_caps_report_explains_multiplexer_reductions(void);
+void test_caps_report_notes_ssh_and_safe_fallback(void);
 void test_kitty_csi_u_plain(void);
 void test_kitty_csi_u_with_mods(void);
 void test_kitty_special_codes(void);

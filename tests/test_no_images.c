@@ -33,6 +33,7 @@ static int bytes_contain(const char *h, size_t hl, const char *needle){
 
 static void test_caps_resolve_to_none(void){
     TimuiCaps c;
+    TimuiCapsReport r;
     memset(&c, 0, sizeof c);
     c.flags = TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES;
 
@@ -46,6 +47,11 @@ static void test_caps_resolve_to_none(void){
     CHECK(!timui_caps_has(&c, TIMUI_CAP_KITTY_GRAPHICS));
     CHECK(!timui_caps_has(&c, TIMUI_CAP_SIXEL_GRAPHICS));
     CHECK(!timui_caps_has(&c, TIMUI_CAP_ITERM2_IMAGES));
+
+    timui_caps_detect_report(&r, "xterm-ghostty", "ghostty", "truecolor", NULL);
+    CHECK((r.notes & TIMUI_CAPS_NOTE_IMAGES_COMPILED_OUT) != 0);
+    CHECK((r.disabled_by_build & TIMUI_CAP_KITTY_GRAPHICS) != 0);
+    CHECK(timui_caps_image_protocol(&r.caps) == TIMUI_IMAGE_PROTOCOL_NONE);
 }
 
 static void test_forced_protocols_stay_none(void){

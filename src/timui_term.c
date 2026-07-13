@@ -215,29 +215,62 @@ static void caps_set_str(char *dst, size_t cap, const char *src){
 
 #define TIMUI_IMAGE_CAP_MASK_ ((uint32_t)(TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES))
 
-TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *term_program, const char *colorterm){
-    if(!c) return;
-    memset(c, 0, sizeof(*c));
+TIMUI_API void timui_caps_detect_report(TimuiCapsReport *r, const char *term,
+                                        const char *term_program,
+                                        const char *colorterm,
+                                        const char *ssh_connection){
+    TimuiCaps *c;
+    uint32_t bits;
+    uint32_t before;
+    int modern;
+    int kitty_family;
+    int iterm2;
+    int multiplexer;
+    if(!r) return;
+    memset(r, 0, sizeof(*r));
+    c = &r->caps;
+    modern = caps_is_modern(term_program) || caps_is_modern(term);
+    kitty_family = caps_is_kitty_family(term_program) || caps_is_kitty_family(term);
+    iterm2 = caps_is_iterm2(term_program) || caps_is_iterm2(term);
+    multiplexer = term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) ||
+                           !strncmp(term, "zellij", 6));
+    if(ssh_connection && *ssh_connection) r->notes |= TIMUI_CAPS_NOTE_SSH_SESSION;
     c->colors = 16;
     caps_set_str(c->term, sizeof(c->term), term);
     caps_set_str(c->term_program, sizeof(c->term_program), term_program);
     if(colorterm && (caps_streq(colorterm, "truecolor") || caps_streq(colorterm, "24bit"))){
         c->flags |= TIMUI_CAP_TRUECOLOR;
+        r->enabled_by_env |= TIMUI_CAP_TRUECOLOR;
+        r->notes |= TIMUI_CAPS_NOTE_TRUECOLOR_ENV;
         c->colors = 16777216;
     }
-    if(caps_is_modern(term_program) || caps_is_modern(term)){
-        c->flags |= TIMUI_CAP_TRUECOLOR | TIMUI_CAP_256_COLOR | TIMUI_CAP_SGR_MOUSE
-                  | TIMUI_CAP_BRACKETED_PASTE | TIMUI_CAP_FOCUS_EVENTS
-                  | TIMUI_CAP_SYNC_OUTPUT | TIMUI_CAP_OSC8_HYPERLINKS;
+    if(modern){
+        bits = TIMUI_CAP_TRUECOLOR | TIMUI_CAP_256_COLOR | TIMUI_CAP_SGR_MOUSE
+             | TIMUI_CAP_BRACKETED_PASTE | TIMUI_CAP_FOCUS_EVENTS
+             | TIMUI_CAP_SYNC_OUTPUT | TIMUI_CAP_OSC8_HYPERLINKS;
+        c->flags |= bits;
+        r->enabled_by_env |= bits;
+        r->notes |= TIMUI_CAPS_NOTE_MODERN_TERMINAL;
         if(c->colors < 16777216) c->colors = 16777216;
-        if(caps_is_kitty_family(term_program) || caps_is_kitty_family(term)){
-            c->flags |= TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
+        if(kitty_family){
+            bits = TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
+            c->flags |= bits;
+            r->enabled_by_env |= bits;
+            r->notes |= TIMUI_CAPS_NOTE_KITTY_FAMILY;
         }
-        if(caps_is_iterm2(term_program) || caps_is_iterm2(term))
-            c->flags |= TIMUI_CAP_ITERM2_IMAGES | TIMUI_CAP_UNICODE_CORE;
+        if(iterm2){
+            bits = TIMUI_CAP_ITERM2_IMAGES | TIMUI_CAP_UNICODE_CORE;
+            c->flags |= bits;
+            r->enabled_by_env |= bits;
+            r->notes |= TIMUI_CAPS_NOTE_ITERM2;
+        }
     } else if(term && strstr(term, "256color")){
         c->flags |= TIMUI_CAP_256_COLOR;
+        r->enabled_by_env |= TIMUI_CAP_256_COLOR;
+        r->notes |= TIMUI_CAPS_NOTE_256COLOR_TERM;
         c->colors = 256;
+    } else {
+        r->notes |= TIMUI_CAPS_NOTE_SAFE_FALLBACK;
     }
     /* multiplexers reduce capabilities. Image protocols are ALWAYS stripped
      * under a multiplexer: they require explicit passthrough + graphics support
@@ -245,16 +278,33 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
      * plus stray cursor moves. Keyboard and sync are only kept when the OUTER
      * terminal (TERM_PROGRAM, inherited into the session) is kitty-family;
      * otherwise stripped. timui_force_cap overrides either way (W12). */
-    if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
+    if(multiplexer){
+        r->notes |= TIMUI_CAPS_NOTE_MULTIPLEXER;
+        before = c->flags;
         c->flags &= ~TIMUI_IMAGE_CAP_MASK_;
-        if(!caps_is_kitty_family(term_program))
+        r->disabled_by_multiplexer |= before & TIMUI_IMAGE_CAP_MASK_;
+        if(caps_is_kitty_family(term_program)){
+            r->notes |= TIMUI_CAPS_NOTE_KITTY_PASSTHROUGH;
+        }else{
+            bits = before & (TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
             c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
+            r->disabled_by_multiplexer |= bits;
+        }
         c->flags |= TIMUI_CAP_256_COLOR;
         if(c->colors < 256) c->colors = 256;
     }
 #ifdef TIMUI_NO_IMAGES
+    before = c->flags;
     c->flags &= ~TIMUI_IMAGE_CAP_MASK_;
+    r->disabled_by_build |= before & TIMUI_IMAGE_CAP_MASK_;
+    r->notes |= TIMUI_CAPS_NOTE_IMAGES_COMPILED_OUT;
 #endif
+}
+TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *term_program, const char *colorterm){
+    TimuiCapsReport r;
+    if(!c) return;
+    timui_caps_detect_report(&r, term, term_program, colorterm, NULL);
+    *c = r.caps;
 }
 TIMUI_API void timui_caps_apply_force(TimuiCaps *c, uint32_t force_on, uint32_t force_off){
     if(!c) return;
