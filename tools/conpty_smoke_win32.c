@@ -50,9 +50,11 @@ static void smoke_append(char *dst, size_t *dst_len, size_t dst_cap,
 static const char *smoke_echo_script_for_attempt(int attempt){
     switch(attempt){
         case 0:
-            /* Microsoft ConPTY examples serialize Enter as LF. */
-            return "echo " TOKEN "\n";
+            /* cmd.exe console input treats Enter as carriage return. */
+            return "echo " TOKEN "\r";
         case 1:
+            return "echo " TOKEN "\n";
+        case 2:
             return "echo " TOKEN "\r\n";
         default:
             return NULL;
@@ -62,8 +64,10 @@ static const char *smoke_echo_script_for_attempt(int attempt){
 static const char *smoke_exit_script_for_attempt(int attempt){
     switch(attempt){
         case 0:
-            return "exit\n";
+            return "exit\r";
         case 1:
+            return "exit\n";
+        case 2:
             return "exit\r\n";
         default:
             return NULL;

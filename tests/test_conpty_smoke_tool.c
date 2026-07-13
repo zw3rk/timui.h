@@ -43,20 +43,25 @@ int main(void){
     TimuiTransport tr;
     int last_write = 0;
     const char *primary = smoke_echo_script_for_attempt(0);
-    const char *fallback = smoke_echo_script_for_attempt(1);
+    const char *lf_fallback = smoke_echo_script_for_attempt(1);
+    const char *crlf_fallback = smoke_echo_script_for_attempt(2);
 
     CHECK(primary != NULL);
-    CHECK(strstr(primary, "echo " TOKEN "\n") != NULL);
-    CHECK(strstr(primary, "\r") == NULL);
+    CHECK(strcmp(primary, "echo " TOKEN "\r") == 0);
     CHECK(strstr(primary, "exit") == NULL);
-    CHECK(strcmp(smoke_exit_script_for_attempt(0), "exit\n") == 0);
+    CHECK(strcmp(smoke_exit_script_for_attempt(0), "exit\r") == 0);
 
-    CHECK(fallback != NULL);
-    CHECK(strstr(fallback, "echo " TOKEN "\r\n") != NULL);
-    CHECK(strstr(fallback, "exit") == NULL);
-    CHECK(strcmp(smoke_exit_script_for_attempt(1), "exit\r\n") == 0);
-    CHECK(smoke_echo_script_for_attempt(2) == NULL);
-    CHECK(smoke_exit_script_for_attempt(2) == NULL);
+    CHECK(lf_fallback != NULL);
+    CHECK(strcmp(lf_fallback, "echo " TOKEN "\n") == 0);
+    CHECK(strstr(lf_fallback, "exit") == NULL);
+    CHECK(strcmp(smoke_exit_script_for_attempt(1), "exit\n") == 0);
+
+    CHECK(crlf_fallback != NULL);
+    CHECK(strcmp(crlf_fallback, "echo " TOKEN "\r\n") == 0);
+    CHECK(strstr(crlf_fallback, "exit") == NULL);
+    CHECK(strcmp(smoke_exit_script_for_attempt(2), "exit\r\n") == 0);
+    CHECK(smoke_echo_script_for_attempt(3) == NULL);
+    CHECK(smoke_exit_script_for_attempt(3) == NULL);
 
     memset(&fake, 0, sizeof fake);
     memset(&tr, 0, sizeof tr);
