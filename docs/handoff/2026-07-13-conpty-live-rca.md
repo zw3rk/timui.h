@@ -13,6 +13,7 @@ date: 2026-07-13
   (`docs: stamp conpty rca handoff`)
 - RCA commit: `8098b11a58e6a5538ecc8590d0e748ab49517aec`
 - Evidence manifest commit: `4105026d23c3a5e705334b7e5af30a9815ca3eb3`
+- Evidence verifier commit: `72d6abd82fdc313badd9008ed84fba29fde0fe6b`
 - Merge/push status: not merged, not pushed at the time this handoff was
   written.
 - Downloaded hosted artifact: `artifacts/gh-runs/28982641529/` (gitignored
@@ -54,6 +55,12 @@ date: 2026-07-13
   `conpty-acceptance.json`, `conpty-smoke.command.txt`, and
   `conpty-smoke.meta.txt` so hosted Windows runs have a machine-readable
   acceptance predicate in addition to stdout/stderr.
+- `make verify-conpty-evidence ARTIFACT_DIR=... COMMIT=...` validates a
+  downloaded hosted Windows artifact against that predicate. The fixture test
+  rejects missing/malformed manifests, wrong commits, false acceptance flags,
+  nonzero status files, missing PASS tokens, evidence.md mismatch, and unsafe
+  manifest paths. It now also rejects compile-only commands and artifacts that
+  do not record Windows host metadata.
 
 ## Verification Already Run
 
@@ -65,6 +72,7 @@ date: 2026-07-13
 - Green: `nix develop -c make check-conpty-smoke-tool`.
 - Green: `nix develop -c make check-conpty-win32-smoke-compile`.
 - Green: `nix develop -c make check-hosted-visual-windows`.
+- Green: `nix develop -c make check-conpty-evidence-artifacts`.
 - Green: `nix develop -c make check-conpty`.
 - Green: `nix develop -c make man`.
 - Green: `nix develop -c make check`.
@@ -81,9 +89,8 @@ date: 2026-07-13
 - Push or otherwise run this branch on a Windows host only when the operator is
   ready to collect evidence. Trigger `Hosted visual probes` or run
   `nix develop -c make smoke-conpty-win32 CONPTY_WIN_CC=cc` on an interactive
-  Windows setup. For hosted runs, inspect `conpty-acceptance.json` first; it
-  must set `passTokenPresent` and `accepted` to true for the same commit. Then
-  inspect `conpty-smoke.stdout`, `conpty-smoke.stderr`, and
-  `conpty-smoke.status`; if it still fails, the new escaped excerpt should show
-  whether the shell saw neither command, only echo, only exit, or additional
-  prompt/error output.
+  Windows setup. For hosted runs, run
+  `nix develop -c make verify-conpty-evidence ARTIFACT_DIR=... COMMIT=...`
+  first. If it fails, inspect `conpty-smoke.stdout`, `conpty-smoke.stderr`, and
+  `conpty-smoke.status`; the escaped excerpt should show whether the shell saw
+  neither command, only echo, only exit, or additional prompt/error output.
