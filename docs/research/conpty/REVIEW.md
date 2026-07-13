@@ -57,6 +57,11 @@ instead of creating a binary that fails to load.
 - `HPCON` is closed with `ClosePseudoConsole`, not `CloseHandle`.
 - Parent pipe handles kept by the transport are the write side of ConPTY input
   and the read side of ConPTY output.
+- The pipe ends passed to `CreatePseudoConsole` stay open until after
+  `CreateProcessW` succeeds. Microsoft documents closing those ConPTY-owned
+  ends after the child is created; closing them immediately after
+  `CreatePseudoConsole` can leave the later child attach path without a live
+  input/output endpoint.
 - `conpty_read` uses `PeekNamedPipe` before `ReadFile` so the frame loop does
   not block indefinitely when no child output is available.
 - `conpty_write` chunks `size_t` payloads into bounded `DWORD` writes and also

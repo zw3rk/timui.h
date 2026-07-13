@@ -194,8 +194,6 @@ TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_
     size.X = 80;
     size.Y = 24;
     if(FAILED(api.create_pseudo_console(size, in_read, out_write, 0, &ctx->hpc))) goto fail;
-    conpty_close_handle_(&in_read);
-    conpty_close_handle_(&out_write);
 
     memset(&si, 0, sizeof si);
     memset(&pi, 0, sizeof pi);
@@ -214,6 +212,8 @@ TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_
     if(!cmd[0]) goto fail_attr;
     if(!CreateProcessW(NULL, cmd, NULL, NULL, FALSE, EXTENDED_STARTUPINFO_PRESENT,
                        NULL, NULL, &si.StartupInfo, &pi)) goto fail_attr;
+    conpty_close_handle_(&in_read);
+    conpty_close_handle_(&out_write);
     DeleteProcThreadAttributeList(si.lpAttributeList);
     free(si.lpAttributeList);
     si.lpAttributeList = NULL;
