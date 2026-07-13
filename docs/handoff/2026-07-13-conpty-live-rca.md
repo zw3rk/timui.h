@@ -14,10 +14,20 @@ date: 2026-07-13
 - RCA commit: `8098b11a58e6a5538ecc8590d0e748ab49517aec`
 - Evidence manifest commit: `4105026d23c3a5e705334b7e5af30a9815ca3eb3`
 - Evidence verifier commit: `72d6abd82fdc313badd9008ed84fba29fde0fe6b`
-- Merge/push status: not merged, not pushed at the time this handoff was
-  written.
+- Input/handle RCA commits:
+  `ebf8826ad3dc68fa5db5db9cacc802c8312f1ac6`,
+  `7ee14ce1e61fb57f83ce3d1200c30a39102ddf75`, and
+  `44bb495b1f7937357f117b42563b50ba08c08e08`.
+- Accepted hosted run: `29226547099` on branch
+  `phase1-5-conpty-evidence-ci`, commit
+  `44bb495b1f7937357f117b42563b50ba08c08e08`.
+- Merge/push status: pushed to PR branch `phase1-5-conpty-evidence-ci`; do not
+  push directly to `master`.
 - Downloaded hosted artifact: `artifacts/gh-runs/28982641529/` (gitignored
   scratch, fetched with `gh run download 28982641529 --repo zw3rk/timui.h
+  --name hosted-visual-windows-terminal`).
+- Accepted hosted artifact: `artifacts/gh-runs/29226547099/` (gitignored
+  scratch, fetched with `gh run download 29226547099 --repo zw3rk/timui.h
   --name hosted-visual-windows-terminal`).
 
 ## Read First
@@ -29,9 +39,13 @@ date: 2026-07-13
 
 ## Accepted State
 
-- Windows ConPTY backend implementation remains compile-covered only. Do not
-  claim supported Windows operation yet.
-- Hosted run `28982641529` is useful RCA evidence, not accepted ConPTY
+- Windows ConPTY backend implementation has accepted hosted smoke evidence for
+  Phase 1.5. The accepted machine predicate is:
+  `nix develop -c make verify-conpty-evidence ARTIFACT_DIR=artifacts/gh-runs/29226547099 COMMIT=44bb495b1f7937357f117b42563b50ba08c08e08`.
+- Hosted run `29226547099` accepted: `conpty-acceptance.json` records status
+  `0`, `passTokenPresent: true`, `accepted: true`, Windows runner metadata, and
+  the exact `smoke-conpty-win32` command.
+- Historical hosted run `28982641529` is useful RCA evidence, not accepted ConPTY
   evidence. `conpty-smoke.stdout` contains the initial `cmd.exe` banner and
   prompt, while `conpty-smoke.stderr` says:
   `conpty smoke: sentinel not observed; captured 166 bytes`.
@@ -61,6 +75,10 @@ date: 2026-07-13
   nonzero status files, missing PASS tokens, evidence.md mismatch, and unsafe
   manifest paths. It now also rejects compile-only commands and artifacts that
   do not record Windows host metadata.
+- Follow-up RCA fixed two hosted-run defects: the smoke now submits the
+  `cmd.exe` line with carriage return first, and `timui_conpty_open` sets
+  `STARTF_USESTDHANDLES` with null std handles so a redirected parent process
+  cannot leak stdout/stdin/stderr into the ConPTY child.
 
 ## Verification Already Run
 
@@ -76,21 +94,21 @@ date: 2026-07-13
 - Green: `nix develop -c make check-conpty`.
 - Green: `nix develop -c make man`.
 - Green: `nix develop -c make check`.
+- Green hosted evidence: run `29226547099` completed on GitHub Actions at
+  commit `44bb495b1f7937357f117b42563b50ba08c08e08`.
+- Green local artifact verification:
+  `nix develop -c make verify-conpty-evidence ARTIFACT_DIR=artifacts/gh-runs/29226547099 COMMIT=44bb495b1f7937357f117b42563b50ba08c08e08`.
 
 ## Blocker
 
-- No accepted real Windows ConPTY smoke result has been captured for this
-  branch. The next run must contain
-  `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE` in `conpty-smoke.stdout`
-  from the same commit being accepted.
+- None for the Phase 1.5 ConPTY smoke gate. Future changes touching
+  `src/timui_conpty.c`, `tools/conpty_smoke_win32.c`, or
+  `tools/ci/hosted_visual_windows.ps1` should recapture or explicitly justify
+  why the accepted run remains representative.
 
 ## Next Safe Move
 
-- Push or otherwise run this branch on a Windows host only when the operator is
-  ready to collect evidence. Trigger `Hosted visual probes` or run
-  `nix develop -c make smoke-conpty-win32 CONPTY_WIN_CC=cc` on an interactive
-  Windows setup. For hosted runs, run
+- Keep the accepted run linked from the Phase 1.5 docs. If recapturing, trigger
+  `Hosted visual probes`, download `hosted-visual-windows-terminal`, and run
   `nix develop -c make verify-conpty-evidence ARTIFACT_DIR=... COMMIT=...`
-  first. If it fails, inspect `conpty-smoke.stdout`, `conpty-smoke.stderr`, and
-  `conpty-smoke.status`; the escaped excerpt should show whether the shell saw
-  neither command, only echo, only exit, or additional prompt/error output.
+  before updating any accepted-state language.

@@ -187,11 +187,16 @@ Hosted runner probe:
   above and record that the manifest was unavailable.
 - `conpty-smoke.command.txt` and `conpty-smoke.meta.txt` are diagnostics for
   the exact hosted MSYS2 invocation and host/toolchain metadata.
+- Run `29226547099` is the accepted hosted Windows ConPTY smoke baseline:
+  commit `44bb495b1f7937357f117b42563b50ba08c08e08`, Windows hosted runner,
+  MSYS2/UCRT64 `/ucrt64/bin/gcc`, `conpty-acceptance.json` with
+  `passTokenPresent: true` and `accepted: true`, verified locally with
+  `make verify-conpty-evidence`.
 - For current artifacts, validate the machine predicate before updating any
   docs:
 
   ```sh
-  nix develop -c make verify-conpty-evidence ARTIFACT_DIR=artifacts/gh-runs/<run>/hosted-visual-windows-terminal COMMIT=<commit>
+  nix develop -c make verify-conpty-evidence ARTIFACT_DIR=artifacts/gh-runs/<run> COMMIT=<commit>
   ```
 
   The verifier requires `conpty-acceptance.json`, `evidence.md`,

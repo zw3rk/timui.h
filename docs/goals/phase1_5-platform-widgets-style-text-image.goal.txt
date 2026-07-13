@@ -58,9 +58,9 @@ WORKSTREAM A - Windows ConPTY backend:
   cross compiler is available.
 - DONE: `make smoke-conpty-win32` and
   `make check-conpty-win32-smoke-compile` exist for operator evidence capture.
-- PENDING: a real Windows ConPTY smoke run on a Windows host recorded per
-  `docs/runbooks/phase1-5-live-evidence.md` before claiming supported Windows
-  operation; `make test` and sanitizers remain green on POSIX.
+- DONE: hosted Windows ConPTY smoke evidence via run `29226547099` at commit
+  `44bb495b1f7937357f117b42563b50ba08c08e08`, verified locally with
+  `make verify-conpty-evidence` against the downloaded artifact.
 
 WORKSTREAM B - Widgets:
 - Textarea first. Add a result-returning controlled API, plus `_mut`
@@ -145,6 +145,8 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   Kitty/Sixel/iTerm2 visual evidence capture, and `make check-image-smoke`
   checks the harness headlessly without claiming protocol evidence. The accepted
   operator procedure is `docs/runbooks/phase1-5-live-evidence.md`.
+- DONE: iTerm2 terminal evidence via hosted macOS iTerm2 run `28986249841`.
+- DONE: Windows ConPTY smoke evidence via hosted Windows run `29226547099`.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API has PNG, raw-RGBA, and PNG+RGBA sidecar constructors; Sixel uses decoded
   pixels from raw RGBA, sidecars, or the bounded plain-PNG decoder.
@@ -162,10 +164,10 @@ DOCUMENTATION:
 - Update `docs/gaps.md` as each selected gap is closed.
 - Update `docs/API.md`, `docs/TERMINAL_PROTOCOLS.md`, `docs/website-product-brief.md`,
   and the website copy only when behavior is actually implemented.
-- Add handoff docs under `docs/handoff/` if Windows smoke evidence, protocol
-  evidence, or dependency/licensing research remains incomplete.
-- Use `docs/runbooks/phase1-5-live-evidence.md` for the remaining Windows,
-  Sixel, and iTerm2 live evidence gates.
+- Add handoff docs under `docs/handoff/` if protocol evidence,
+  dependency/licensing research, or future platform evidence remains incomplete.
+- Use `docs/runbooks/phase1-5-live-evidence.md` for evidence audits and any
+  future protocol or platform recaptures.
 
 VERIFICATION GATES:
 - `nix develop -c make test`

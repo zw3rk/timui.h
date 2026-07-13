@@ -49,22 +49,24 @@ These are known limitations promoted into the next planned follow-up. See
 
 - **G10/W13** Windows ConPTY is implemented behind `_WIN32`, runtime-probed for
   ConPTY entry points, and covered by the MinGW compile seam in `make check`
-  plus POSIX fallback/helper tests. `make smoke-conpty-win32` is available for
-  operator evidence, but do not claim Windows support until a real Windows
-  ConPTY smoke run on a Windows host is green and recorded per
-  `docs/runbooks/phase1-5-live-evidence.md`.
-- **Image protocol emitters** still need iTerm2 terminal evidence.
-  Kitty graphics, iTerm2 inline PNG images, raw-RGBA Sixel, PNG+RGBA sidecar
-  Sixel, and built-in bounded plain-PNG-to-Sixel decode are in tree. Hosted
-  Windows Terminal Sixel evidence is accepted in run `28982641529` and recorded
-  per `docs/runbooks/phase1-5-live-evidence.md`. Remaining image gap: real
-  iTerm2 terminal capture via `nix develop -c make smoke-image-live
-  PROTO=iterm2 FRAMES=N`, or deterministic iTerm2 protocol evidence if hosted
-  macOS TCC keeps blocking GUI capture. Multiplexer image passthrough is
-  deliberately conservative for Phase 1.5: image caps are stripped under
-  tmux/screen/zellij unless a later pass designs and tests a narrower
-  passthrough contract.
-  ConPTY should stay a transport, not a Windows-specific graphics abstraction.
+  plus POSIX fallback/helper tests. Windows ConPTY live evidence is accepted in
+  hosted run `29226547099` at commit
+  `44bb495b1f7937357f117b42563b50ba08c08e08`, verified with
+  `make verify-conpty-evidence` against the downloaded Windows artifact.
+- **Image protocol live evidence is accepted for Windows Terminal Sixel and
+  hosted macOS iTerm2.** Kitty graphics, iTerm2 inline PNG images, raw-RGBA
+  Sixel, PNG+RGBA sidecar Sixel, and built-in bounded plain-PNG-to-Sixel decode
+  are in tree. Hosted Windows Terminal Sixel evidence is accepted in run
+  `28982641529`; hosted macOS iTerm2 evidence is accepted in run
+  `28986249841`. Both are recorded per
+  `docs/runbooks/phase1-5-live-evidence.md` and
+  `docs/handoff/2026-07-09-hosted-visual-probe.md`. The Windows ConPTY smoke
+  gate is now accepted separately in hosted run `29226547099`; it remains a
+  transport gate, not an image protocol gate.
+  Multiplexer image passthrough is deliberately conservative for Phase 1.5:
+  image caps are stripped under tmux/screen/zellij unless a later pass designs
+  and tests a narrower passthrough contract. ConPTY should stay a transport,
+  not a Windows-specific graphics abstraction.
 
 ## Still open (documented limitations, not Phase 1.5)
 
