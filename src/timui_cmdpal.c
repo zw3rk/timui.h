@@ -20,6 +20,16 @@ static int cmd_matches(TimuiStr cmd, const char *filter){
     }
     return 0;
 }
+static int cmd_filter_(const TimuiStr *commands, int count, const char *filter,
+                       int *matched_idx, int max){
+    int i, matched_count = 0;
+    if(!commands || !matched_idx || max <= 0 || count <= 0) return 0;
+    for(i = 0; i < count && matched_count < max; i++){
+        TimuiStr cmd = commands[i].ptr ? commands[i] : (TimuiStr){ "", 0 };
+        if(cmd_matches(cmd, filter)) matched_idx[matched_count++] = i;
+    }
+    return matched_count;
+}
 TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id, TimuiRect r,
     const TimuiStr *commands, int count, TimuiCmdPaletteState state){
     TimuiCmdPaletteResult res;
@@ -36,13 +46,23 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
     input_r = TIMUI_RECT(r.x + 1, r.y + 1, r.w - 2, 1);
     list_r  = TIMUI_RECT(r.x + 1, r.y + 2, r.w - 2, r.h - 3);
     timui_input_line_buf(f, id + 1, input_r, state.filter, sizeof state.filter);
-    /* filter */
-    for(i = 0; i < count && matched_count < 256; i++){
-        TimuiStr cmd = commands[i].ptr ? commands[i] : (TimuiStr){ "", 0 };
-        if(cmd_matches(cmd, state.filter)) matched_idx[matched_count++] = i;
-    }
+    matched_count = cmd_filter_(commands, count, state.filter, matched_idx,
+                                (int)(sizeof matched_idx / sizeof matched_idx[0]));
     if(state.selected < 0) state.selected = 0;
     if(state.selected >= matched_count) state.selected = matched_count > 0 ? matched_count - 1 : 0;
+    /* V18: only steer the palette when its filter input is focused, so drawing
+     * the palette without focusing it doesn't swallow arrow/Enter from siblings.
+     * Process before drawing so selection/activation state and pixels agree. */
+    if(ui->ia.focus == id + 1){
+        state.selected = timui_updown_nav_(f, state.selected, matched_count);
+        if(timui_key_pressed(f, TIMUI_KEY_ENTER) && matched_count > 0){
+            res.activated = matched_idx[state.selected];
+            state.filter[0] = '\0';
+            state.selected = 0;
+            matched_count = cmd_filter_(commands, count, state.filter, matched_idx,
+                                        (int)(sizeof matched_idx / sizeof matched_idx[0]));
+        }
+    }
     /* draw matched commands */
     { TimuiRect content = timui_scroll_begin(f, list_r, 0);
       for(i = 0; i < matched_count; i++){
@@ -53,16 +73,6 @@ TIMUI_API TimuiCmdPaletteResult timui_command_palette(TimuiFrame *f, TimuiId id,
           timui_draw_row_(&ui->curr, TIMUI_RECT(content.x, content.y + i, list_r.w, 1), 1, commands[orig], st);
       }
       timui_scroll_end(f);
-    }
-    /* V18: only steer the palette when its filter input is focused, so drawing
-     * the palette without focusing it doesn't swallow arrow/Enter from siblings. */
-    if(ui->ia.focus == id + 1){
-        state.selected = timui_updown_nav_(f, state.selected, matched_count);
-        if(timui_key_pressed(f, TIMUI_KEY_ENTER) && matched_count > 0){
-            res.activated = matched_idx[state.selected];
-            state.filter[0] = '\0';
-            state.selected = 0;
-        }
     }
     timui_panel_end(f);
     res.state = state;

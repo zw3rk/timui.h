@@ -345,6 +345,50 @@ static void text_pos_(const char *buf, size_t cursor, int *out_row, int *out_col
     *out_row = row;
     *out_col = display_col_(buf + line_start, cursor - line_start);
 }
+static void input_field_insert_span_(TimuiInputState *st, const char *src, int nbytes){
+    int j = 0;
+    while(st && src && j < nbytes){
+        int n = utf8_lead_len((unsigned char)src[j]);
+        size_t m = (size_t)(n > 0 ? n : 1);
+        if(!single_line_text_byte_((unsigned char)src[j])){ j++; continue; }
+        if(j + (int)m > nbytes) m = (size_t)(nbytes - j);
+        if(!text_insert_(st->text, st->cap, st->cursor, src + j, m)) break;
+        st->cursor += m;
+        j += (int)m;
+    }
+}
+static void input_field_apply_key_(TimuiInputState *st, unsigned key){
+    size_t len;
+    if(!st || !st->text) return;
+    len = strlen(st->text);
+    if(key == TIMUI_KEYIN_LEFT)  st->cursor = utf8_drop_last(st->text, st->cursor);
+    if(key == TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, len);
+    if(key == TIMUI_KEYIN_HOME)  st->cursor = 0;
+    if(key == TIMUI_KEYIN_END)   st->cursor = len;
+    if(key == TIMUI_KEYIN_BACKSPACE && st->cursor > 0){
+        size_t prev = utf8_drop_last(st->text, st->cursor);
+        st->cursor = text_erase_(st->text, prev, st->cursor);
+    }
+    if(key == TIMUI_KEYIN_DELETE){
+        size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
+        (void)text_erase_(st->text, st->cursor, nxt);
+    }
+    if(key == TIMUI_KEYIN_KILL_EOL){
+        st->text[st->cursor] = '\0';
+    }
+    if(key == TIMUI_KEYIN_KILL_BOL){
+        size_t rest = strlen(st->text + st->cursor);
+        memmove(st->text, st->text + st->cursor, rest + 1);
+        st->cursor = 0;
+    }
+    if(key == TIMUI_KEYIN_KILL_WORD){
+        size_t c = st->cursor, w = c;
+        while(w > 0 && st->text[w-1] == ' ') w--;
+        while(w > 0 && st->text[w-1] != ' ') w--;
+        memmove(st->text + w, st->text + c, strlen(st->text + c) + 1);
+        st->cursor = w;
+    }
+}
 static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputState *st,
                              const TimuiStyle *ovr){
     Timui *ui;
@@ -359,66 +403,22 @@ static bool input_field_core(TimuiFrame *f, TimuiId id, TimuiRect r, TimuiInputS
     {
         ir = timui_interact_button(&ui->ia, id, r);
         if(ir.focused){
-            /* Insert typed text UP TO the first Enter this frame; on an Enter,
-             * submit and DEFER the post-Enter tail (and any further Enters) to
-             * the next frame — one submit per frame, so a burst "a\rb\r" yields
-             * "a" then "b" instead of the merged "ab". */
-            int first_enter = (ui->enter_count > 0) ? ui->enter_at[0] : -1;
-            int upto = (first_enter >= 0) ? first_enter : ui->text_in_len;
-            int j = 0;
-            size_t len;
-            if(upto > ui->text_in_len) upto = ui->text_in_len;
-            while(j < upto){
-                int n = utf8_lead_len((unsigned char)ui->text_in[j]);
-                size_t m = (size_t)(n > 0 ? n : 1);
-                if(!single_line_text_byte_((unsigned char)ui->text_in[j])){ j++; continue; }
-                if(j + (int)m > upto) m = (size_t)(upto - j);
-                if(!text_insert_(st->text, st->cap, st->cursor, ui->text_in + j, m)) break;
-                st->cursor += m; j += (int)m;
-            }
-            len = strlen(st->text);
-            if(ui->key_in & TIMUI_KEYIN_LEFT)  st->cursor = utf8_drop_last(st->text, st->cursor);
-            if(ui->key_in & TIMUI_KEYIN_RIGHT) st->cursor = utf8_next_(st->text, st->cursor, len);
-            if(ui->key_in & TIMUI_KEYIN_HOME)  st->cursor = 0;              /* single line */
-            if(ui->key_in & TIMUI_KEYIN_END)   st->cursor = len;
-            if((ui->key_in & TIMUI_KEYIN_BACKSPACE) && st->cursor > 0){
-                size_t prev = utf8_drop_last(st->text, st->cursor);
-                st->cursor = text_erase_(st->text, prev, st->cursor);
-            }
-            if(ui->key_in & TIMUI_KEYIN_DELETE){
-                size_t nxt = utf8_next_(st->text, st->cursor, strlen(st->text));
-                (void)text_erase_(st->text, st->cursor, nxt);
-            }
-            if(ui->key_in & TIMUI_KEYIN_KILL_EOL){          /* Ctrl-K: cursor..end */
-                st->text[st->cursor] = '\0';                /* cursor is a cluster boundary */
-            }
-            if(ui->key_in & TIMUI_KEYIN_KILL_BOL){          /* Ctrl-U: start..cursor */
-                size_t rest = strlen(st->text + st->cursor);
-                memmove(st->text, st->text + st->cursor, rest + 1);
-                st->cursor = 0;
-            }
-            if(ui->key_in & TIMUI_KEYIN_KILL_WORD){         /* Ctrl-W: the word before the cursor */
-                size_t c = st->cursor, w = c;
-                while(w > 0 && st->text[w-1] == ' ') w--;    /* trailing spaces */
-                while(w > 0 && st->text[w-1] != ' ') w--;    /* the word */
-                memmove(st->text + w, st->text + c, strlen(st->text + c) + 1);
-                st->cursor = w;
-            }
-            if(first_enter >= 0){
-                int tail = ui->text_in_len - upto, k;
-                submitted = true;
-                if(tail < 0) tail = 0;
-                if(tail > (int)sizeof(ui->pending_in)) tail = (int)sizeof(ui->pending_in);
-                memcpy(ui->pending_in, ui->text_in + upto, (size_t)tail);
-                ui->pending_in_len = tail;
-                ui->pending_enter_count = ui->enter_count - 1;
-                for(k = 0; k < ui->pending_enter_count; k++){
-                    ui->pending_enter_at[k] = ui->enter_at[k + 1] - upto;
-                    ui->pending_enter_mods[k] = ui->enter_mods[k + 1];
+            int oi;
+            for(oi = 0; oi < ui->edit_count; oi++){
+                TimuiEditOp *op = &ui->edit_ops[oi];
+                if(op->kind == TIMUI_EDIT_TEXT){
+                    input_field_insert_span_(st, ui->text_in + op->start, op->len);
+                } else if(op->kind == TIMUI_EDIT_KEY && op->key == TIMUI_EDIT_KEY_ENTER_){
+                    submitted = true;
+                    timui_defer_edit_ops_after_(ui, oi + 1);
+                    break;
+                } else if(op->kind == TIMUI_EDIT_KEY){
+                    input_field_apply_key_(st, op->key);
                 }
             }
             ui->text_in_len = 0;
             ui->enter_count = 0;
+            ui->edit_count = 0;
             ui->key_in = 0;
         }
     }

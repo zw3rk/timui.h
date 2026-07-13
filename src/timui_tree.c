@@ -73,6 +73,12 @@ TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
     if(selected < 0) selected = 0;
     if(selected >= count) selected = count - 1;
     orig = selected;                       /* post-clamp: a pure clamp is not a change */
+    /* Keyboard nav only when focused — process before drawing so the visible
+     * selection and returned value cannot diverge for a frame. */
+    { TimuiInteractResult ir2 = timui_interact_button(&ui->ia, id, r);
+      res.focused = ir2.focused;
+      if(ir2.focused) selected = timui_updown_nav_(f, selected, count);
+    }
     content = timui_scroll_begin(f, r, 0);
     for(i = 0; i < count; i++){
         int y = content.y + i;
@@ -82,11 +88,6 @@ TIMUI_API TimuiTreeResult timui_tree(TimuiFrame *f, TimuiId id, TimuiRect r,
         timui_tree_draw_node_(ui, &nodes[i], TIMUI_RECT(content.x, y, r.w, 1), y, st);
     }
     timui_scroll_end(f);
-    /* keyboard nav only when focused */
-    { TimuiInteractResult ir2 = timui_interact_button(&ui->ia, id, r);
-      res.focused = ir2.focused;
-      if(ir2.focused) selected = timui_updown_nav_(f, selected, count);
-    }
     res.selected = selected;
     res.state_changed = (selected != orig);
     return res;
@@ -128,7 +129,7 @@ TIMUI_API TimuiTreeScrollResult timui_tree_scroll(TimuiFrame *f, TimuiId id, Tim
 
     scroll = state.scroll < 0 ? 0 : state.scroll;
     wh = timui_mouse_wheel(f);
-    if(wh){
+    if(wh && timui_mouse_wheel_over_(ui, r)){
         scroll -= wh;
         scroll = timui_page_slice(nvis, vis, scroll).first;
         if(sel < scroll) sel = scroll;

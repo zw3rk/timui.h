@@ -149,6 +149,46 @@ TIMUI_TEST(test_text_area_cursor_edit){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_text_area_same_frame_edit_order){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[16] = "ab";
+    TimuiTextAreaState tas = { text, sizeof text, 2, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 3);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+#define TAO_FRAME() do{ timui_begin(ui,&f); timui_text_area(f, TIMUI_ID("tao"), r, &tas); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); TAO_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); TAO_FRAME();
+    SETIN(&fake, "\x7f""c"); TAO_FRAME();
+    TIMUI_CHECK(strcmp(text, "ac") == 0);
+    TIMUI_CHECK(tas.cursor == 2);
+#undef TAO_FRAME
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_text_area_scroll_applies_before_draw){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiCellBuffer *buf;
+    char text[16] = "a\nb\nc";
+    TimuiTextAreaState tas = { text, sizeof text, 5, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 8, 2);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 20, 5, &al);
+
+    timui_begin(ui, &f);
+    buf = timui_frame_buffer(f);
+    timui_text_area(f, TIMUI_ID("tas"), r, &tas);
+    TIMUI_CHECK(tas.scroll_y == 1);
+    TIMUI_CHECK(timui_cells_get(buf, 0, 0)->codepoint == 'b');
+    TIMUI_CHECK(timui_cells_get(buf, 0, 1)->codepoint == 'c');
+    timui_end(f);
+    timui_close(ui);
+}
+
 /* F1.3: cursor movement and DELETE step whole UTF-8 codepoints. */
 TIMUI_TEST(test_text_area_cursor_utf8){
     TimuiAllocator al = timui_default_allocator();

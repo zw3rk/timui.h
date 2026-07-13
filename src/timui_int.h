@@ -16,6 +16,16 @@
 /* Internal structs (completed only in the implementing TU). */
 typedef struct { int read_fd; int write_fd; } TimuiFdCtx;
 
+enum { TIMUI_EDIT_TEXT = 1, TIMUI_EDIT_KEY = 2 };
+#define TIMUI_EDIT_KEY_ENTER_ 0x80000000u
+typedef struct TimuiEditOp {
+    int kind;
+    unsigned key;
+    int start;
+    int len;
+    uint32_t mods;
+} TimuiEditOp;
+
 struct TimuiFrame { Timui *ui; };
 
 struct Timui {
@@ -69,10 +79,13 @@ struct Timui {
     int               pending_enter_at[32];
     uint32_t          pending_enter_mods[32];
     int               pending_enter_count;
+    TimuiEditOp       edit_ops[512];
+    int               edit_count;
     unsigned          key_in;
     TimuiKey          key_pressed;
     uint32_t          key_mods;     /* modifiers of the last key event */
     int               mouse_wheel;  /* accumulated wheel delta this frame (+up/-down) */
+    int               mouse_wheel_x, mouse_wheel_y; /* cell of the wheel event */
     int               mouse_x, mouse_y;   /* last reported cell (0-based) */
     int               mouse_clicked;      /* a button press occurred this frame */
     int               mouse_click_x, mouse_click_y; /* press cell for mouse_clicked */
@@ -160,6 +173,11 @@ static int timui_rect_contains_(TimuiRect r, int x, int y){
     ry2 = (int64_t)r.y + (int64_t)r.h;
     return (int64_t)x >= (int64_t)r.x && (int64_t)x < rx2 &&
            (int64_t)y >= (int64_t)r.y && (int64_t)y < ry2;
+}
+
+static int timui_mouse_wheel_over_(const Timui *ui, TimuiRect r){
+    return ui && ui->mouse_wheel &&
+           timui_rect_contains_(r, ui->mouse_wheel_x, ui->mouse_wheel_y);
 }
 
 static void timui_draw_text_clipped_(TimuiCellBuffer *buf, TimuiRect clip, int x, int y,
