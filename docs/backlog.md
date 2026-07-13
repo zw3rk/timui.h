@@ -27,15 +27,14 @@ I/O via `timui_post`, offline `--demo`/`--replay`, `make check-irc`, and
 This is the next planned sweep. It is library/platform work, not a large app
 push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt`.
 
-- [ ] **Windows ConPTY backend** - replace the unsupported stub with a real
+- [x] **Windows ConPTY backend** - replace the unsupported stub with a real
       `CreatePseudoConsole` transport: pipes, process lifetime, resize, close,
       runtime symbol probing, short-write/read handling, and `DWORD` chunking.
       Do not promise graphics as part of ConPTY itself; graphics are selected by
       terminal image protocol capability above the transport.
       - [x] `_WIN32` backend implementation, resize API, POSIX fallback tests,
             and MinGW compile seam in `make check`.
-      - [ ] Real Windows ConPTY smoke run on a Windows host and captured
-            operator evidence.
+      - [x] Hosted Windows ConPTY smoke evidence via run `29226547099`.
 - [x] **Submit-capable multi-line text area** - add a result-returning,
       controlled API plus `_mut` convenience wrapper, preserving the current
       void `timui_text_area` compatibility wrapper. Refactor `examples/chat.c`
@@ -84,11 +83,13 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
             Windows ConPTY (`nix develop -c make smoke-conpty-win32`);
             compile/headless harness checks are wired. Use
             `docs/runbooks/phase1-5-live-evidence.md` for protocol recapture
-            and the remaining Windows ConPTY live smoke gate.
+            and evidence audits.
       - [x] Sixel terminal evidence via hosted Windows Terminal run
             `28982641529`.
       - [x] iTerm2 terminal evidence via hosted macOS iTerm2 run
             `28986249841`.
+      - [x] Windows ConPTY smoke evidence via hosted Windows run
+            `29226547099`.
 
 ## Phase 2 backlog - architecture and applications
 

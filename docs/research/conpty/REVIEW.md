@@ -62,6 +62,9 @@ instead of creating a binary that fails to load.
   ends after the child is created; closing them immediately after
   `CreatePseudoConsole` can leave the later child attach path without a live
   input/output endpoint.
+- The child `STARTUPINFOEXW` sets `STARTF_USESTDHANDLES` with null stdin,
+  stdout, and stderr handles. This prevents redirected parent std handles in
+  hosted CI from leaking into `cmd.exe` and bypassing the pseudoconsole stream.
 - `conpty_read` uses `PeekNamedPipe` before `ReadFile` so the frame loop does
   not block indefinitely when no child output is available.
 - `conpty_write` chunks `size_t` payloads into bounded `DWORD` writes and also
@@ -87,17 +90,19 @@ instead of creating a binary that fails to load.
   reads it back, and closes twice to exercise idempotent cleanup when run on
   Windows.
 - The hosted Windows artifact from run `28982641529` showed partial ConPTY
-  success: `cmd.exe` started and the smoke read the initial banner/prompt, but
-  the sentinel was not observed. The smoke now serializes Enter as LF first,
-  matching Microsoft's ConPTY input example, keeps a fresh-session CRLF
-  fallback, writes `exit` only after the sentinel read attempt, treats short
-  writes as failures, and dumps a bounded escaped excerpt on failure so the
-  next hosted or interactive run can distinguish input-line-ending problems
-  from transport write failures.
+  success: `cmd.exe` started and the smoke read initial ConPTY output, but the
+  sentinel was not observed. Follow-up RCA found two hosted-run issues: command
+  submission to `cmd.exe` should try carriage return first, and redirected
+  parent std handles must be blocked with null startup std handles.
+- Hosted Windows run `29226547099` is accepted ConPTY smoke evidence at commit
+  `44bb495b1f7937357f117b42563b50ba08c08e08`. The downloaded artifact verifies
+  with `make verify-conpty-evidence`; its manifest records status `0`,
+  `passTokenPresent: true`, `accepted: true`, Windows runner metadata, and the
+  exact `smoke-conpty-win32` command.
 - `make smoke-conpty-win32` is the live Windows host target. A non-Windows skip
   or a MinGW compile is not live evidence.
 - `docs/runbooks/phase1-5-live-evidence.md` defines the accepted Windows
   evidence record and what host/compiler/terminal details to capture.
-- These compile checks are not live Windows evidence. Do not claim supported
-  Windows operation until a real Windows ConPTY smoke run on a Windows host is
-  captured.
+- Compile checks alone are not live Windows evidence. The accepted hosted
+  Windows run above is the Phase 1.5 live smoke baseline; recapture after
+  future ConPTY backend, smoke harness, or hosted evidence workflow changes.

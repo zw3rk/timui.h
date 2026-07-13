@@ -83,9 +83,10 @@ date: 2026-07-09
   Run `28982372688` showed direct Sixel rendered, while timui emitted three
   `4x4` rasters because the smoke fixture was 4x4 and MSYS/Windows Terminal did
   not report cell pixel geometry.
-- Hosted Windows ConPTY smoke is still rejected. `conpty-smoke.status` is `2`;
-  the runner compiles and starts `cmd.exe`, but the sentinel
-  `TIMUI_CONPTY_SMOKE` is not observed.
+- Historical hosted Windows ConPTY smoke in this run was rejected.
+  `conpty-smoke.status` is `2`; the runner compiled and started `cmd.exe`, but
+  the sentinel `TIMUI_CONPTY_SMOKE` was not observed. Follow-up run
+  `29226547099` is the accepted ConPTY smoke baseline.
 
 ## Artifact Results
 

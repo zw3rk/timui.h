@@ -317,8 +317,12 @@ check-phase1-5-docs: ## Verify Phase 1.5 evidence docs agree
 	@! grep -Fq -- '- [ ] iTerm2 terminal evidence.' docs/backlog.md
 	@awk '{$$1=$$1; printf "%s ", $$0}' docs/gaps.md | grep -Fq -- 'Image protocol live evidence is accepted for Windows Terminal Sixel and hosted macOS iTerm2.'
 	@grep -Fq -- 'DONE: iTerm2 terminal evidence via hosted macOS iTerm2 run `28986249841`.' docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt
-	@awk '{$$1=$$1; printf "%s ", $$0}' docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt | grep -Fq -- 'remaining Windows ConPTY live evidence gate'
+	@grep -Fq -- 'DONE: hosted Windows ConPTY smoke evidence via run `29226547099`' docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/runbooks/phase1-5-live-evidence.md | grep -Fq -- 'Run `29226547099` is the accepted hosted Windows ConPTY smoke baseline'
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/backlog.md | grep -Fq -- '- [x] Hosted Windows ConPTY smoke evidence via run `29226547099`.'
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/gaps.md | grep -Fq -- 'Windows ConPTY live evidence is accepted in hosted run `29226547099`'
 	@awk '{$$1=$$1; printf "%s ", $$0}' docs/TERMINAL_PROTOCOLS.md | grep -Fq -- 'Hosted Windows Terminal Sixel evidence is accepted in run `28982641529`; hosted macOS iTerm2 evidence is accepted in run `28986249841`.'
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/TERMINAL_PROTOCOLS.md | grep -Fq -- 'Hosted Windows ConPTY smoke evidence is accepted in run `29226547099`'
 	@grep -Fq -- 'make verify-conpty-evidence ARTIFACT_DIR=' docs/runbooks/phase1-5-live-evidence.md
 	@printf "$(C_GREEN)✓ Phase 1.5 evidence docs$(C_RESET)\n"
 
