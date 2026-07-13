@@ -63,8 +63,8 @@ after detection and force masks; protocol selection always returns
 - **Windows ConPTY**: implemented as a `_WIN32` transport/lifecycle backend
   with runtime symbol probing and MinGW compile coverage in `make check`. It
   belongs below the protocol layer, not as a graphics abstraction. Live Windows
-  Terminal smoke evidence is still pending before claiming supported Windows
-  operation.
+  ConPTY smoke evidence from a Windows host is still pending before claiming
+  supported Windows operation.
 - **Sixel parity**: the RGBA emitter is implemented with exact palettes,
   bounded 16-colour quantization, clipping, and scaling when terminal
   cell-pixel geometry is known. Plain PNG images are decoded lazily through the

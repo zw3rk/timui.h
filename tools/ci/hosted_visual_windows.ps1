@@ -47,6 +47,89 @@ function Invoke-Captured {
   return $status
 }
 
+function Read-TextOrEmpty {
+  param([string]$Path)
+  if (Test-Path $Path) {
+    return [System.IO.File]::ReadAllText($Path)
+  }
+  return ""
+}
+
+function Write-ConptyAcceptance {
+  param(
+    [int]$Status,
+    [string]$Command,
+    [string]$Compiler
+  )
+
+  $stdoutName = "conpty-smoke.stdout"
+  $stderrName = "conpty-smoke.stderr"
+  $statusName = "conpty-smoke.status"
+  $stdoutPath = Join-Path $Out $stdoutName
+  $stderrPath = Join-Path $Out $stderrName
+  $statusPath = Join-Path $Out $statusName
+  $passNeedle = "PASS conpty smoke: observed TIMUI_CONPTY_SMOKE"
+  $stdoutText = Read-TextOrEmpty $stdoutPath
+  $stderrText = Read-TextOrEmpty $stderrPath
+  $passTokenPresent = $stdoutText.Contains($passNeedle)
+  $accepted = ($Status -eq 0 -and $passTokenPresent)
+  $windowsVersion = (Read-TextOrEmpty (Join-Path $Out "windows-version.txt")).Trim()
+  $queryUser = (Read-TextOrEmpty (Join-Path $Out "query-user.txt")).Trim()
+  $qwinsta = (Read-TextOrEmpty (Join-Path $Out "qwinsta.txt")).Trim()
+  $wtVersion = (Read-TextOrEmpty (Join-Path $Out "wt-version-command.stdout")).Trim()
+  if (-not $wtVersion) {
+    $wtVersion = "unknown"
+  }
+
+  Set-Content -Path (Join-Path $Out "conpty-smoke.command.txt") -Value $Command -Encoding utf8
+  Set-Content -Path (Join-Path $Out "conpty-smoke.meta.txt") -Encoding utf8 -Value @(
+    "commit=$commit",
+    "runner_os=$($env:RUNNER_OS)",
+    "os_env=$($env:OS)",
+    "shell=PowerShell $($PSVersionTable.PSVersion)",
+    "msys2_location=$Msys2Location",
+    "msys2_bash=$Bash",
+    "msys2_root=$MsysRoot",
+    "compiler=$Compiler",
+    "windows_version=$windowsVersion",
+    "windows_terminal_version=$wtVersion",
+    "status=$Status",
+    "passTokenPresent=$passTokenPresent",
+    "accepted=$accepted"
+  )
+
+  [ordered]@{
+    commit = $commit
+    runnerOS = $env:RUNNER_OS
+    osEnv = $env:OS
+    shell = "PowerShell $($PSVersionTable.PSVersion)"
+    msys2Location = $Msys2Location
+    msys2Bash = "$Bash"
+    msys2Root = $MsysRoot
+    compiler = $Compiler
+    command = $Command
+    status = $Status
+    passTokenPresent = $passTokenPresent
+    accepted = $accepted
+    stdout = $stdoutName
+    stderr = $stderrName
+    statusFile = $statusName
+    stdoutBytes = if (Test-Path $stdoutPath) { (Get-Item $stdoutPath).Length } else { 0 }
+    stderrBytes = if (Test-Path $stderrPath) { (Get-Item $stderrPath).Length } else { 0 }
+    stdoutExcerpt = if ($stdoutText.Length -gt 2048) { $stdoutText.Substring(0, 2048) } else { $stdoutText }
+    stderrExcerpt = if ($stderrText.Length -gt 2048) { $stderrText.Substring(0, 2048) } else { $stderrText }
+    windowsVersion = $windowsVersion
+    windowsTerminalVersion = $wtVersion
+    queryUser = $queryUser
+    qwinsta = $qwinsta
+  } | ConvertTo-Json -Depth 4 |
+    Set-Content -Path (Join-Path $Out "conpty-acceptance.json") -Encoding utf8
+
+  Add-Evidence "- ConPTY acceptance manifest: conpty-acceptance.json"
+  Add-Evidence "- ConPTY PASS token present: $passTokenPresent"
+  Add-Evidence "- ConPTY accepted: $accepted"
+}
+
 function Write-DcsMetrics {
   param(
     [string]$Path,
@@ -200,13 +283,17 @@ function Invoke-Msys {
     [string]$Name,
     [string]$Command
   )
-  Invoke-Captured $Name { & $Bash --noprofile --norc -lc $Command } | Out-Null
+  return (Invoke-Captured $Name { & $Bash --noprofile --norc -lc $Command })
 }
 
 Add-Evidence "## Build and stream diagnostics"
-Invoke-Msys "image-smoke-build" "cd '$MsysRoot' && PATH=/usr/bin:/bin:`$PATH make build/image_smoke CC=/usr/bin/gcc POSIX_CFLAGS='-D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700'"
-Invoke-Msys "conpty-smoke" "cd '$MsysRoot' && OS=Windows_NT PATH=/ucrt64/bin:/usr/bin:/bin:`$PATH make smoke-conpty-win32 CONPTY_WIN_CC=/ucrt64/bin/gcc"
-Invoke-Msys "sixel-diagnostic" "cd '$MsysRoot' && mkdir -p '$MsysOut' && if [ -x ./build/image_smoke ] && command -v script >/dev/null 2>&1; then script -q -c './build/image_smoke --protocol sixel --frames 1' '$MsysOut/sixel.typescript'; elif [ ! -x ./build/image_smoke ]; then echo image-smoke-missing > '$MsysOut/sixel-diagnostic.skip'; else echo script-not-available > '$MsysOut/sixel-diagnostic.skip'; fi"
+$ImageSmokeCommand = "cd '$MsysRoot' && PATH=/usr/bin:/bin:`$PATH make build/image_smoke CC=/usr/bin/gcc POSIX_CFLAGS='-D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700'"
+$ConptyCommand = "cd '$MsysRoot' && OS=Windows_NT PATH=/ucrt64/bin:/usr/bin:/bin:`$PATH make smoke-conpty-win32 CONPTY_WIN_CC=/ucrt64/bin/gcc"
+$SixelDiagnosticCommand = "cd '$MsysRoot' && mkdir -p '$MsysOut' && if [ -x ./build/image_smoke ] && command -v script >/dev/null 2>&1; then script -q -c './build/image_smoke --protocol sixel --frames 1' '$MsysOut/sixel.typescript'; elif [ ! -x ./build/image_smoke ]; then echo image-smoke-missing > '$MsysOut/sixel-diagnostic.skip'; else echo script-not-available > '$MsysOut/sixel-diagnostic.skip'; fi"
+$ImageSmokeStatus = Invoke-Msys "image-smoke-build" $ImageSmokeCommand
+$ConptyStatus = Invoke-Msys "conpty-smoke" $ConptyCommand
+Write-ConptyAcceptance -Status $ConptyStatus -Command $ConptyCommand -Compiler "/ucrt64/bin/gcc"
+$SixelDiagnosticStatus = Invoke-Msys "sixel-diagnostic" $SixelDiagnosticCommand
 Write-DcsMetrics (Join-Path $Out "sixel.typescript") "timui-sixel"
 
 $DirectFixture = Join-Path $Out "direct-sixel-fixture.sh"
@@ -228,7 +315,7 @@ $DirectFixtureLines = @(
   'if [ "$sleep_s" -gt 0 ]; then sleep "$sleep_s"; fi'
 )
 [System.IO.File]::WriteAllText($DirectFixture, ($DirectFixtureLines -join "`n") + "`n", [System.Text.Encoding]::ASCII)
-Invoke-Msys "direct-sixel-diagnostic" "bash '$MsysOut/direct-sixel-fixture.sh' 0 > '$MsysOut/direct.sixel'"
+$DirectSixelStatus = Invoke-Msys "direct-sixel-diagnostic" "bash '$MsysOut/direct-sixel-fixture.sh' 0 > '$MsysOut/direct.sixel'"
 Write-DcsMetrics (Join-Path $Out "direct.sixel") "direct-sixel"
 
 Add-Evidence ""
@@ -265,6 +352,7 @@ if ($Wt) {
   Set-Content -Path (Join-Path $Out "wt-version.status") -Value 0 -Encoding ascii
   Add-Evidence "- wt-version: captured file metadata"
   Invoke-Captured "wt-version-command" { & $Wt.Source --version } | Out-Null
+  Write-ConptyAcceptance -Status $ConptyStatus -Command $ConptyCommand -Compiler "/ucrt64/bin/gcc"
 
   Add-Evidence ""
   Add-Evidence "### Direct Sixel control"

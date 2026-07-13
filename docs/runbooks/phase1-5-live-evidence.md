@@ -180,6 +180,13 @@ Hosted runner probe:
 - `conpty-smoke.stdout` may count for the ConPTY smoke if it contains
   `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE` and `evidence.md` records
   the same commit.
+- `conpty-acceptance.json` is the machine-readable summary for hosted runs. It
+  must name the same commit, set `passTokenPresent: true`, set `accepted: true`,
+  and reference `conpty-smoke.stdout`, `conpty-smoke.stderr`, and
+  `conpty-smoke.status`. If it is absent, fall back to the stdout predicate
+  above and record that the manifest was unavailable.
+- `conpty-smoke.command.txt` and `conpty-smoke.meta.txt` are diagnostics for
+  the exact hosted MSYS2 invocation and host/toolchain metadata.
 - `windows-terminal-sixel-*.png` is supplemental Sixel evidence only if it
   visibly shows the Windows Terminal live smoke with image tiles and the
   session diagnostics show an interactive desktop. Run `28982641529` is the
