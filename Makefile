@@ -135,7 +135,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www check-www check-www-assets amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www check-www check-www-assets check-phase1-5-docs amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
 .PHONY: accept check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden gen-golden-vtgif check-vt-gif-style check-vt-gif-all
 .PHONY: run-chat-demo rec-chat-demo gif-chat-demo webp-chat-demo gen-font-ttf gen-emoji gen-cjk
 
@@ -293,7 +293,7 @@ rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
 # 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
 # ============================================================================
 
-check: build test check-no-images check-conpty-win32-compile check-conpty-win32-smoke-compile check-www ## Build + test gate
+check: build test check-no-images check-conpty-win32-compile check-conpty-win32-smoke-compile check-www check-phase1-5-docs ## Build + test gate
 	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 test: $(TEST_BIN) ## Compile and run the unit tests
@@ -309,6 +309,17 @@ vt-test: build ## Compile + run unit tests WITH vterm round-trip tests (needs li
 	@$(MAKE) $(VT_BIN) WITH_VTERM=1
 	@printf "$(C_YELL)▶ running vt-tests$(C_RESET)\n"
 	@./$(VT_BIN)
+
+check-phase1-5-docs: ## Verify Phase 1.5 evidence docs agree
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/runbooks/phase1-5-live-evidence.md | grep -Fq -- 'Run `28986249841` is the accepted hosted macOS iTerm2 baseline'
+	@grep -Fq -- 'Hosted macOS iTerm2 now has accepted timui OSC 1337 visual evidence.' docs/handoff/2026-07-09-hosted-visual-probe.md
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/backlog.md | grep -Fq -- '- [x] iTerm2 terminal evidence via hosted macOS iTerm2 run `28986249841`.'
+	@! grep -Fq -- '- [ ] iTerm2 terminal evidence.' docs/backlog.md
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/gaps.md | grep -Fq -- 'Image protocol live evidence is accepted for Windows Terminal Sixel and hosted macOS iTerm2.'
+	@grep -Fq -- 'DONE: iTerm2 terminal evidence via hosted macOS iTerm2 run `28986249841`.' docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt | grep -Fq -- 'remaining Windows ConPTY live evidence gate'
+	@awk '{$$1=$$1; printf "%s ", $$0}' docs/TERMINAL_PROTOCOLS.md | grep -Fq -- 'Hosted Windows Terminal Sixel evidence is accepted in run `28982641529`; hosted macOS iTerm2 evidence is accepted in run `28986249841`.'
+	@printf "$(C_GREEN)✓ Phase 1.5 evidence docs$(C_RESET)\n"
 
 check-no-images: $(TSTDIR)/test_no_images.c $(HEADER) $(LIB_SECTIONS) ## Test TIMUI_NO_IMAGES keeps API but disables terminal image escapes
 	@mkdir -p $(BLDDIR)

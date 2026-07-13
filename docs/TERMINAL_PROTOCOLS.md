@@ -69,5 +69,6 @@ after detection and force masks; protocol selection always returns
   bounded 16-colour quantization, clipping, and scaling when terminal
   cell-pixel geometry is known. Plain PNG images are decoded lazily through the
   bounded PNG-only `stb_image` path for Sixel, while `timui_image_from_png_rgba`
-  lets applications provide exact decoded pixels directly. Deferred work:
-  real-terminal evidence.
+  lets applications provide exact decoded pixels directly. Hosted Windows
+  Terminal Sixel evidence is accepted in run `28982641529`; hosted macOS iTerm2
+  evidence is accepted in run `28986249841`.

@@ -145,6 +145,7 @@ WORKSTREAM E - Protocol-neutral images, Sixel, iTerm2:
   Kitty/Sixel/iTerm2 visual evidence capture, and `make check-image-smoke`
   checks the harness headlessly without claiming protocol evidence. The accepted
   operator procedure is `docs/runbooks/phase1-5-live-evidence.md`.
+- DONE: iTerm2 terminal evidence via hosted macOS iTerm2 run `28986249841`.
 - Preserve Kitty behavior and fallback placeholder behavior. The public image
   API has PNG, raw-RGBA, and PNG+RGBA sidecar constructors; Sixel uses decoded
   pixels from raw RGBA, sidecars, or the bounded plain-PNG decoder.
@@ -164,8 +165,8 @@ DOCUMENTATION:
   and the website copy only when behavior is actually implemented.
 - Add handoff docs under `docs/handoff/` if Windows smoke evidence, protocol
   evidence, or dependency/licensing research remains incomplete.
-- Use `docs/runbooks/phase1-5-live-evidence.md` for the remaining Windows,
-  Sixel, and iTerm2 live evidence gates.
+- Use `docs/runbooks/phase1-5-live-evidence.md` for the remaining Windows
+  ConPTY live evidence gate and any future protocol recaptures.
 
 VERIFICATION GATES:
 - `nix develop -c make test`
