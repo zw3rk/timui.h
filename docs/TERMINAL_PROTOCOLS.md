@@ -58,16 +58,17 @@ set for tests or user overrides. With `TIMUI_NO_IMAGES`, image caps are stripped
 after detection and force masks; protocol selection always returns
 `TIMUI_IMAGE_PROTOCOL_NONE`.
 
-## Planned
+## Platform Evidence
 
 - **Windows ConPTY**: implemented as a `_WIN32` transport/lifecycle backend
   with runtime symbol probing and MinGW compile coverage in `make check`. It
-  belongs below the protocol layer, not as a graphics abstraction. Live Windows
-  Terminal smoke evidence is still pending before claiming supported Windows
-  operation.
+  belongs below the protocol layer, not as a graphics abstraction. Hosted
+  Windows ConPTY smoke evidence is accepted in run `29226547099` at commit
+  `44bb495b1f7937357f117b42563b50ba08c08e08`.
 - **Sixel parity**: the RGBA emitter is implemented with exact palettes,
   bounded 16-colour quantization, clipping, and scaling when terminal
   cell-pixel geometry is known. Plain PNG images are decoded lazily through the
   bounded PNG-only `stb_image` path for Sixel, while `timui_image_from_png_rgba`
-  lets applications provide exact decoded pixels directly. Deferred work:
-  real-terminal evidence.
+  lets applications provide exact decoded pixels directly. Hosted Windows
+  Terminal Sixel evidence is accepted in run `28982641529`; hosted macOS iTerm2
+  evidence is accepted in run `28986249841`.

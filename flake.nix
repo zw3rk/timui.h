@@ -12,7 +12,7 @@
       forPkgs = system: import nixpkgs { inherit system; };
       version = "0.2.0";
       src = nixpkgs.lib.cleanSource ./.;
-      nativeInputs = pkgs: [ pkgs.clang pkgs.gawk pkgs.gnumake pkgs.pkg-config ];
+      nativeInputs = pkgs: [ pkgs.clang pkgs.gawk pkgs.gnumake pkgs.pkg-config pkgs.python3 ];
       conptyCrossInputs = pkgs: [ pkgs.pkgsCross.mingwW64.stdenv.cc ];
       buildInputs = pkgs: [ pkgs.libvterm-neovim ];
       mkWww = system:
@@ -108,7 +108,7 @@
             # libvterm API used by the Tier A round-trip tests.
             # asciinema records a real terminal session's raw byte stream to a
             # .cast for `make rec-<name>` (feedable to the render verifier).
-            nativeBuildInputs = [ pkgs.gnumake pkgs.pkg-config pkgs.asciinema ]
+            nativeBuildInputs = [ pkgs.gnumake pkgs.pkg-config pkgs.asciinema pkgs.python3 ]
               ++ conptyCrossInputs pkgs;
             buildInputs = [ pkgs.clang ]
               ++ buildInputs pkgs;

@@ -135,7 +135,9 @@ Hosted runner probe:
 
 Prerequisites:
 
-- Windows Terminal on Windows.
+- A Windows host with ConPTY support. Windows Terminal is useful for hosted GUI
+  context and the Sixel visual probe, but the ConPTY smoke itself is a
+  byte-stream predicate over `conpty-smoke.stdout`.
 - A Windows-capable build environment that can produce
   `build/conpty_smoke_win32.exe` from the Makefile target, or an equivalent
   already-built executable from the same commit.
@@ -157,8 +159,10 @@ Accept if all are true:
 
 - The command exits with status 0.
 - The output includes `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE`.
-- The note records Windows build, Windows Terminal version, compiler, command,
-  commit, and whether this was run from PowerShell, cmd, MSYS, or another shell.
+- The note records Windows build, compiler, command, commit, and whether this
+  was run from PowerShell, cmd, MSYS, or another shell. Record Windows Terminal
+  version too when the smoke is collected through the hosted visual workflow or
+  an interactive Windows Terminal session.
 
 Reject or mark inconclusive if:
 
@@ -176,6 +180,30 @@ Hosted runner probe:
 - `conpty-smoke.stdout` may count for the ConPTY smoke if it contains
   `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE` and `evidence.md` records
   the same commit.
+- `conpty-acceptance.json` is the machine-readable summary for hosted runs. It
+  must name the same commit, set `passTokenPresent: true`, set `accepted: true`,
+  and reference `conpty-smoke.stdout`, `conpty-smoke.stderr`, and
+  `conpty-smoke.status`. If it is absent, fall back to the stdout predicate
+  above and record that the manifest was unavailable.
+- `conpty-smoke.command.txt` and `conpty-smoke.meta.txt` are diagnostics for
+  the exact hosted MSYS2 invocation and host/toolchain metadata.
+- Run `29226547099` is the accepted hosted Windows ConPTY smoke baseline:
+  commit `44bb495b1f7937357f117b42563b50ba08c08e08`, Windows hosted runner,
+  MSYS2/UCRT64 `/ucrt64/bin/gcc`, `conpty-acceptance.json` with
+  `passTokenPresent: true` and `accepted: true`, verified locally with
+  `make verify-conpty-evidence`.
+- For current artifacts, validate the machine predicate before updating any
+  docs:
+
+  ```sh
+  nix develop -c make verify-conpty-evidence ARTIFACT_DIR=artifacts/gh-runs/<run> COMMIT=<commit>
+  ```
+
+  The verifier requires `conpty-acceptance.json`, `evidence.md`,
+  `conpty-smoke.stdout`, `conpty-smoke.stderr`, `conpty-smoke.status`,
+  `conpty-smoke.command.txt`, and `conpty-smoke.meta.txt` to agree on the same
+  commit, status 0, the exact ConPTY PASS token, a `smoke-conpty-win32`
+  command, and `os_env=Windows_NT` host metadata.
 - `windows-terminal-sixel-*.png` is supplemental Sixel evidence only if it
   visibly shows the Windows Terminal live smoke with image tiles and the
   session diagnostics show an interactive desktop. Run `28982641529` is the

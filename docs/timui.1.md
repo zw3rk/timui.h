@@ -79,7 +79,8 @@ The following `make` targets are the primary interface. Each is invoked as
 
 **check**
 : The build-plus-test gate: runs **build**, **test**, no-image API coverage,
-  Win32 ConPTY compile seams, and static website license/link checks.
+  Win32 ConPTY compile seams, hosted evidence-script checks, and static website
+  license/link checks.
 
 **test-san** \[*SAN=address*]
 : Compile and run the unit tests under a sanitizer, e.g.
@@ -124,9 +125,9 @@ The following `make` targets are the primary interface. Each is invoked as
 
 These targets exist to collect live evidence. They are intentionally outside
 **check**; headless pty captures prove byte streams and final cell text, not
-that a real terminal consumed an image protocol or that Windows ConPTY works in
-Windows Terminal. The canonical evidence procedure and recording template live
-in `docs/runbooks/phase1-5-live-evidence.md`.
+that a real terminal consumed an image protocol or that Windows ConPTY passed on
+a Windows host. The canonical evidence procedure and recording template live in
+`docs/runbooks/phase1-5-live-evidence.md`.
 
 **check-image-smoke**
 : Headless sanity check for the image smoke harness. It forces protocol `none`,
@@ -149,11 +150,34 @@ in `docs/runbooks/phase1-5-live-evidence.md`.
 : Cross-compile the Win32 ConPTY smoke runner when MinGW is available. This is
   compile evidence only.
 
+**check-conpty-smoke-tool**
+: Compile and run the portable helper tests for the Win32 ConPTY smoke runner:
+  script line-ending selection, sentinel matching, and helper behavior that can
+  be checked without a Windows host.
+
+**check-hosted-visual-windows**
+: Verify the hosted Windows visual probe script still emits the ConPTY
+  acceptance manifest (`conpty-acceptance.json`) and its command/meta sidecars.
+
+**check-conpty-evidence-artifacts**
+: Run synthetic positive and negative fixture tests for the hosted ConPTY
+  evidence verifier. This proves the verifier rejects wrong commits, malformed
+  JSON, false acceptance flags, nonzero status, missing PASS tokens, and unsafe
+  manifest paths, plus compile-only commands or non-Windows metadata.
+
+**verify-conpty-evidence**
+: Validate a downloaded hosted Windows ConPTY artifact directory:
+  `make verify-conpty-evidence ARTIFACT_DIR=... COMMIT=...`. The target checks
+  `conpty-acceptance.json` and its stdout/stderr/status/meta/evidence sidecars
+  against one expected commit, the real smoke target, and Windows host metadata.
+  It does not create Windows evidence; it only accepts or rejects an artifact
+  already collected from a Windows host.
+
 **smoke-conpty-win32**
-: Run the Win32 ConPTY smoke runner inside Windows Terminal on Windows. It opens
-  the default shell via `timui_conpty_open`, writes an echo sentinel through the
-  transport, reads it back, resizes once, and closes twice. A non-Windows skip is
-  not Windows evidence.
+: Run the Win32 ConPTY smoke runner on Windows. It opens the default shell via
+  `timui_conpty_open`, writes an echo sentinel through the transport, reads it
+  back, resizes once, and closes twice. A non-Windows skip is not Windows
+  evidence.
 
 ## Release header
 

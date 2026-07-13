@@ -77,8 +77,9 @@ Core:
 - Split development build via `src/timui.c` and included sections.
 - C99 baseline, libc hard dependency, optional pthreads.
 - POSIX raw-mode terminal backend.
-- Win32 ConPTY is implemented behind `_WIN32`, runtime-probed, and
-  compile-checked, but live Windows Terminal smoke evidence is still pending.
+- Win32 ConPTY is implemented behind `_WIN32`, runtime-probed,
+  compile-checked, and covered by hosted Windows smoke evidence in run
+  `29226547099`.
 
 Rendering and terminal:
 
@@ -321,7 +322,8 @@ int main(void) {
 - Single-header C99 immediate-mode TUI.
 - No ncurses dependency.
 - POSIX terminal backend works; Windows ConPTY is implemented, runtime-probed,
-  and compile-checked, with live Windows smoke evidence still pending.
+  compile-checked, and covered by hosted Windows smoke evidence in run
+  `29226547099`.
 - Truecolor diff renderer and synchronized output support.
 - Incremental input parser for legacy CSI, Kitty keyboard, SGR mouse, paste,
   focus, text, and UTF-8.
@@ -337,8 +339,9 @@ int main(void) {
 
 ## Claims to avoid or qualify
 
-- Do not say "works on Windows" yet. ConPTY is implemented, runtime-probed, and
-  compile-checked, but the live Windows Terminal smoke run is still pending.
+- Do not imply broad Windows terminal parity. The ConPTY transport has accepted
+  hosted smoke evidence, but graphics and terminal behavior are still selected
+  by the actual terminal protocol capability.
 - Do not say "full Unicode" or "full bidi." The chat example has a useful
   Hebrew/Arabic approximation and CJK/emoji rendering support, but full UAX #9,
   grapheme clusters, ZWJ emoji, and skin-tone sequences remain future work.
