@@ -109,7 +109,11 @@ typedef enum {
     TIMUI_ERR_NOT_A_TTY,
     TIMUI_ERR_OS,
     TIMUI_ERR_UNSUPPORTED,
-    TIMUI_ERR_PROTOCOL
+    TIMUI_ERR_PROTOCOL,
+    TIMUI_ERR_IO,
+    TIMUI_ERR_WOULD_BLOCK,
+    TIMUI_ERR_EOF,
+    TIMUI_ERR_CLOSED
 } TimuiResult;
 
 /* ---- Arena (low-level bump allocator; frames use it internally) ------- *
@@ -192,7 +196,8 @@ TIMUI_API void        timui_restore_terminal(Timui *ui);
 TIMUI_API const char *timui_error_string(TimuiResult result);
 TIMUI_API const char *timui_version_string(void);
 
-TIMUI_API bool      timui_begin(Timui *ui, TimuiFrame **out_frame);
+TIMUI_API TimuiResult timui_begin_result(Timui *ui, TimuiFrame **out_frame);
+TIMUI_API bool        timui_begin(Timui *ui, TimuiFrame **out_frame);
 TIMUI_API void      timui_end(TimuiFrame *frame);   /* exactly once per begin; a second end re-renders + re-swaps */
 TIMUI_API TimuiRect timui_root(const TimuiFrame *frame);
 TIMUI_API int       timui_width(const TimuiFrame *frame);
@@ -351,8 +356,10 @@ typedef struct {
  * after timui_end(), so terminal/image flushes see the model used by view(). */
 TIMUI_API int  timui_app_frame(Timui *ui, TimuiApp *app);
 TIMUI_API int  timui_run(const TimuiConfig *cfg, TimuiApp *app);
+TIMUI_API TimuiResult timui_emit_result(TimuiFrame *f, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size);
+TIMUI_API TimuiResult timui_post_result(Timui *ui, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_post(Timui *ui, uint32_t type, const void *data, size_t size);   /* thread-safe */
 TIMUI_API void timui_frame_quit(TimuiFrame *f);
 
@@ -419,6 +426,7 @@ typedef struct {
 
 TIMUI_API TimuiResult timui_mpsc_init(TimuiMpsc *q, const TimuiAllocator *alloc);
 TIMUI_API void        timui_mpsc_destroy(TimuiMpsc *q);
+TIMUI_API TimuiResult timui_mpsc_post_result(TimuiMpsc *q, uint32_t type, const void *data, size_t size);
 TIMUI_API int         timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size);
 TIMUI_API int         timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, size_t *inout_size);
 TIMUI_API int         timui_mpsc_empty(TimuiMpsc *q);
@@ -747,9 +755,11 @@ TIMUI_API TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *ss,
 TIMUI_API void timui_set_stylesheet(Timui *ui, const TimuiStylesheet *ss);
 
 /* ---- Terminal transport (backend abstraction) ------------------------- *
- * A vtable of read/write/flush/close over an opaque ctx. Real backends wrap
- * file descriptors; the fake backend captures output and replays injected
- * input so renderer/parser logic is unit-testable with no real terminal. */
+ * A vtable of read/write/flush/close over an opaque ctx. read returns >0 bytes,
+ * 0 when no bytes are ready, -1 on runtime I/O error, and -2 on EOF/closed
+ * input. Real backends wrap file descriptors; the fake backend captures output
+ * and replays injected input so renderer/parser logic is unit-testable with no
+ * real terminal. */
 typedef int  (*TimuiTransportWrite)(TimuiTransport *t, const void *data, size_t len);
 typedef int  (*TimuiTransportRead)(TimuiTransport *t, void *buf, size_t cap);
 typedef int  (*TimuiTransportFlush)(TimuiTransport *t);

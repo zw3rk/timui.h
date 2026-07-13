@@ -17,6 +17,10 @@ TIMUI_API const char *timui_error_string(TimuiResult result){
         case TIMUI_ERR_OS:               return "os error";
         case TIMUI_ERR_UNSUPPORTED:      return "unsupported";
         case TIMUI_ERR_PROTOCOL:         return "protocol error";
+        case TIMUI_ERR_IO:               return "i/o error";
+        case TIMUI_ERR_WOULD_BLOCK:      return "would block";
+        case TIMUI_ERR_EOF:              return "end of file";
+        case TIMUI_ERR_CLOSED:           return "closed";
     }
     return "unknown";
 }
@@ -234,8 +238,14 @@ static int fd_write(TimuiTransport *t, const void *d, size_t n){
 }
 static int fd_read(TimuiTransport *t, void *b, size_t cap){
     TimuiFdCtx *c = (TimuiFdCtx *)t->ctx;
-    ssize_t r = read(c->read_fd, b, cap);
-    return r <= 0 ? 0 : (int)r;
+    ssize_t r;
+    do {
+        r = read(c->read_fd, b, cap);
+    } while(r < 0 && errno == EINTR);
+    if(r > 0) return (int)r;
+    if(r == 0) return -2;
+    if(errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+    return -1;
 }
 static int fd_flush(TimuiTransport *t){ (void)t; return 0; }
 static void fd_close(TimuiTransport *t){ (void)t; }
@@ -518,8 +528,10 @@ TIMUI_API uint64_t timui_now_ms(void){
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
-TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
-    if(!ui || !out_frame) return false;
+TIMUI_API TimuiResult timui_begin_result(Timui *ui, TimuiFrame **out_frame){
+    if(out_frame) *out_frame = NULL;
+    if(!ui || !out_frame) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(ui->should_quit) return TIMUI_ERR_CLOSED;
     if(ui->have_transport){
         char buf[256];
         int n;
@@ -533,6 +545,9 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
             if(ui->trace_fd >= 0) trace_write_(ui->trace_fd, "READ  ", (const unsigned char *)buf, (size_t)n);
             timui_input_set_now(&ui->input, timui_now_ms());
             timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
+        }else if(n < 0){
+            if(n == -2) return TIMUI_ERR_EOF;
+            return TIMUI_ERR_IO;
         }else if(ui->fd.read_fd >= 0 && !ui->termios_active){
             /* non-tty real fd with no data (piped/headless input, incl. EOF):
              * the tty poll above doesn't run, so throttle explicitly to avoid a
@@ -679,7 +694,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->ids.count = 0;                  /* fresh id stack for this frame */
     ui->frame.ui = ui;
     *out_frame = &ui->frame;
-    return true;
+    return TIMUI_OK;
+}
+TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
+    return timui_begin_result(ui, out_frame) == TIMUI_OK;
 }
 TIMUI_API void timui_end(TimuiFrame *frame){
     Timui *ui;
@@ -1122,25 +1140,28 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
     q->pending = 0;
     memset(&q->alloc, 0, sizeof q->alloc);
 }
-TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
+TIMUI_API TimuiResult timui_mpsc_post_result(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
     TimuiMpscNode *n;
-    if(!q) return 0;
-    if(!timui_allocator_valid_(&q->alloc)) return 0;
+    if(!q) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!timui_allocator_valid_(&q->alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
 #ifndef TIMUI_NO_THREADS
-    if(!q->lock) return 0;
+    if(!q->lock) return TIMUI_ERR_CLOSED;
 #endif
-    if(size > 0 && !data) return 0;
-    if(size > SIZE_MAX - sizeof(*n)) return 0;   /* overflow guard (cf. msgq_emit) */
+    if(size > 0 && !data) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(size > SIZE_MAX - sizeof(*n)) return TIMUI_ERR_INVALID_ARGUMENT;   /* overflow guard (cf. msgq_emit) */
     TIMUI_MPSC_LOCK(q);
     n = (TimuiMpscNode *)q->alloc.alloc(q->alloc.userdata, sizeof(*n) + size);
-    if(!n){ TIMUI_MPSC_UNLOCK(q); return 0; }
+    if(!n){ TIMUI_MPSC_UNLOCK(q); return TIMUI_ERR_OUT_OF_MEMORY; }
     n->next = NULL; n->type = type; n->size = size;
     if(size > 0 && data) memcpy(n->data, data, size);
     if(q->tail) q->tail->next = n; else q->head = n;
     q->tail = n;
     q->pending++;
     TIMUI_MPSC_UNLOCK(q);
-    return 1;
+    return TIMUI_OK;
+}
+TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
+    return timui_mpsc_post_result(q, type, data, size) == TIMUI_OK;
 }
 TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, size_t *inout_size){
     TimuiMpscNode *n;

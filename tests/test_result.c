@@ -12,8 +12,15 @@ TIMUI_TEST(test_error_string){
     /* every enumerator stringifies to its exact human string */
     TIMUI_CHECK(strcmp(timui_error_string(TIMUI_OK), "ok") == 0);
     TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_INVALID_ARGUMENT), "invalid argument") == 0);
+    TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_OUT_OF_MEMORY), "out of memory") == 0);
     TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_NOT_A_TTY), "not a tty") == 0);
+    TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_OS), "os error") == 0);
     TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_UNSUPPORTED), "unsupported") == 0);
+    TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_PROTOCOL), "protocol error") == 0);
+    TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_IO), "i/o error") == 0);
+    TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_WOULD_BLOCK), "would block") == 0);
+    TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_EOF), "end of file") == 0);
+    TIMUI_CHECK(strcmp(timui_error_string(TIMUI_ERR_CLOSED), "closed") == 0);
 
     /* out-of-range values still return a valid, non-NULL string */
     TIMUI_CHECK(timui_error_string((TimuiResult)9999) != NULL);

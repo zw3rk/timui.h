@@ -96,12 +96,23 @@ TIMUI_TEST(test_message_api_roundtrip){
     t = timui_fake_transport(&fake);
     timui_open_for_test(&ui, t, 20, 5, &def);
 
+    TIMUI_CHECK(timui_post_result(ui, 7, "hi", 2) == TIMUI_OK);
+    sz = sizeof buf;
+    TIMUI_CHECK(timui_recv(ui, &type, buf, &sz));
+    TIMUI_CHECK(type == 7 && sz == 2 && memcmp(buf, "hi", 2) == 0);
+
     TIMUI_CHECK(timui_post(ui, 7, "hi", 2));          /* thread-safe post */
     sz = sizeof buf;
     TIMUI_CHECK(timui_recv(ui, &type, buf, &sz));
     TIMUI_CHECK(type == 7 && sz == 2 && memcmp(buf, "hi", 2) == 0);
 
     timui_begin(ui, &f);                              /* emit during a frame */
+    TIMUI_CHECK(timui_emit_result(f, 9, "x", 1) == TIMUI_OK);
+    timui_end(f);
+    sz = sizeof buf;
+    TIMUI_CHECK(timui_recv(ui, &type, buf, &sz) && type == 9 && sz == 1 && buf[0] == 'x');
+
+    timui_begin(ui, &f);
     TIMUI_CHECK(timui_emit(f, 9, "x", 1));
     timui_end(f);
     sz = sizeof buf;
@@ -118,9 +129,36 @@ TIMUI_TEST(test_message_api_roundtrip){
     TIMUI_CHECK(!timui_post(NULL, 1, "a", 1));        /* NULL guards */
     TIMUI_CHECK(!timui_emit(NULL, 1, "a", 1));
     TIMUI_CHECK(!timui_recv(NULL, &type, buf, &sz));
+    TIMUI_CHECK(timui_post_result(NULL, 1, "a", 1) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_post_result(ui, 1, NULL, 1) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_emit_result(NULL, 1, "a", 1) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(timui_emit_result(f, 1, NULL, 1) == TIMUI_ERR_INVALID_ARGUMENT);
     timui_frame_quit(NULL);                           /* no crash */
 
     timui_close(ui);
+    timui_fake_destroy(&fake);
+}
+
+TIMUI_TEST(test_message_api_reports_oom){
+    TimuiAllocator def = timui_default_allocator();
+    CountAlloc ca = {0, 0, 0};
+    TimuiAllocator al = counting_allocator(&ca);
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    int fail_next;
+
+    timui_fake_init(&fake, &def);
+    t = timui_fake_transport(&fake);
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 20, 5, &al) == TIMUI_OK);
+
+    fail_next = ca.calls + 1;
+    ca.fail_at = fail_next;
+    TIMUI_CHECK(timui_post_result(ui, 1, "x", 1) == TIMUI_ERR_OUT_OF_MEMORY);
+    ca.fail_at = 0;
+
+    timui_close(ui);
+    TIMUI_CHECK(ca.live == 0);
     timui_fake_destroy(&fake);
 }
 

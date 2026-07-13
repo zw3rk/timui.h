@@ -18,6 +18,29 @@ static int frame_contains(const char *haystack, size_t haystack_len, const char 
     return 0;
 }
 
+typedef struct { int read_result; } BeginResultTransport;
+
+static int begin_result_write(TimuiTransport *t, const void *data, size_t len){
+    (void)t; (void)data;
+    return (int)len;
+}
+static int begin_result_read(TimuiTransport *t, void *buf, size_t cap){
+    BeginResultTransport *br = (BeginResultTransport *)t->ctx;
+    (void)buf; (void)cap;
+    return br ? br->read_result : -1;
+}
+static int begin_result_flush(TimuiTransport *t){ (void)t; return 0; }
+static void begin_result_close(TimuiTransport *t){ (void)t; }
+static TimuiTransport begin_result_transport(BeginResultTransport *br){
+    TimuiTransport t;
+    t.write = begin_result_write;
+    t.read = begin_result_read;
+    t.flush = begin_result_flush;
+    t.close = begin_result_close;
+    t.ctx = br;
+    return t;
+}
+
 TIMUI_TEST(test_frame_lifecycle){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake;
@@ -57,6 +80,60 @@ TIMUI_TEST(test_frame_lifecycle){
     TIMUI_CHECK(timui_width(f) == 20 && timui_height(f) == 10);
     timui_end(f);
 
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_begin_result_statuses){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = (TimuiFrame *)1;
+
+    TIMUI_CHECK(timui_begin_result(NULL, &f) == TIMUI_ERR_INVALID_ARGUMENT);
+    TIMUI_CHECK(f == NULL);
+    TIMUI_CHECK(timui_begin_result(NULL, NULL) == TIMUI_ERR_INVALID_ARGUMENT);
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 10, 5, &al) == TIMUI_OK);
+    TIMUI_CHECK(timui_begin_result(ui, &f) == TIMUI_OK);
+    TIMUI_CHECK(f != NULL);
+    timui_end(f);
+
+    timui_quit(ui);
+    f = (TimuiFrame *)1;
+    TIMUI_CHECK(timui_begin_result(ui, &f) == TIMUI_ERR_CLOSED);
+    TIMUI_CHECK(f == NULL);
+    TIMUI_CHECK(!timui_begin(ui, &f));
+    TIMUI_CHECK(f == NULL);
+
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_begin_result_transport_error){
+    TimuiAllocator al = timui_default_allocator();
+    BeginResultTransport br;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    TimuiFrame *f = (TimuiFrame *)1;
+
+    br.read_result = -1;
+    t = begin_result_transport(&br);
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 10, 5, &al) == TIMUI_OK);
+    TIMUI_CHECK(timui_begin_result(ui, &f) == TIMUI_ERR_IO);
+    TIMUI_CHECK(f == NULL);
+    TIMUI_CHECK(!timui_begin(ui, &f));
+    TIMUI_CHECK(f == NULL);
+    timui_close(ui);
+
+    br.read_result = -2;
+    t = begin_result_transport(&br);
+    f = (TimuiFrame *)1;
+    ui = NULL;
+    TIMUI_CHECK(timui_open_for_test(&ui, t, 10, 5, &al) == TIMUI_OK);
+    TIMUI_CHECK(timui_begin_result(ui, &f) == TIMUI_ERR_EOF);
+    TIMUI_CHECK(f == NULL);
     timui_close(ui);
 }
 

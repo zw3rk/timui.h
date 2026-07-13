@@ -351,6 +351,9 @@ check-refinement-docs: ## Verify refinement contract docs exist and keep require
 	@grep -q 'Terminal emulators own' docs/UNICODE.md
 	@grep -q 'TIMUI_IMAGE_PNG_MAX_BYTES' docs/IMAGE_LIMITS.md
 	@grep -q 'TIMUI_IMAGE_PLACEMENT_CAP' docs/IMAGE_LIMITS.md
+	@grep -q 'timui_begin_result' docs/API.md
+	@grep -q 'TIMUI_ERR_EOF' docs/THREADING.md
+	@grep -q 'timui_post_result' docs/THREADING.md
 	@printf "$(C_GREEN)✓ refinement contract docs$(C_RESET)\n"
 
 verify-conpty-evidence: tools/verify_conpty_evidence.py ## Validate downloaded hosted ConPTY evidence (ARTIFACT_DIR=... [COMMIT=...])

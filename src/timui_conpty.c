@@ -138,12 +138,12 @@ static int conpty_read(TimuiTransport *t, void *b, size_t cap){
     DWORD avail = 0, got = 0;
     size_t chunk;
     if(!c || !c->hPipeOut || !b || cap == 0) return 0;
-    if(!PeekNamedPipe(c->hPipeOut, NULL, 0, NULL, &avail, NULL) || avail == 0)
-        return 0;
+    if(!PeekNamedPipe(c->hPipeOut, NULL, 0, NULL, &avail, NULL)) return -1;
+    if(avail == 0) return 0;
     chunk = timui_conpty_io_chunk_for_test(cap);
     if(chunk > (size_t)avail) chunk = (size_t)avail;
     if(chunk == 0) return 0;
-    if(!ReadFile(c->hPipeOut, b, (DWORD)chunk, &got, NULL)) return 0;
+    if(!ReadFile(c->hPipeOut, b, (DWORD)chunk, &got, NULL)) return -1;
     return (int)got;
 }
 

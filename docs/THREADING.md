@@ -8,9 +8,9 @@ the terminal.
 
 | Function class | Safety |
 |---|---|
-| `timui_post` (the MPSC queue) | **thread-safe** — any thread |
+| `timui_post`, `timui_post_result` (the MPSC queue) | **thread-safe** — any thread |
 | `timui_*` widget / drawing / style / frame APIs | **UI-thread only** |
-| `timui_begin`, `timui_end`, `timui_poll_event`, `timui_recv` | UI-thread only |
+| `timui_begin`, `timui_begin_result`, `timui_end`, `timui_poll_event`, `timui_recv`, `timui_emit` | UI-thread only |
 | `timui_close` | UI-thread only |
 
 Hard rule: **only the UI thread writes to the terminal.**
@@ -19,7 +19,7 @@ Hard rule: **only the UI thread writes to the terminal.**
 
 ```
 worker thread(s)
-    │  timui_post(ui, type, data, size)   // copies bytes into the MPSC queue
+    │  timui_post_result(ui, type, data, size)   // copies bytes into the MPSC queue
     ▼
 thread-safe message queue
     │  (drained on the UI thread)
@@ -29,6 +29,31 @@ UI thread: update model → render frame → terminal write
 
 Workers never touch `TimuiFrame` or the terminal; they communicate by posting
 messages, which the UI thread applies to its model between frames.
+
+## Message ownership and ordering
+
+`timui_post_result` copies `size` bytes before returning, so the caller may
+reuse or free the source buffer immediately. `size == 0` may use `data == NULL`;
+non-zero messages with `data == NULL` return `TIMUI_ERR_INVALID_ARGUMENT`.
+
+The queue is FIFO for successful posts. With multiple producers, "first" means
+the order in which producers acquire the queue mutex. The queue has no fixed
+message-count cap; each message allocates one node. Overflow-sized messages and
+invalid arguments fail before allocation, allocation failure returns
+`TIMUI_ERR_OUT_OF_MEMORY`, and the source-compatible `timui_post` returns
+`false` for any non-OK result.
+
+`timui_emit_result` is the UI-thread/frame-scoped equivalent for code that wants
+to enqueue a message while rendering a frame. It uses the same queue and payload
+contract but is not a worker-thread escape hatch.
+
+`timui_begin_result` does not block indefinitely. On a real POSIX terminal it
+polls input briefly before reading to avoid a hot spin; no available bytes still
+returns a renderable frame. EOF on the POSIX input fd, or `-2` from a custom
+transport, returns `TIMUI_ERR_EOF`; runtime read failures return
+`TIMUI_ERR_IO`; `timui_quit` makes future begins return `TIMUI_ERR_CLOSED`.
+Posting does not currently wake a blocked poll; latency is bounded by the UI
+loop and the 16 ms poll window.
 
 ## Shutdown ordering (W14)
 

@@ -171,6 +171,8 @@ void test_render_cursor_visible(void);
 void test_render_cursor_hidden(void);
 void test_render_cursor_extreme_coords_safe(void);
 void test_frame_lifecycle(void);
+void test_begin_result_statuses(void);
+void test_begin_result_transport_error(void);
 void test_invalidate_resets_terminal_state_cache(void);
 void test_full_redraw_repaints_unchanged_frame(void);
 void test_frame_quit_flag(void);
@@ -395,6 +397,7 @@ void test_msgq_overflow_guard(void);
 /* Round-7 (Z-series) coverage — tests/test_coverage_z7.c */
 void test_open_oom_cleanup(void);
 void test_message_api_roundtrip(void);
+void test_message_api_reports_oom(void);
 void test_layout_siblings(void);
 void test_label_hyperlink_wrapper(void);
 void test_function_bar_widget(void);

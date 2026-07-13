@@ -1,10 +1,18 @@
 /* ---- optional functional runner --------------------------------------- *
  * UI-thread message queue (emit during view, recv into update) + the runner. */
+TIMUI_API TimuiResult timui_emit_result(TimuiFrame *f, uint32_t type, const void *data, size_t size){
+    if(!f || !f->ui) return TIMUI_ERR_INVALID_ARGUMENT;
+    return timui_mpsc_post_result(&f->ui->postq, type, data, size);
+}
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size){
-    return f && f->ui && timui_mpsc_post(&f->ui->postq, type, data, size) != 0;
+    return timui_emit_result(f, type, data, size) == TIMUI_OK;
+}
+TIMUI_API TimuiResult timui_post_result(Timui *ui, uint32_t type, const void *data, size_t size){
+    if(!ui) return TIMUI_ERR_INVALID_ARGUMENT;
+    return timui_mpsc_post_result(&ui->postq, type, data, size);
 }
 TIMUI_API bool timui_post(Timui *ui, uint32_t type, const void *data, size_t size){
-    return ui && timui_mpsc_post(&ui->postq, type, data, size) != 0;
+    return timui_post_result(ui, type, data, size) == TIMUI_OK;
 }
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size){
     return ui && timui_mpsc_recv(&ui->postq, out_type, out_buf, inout_size) != 0;
@@ -22,8 +30,10 @@ static void timui_app_drain_updates_(Timui *ui, TimuiApp *app){
 }
 TIMUI_API int timui_app_frame(Timui *ui, TimuiApp *app){
     TimuiFrame *f = NULL;
+    TimuiResult r;
     if(!ui || !app || !app->view || timui_should_quit(ui)) return 0;
-    if(!timui_begin(ui, &f)) return 0;
+    r = timui_begin_result(ui, &f);
+    if(r != TIMUI_OK) return 0;
     app->view(f, app->model);
     timui_end(f);
     timui_app_drain_updates_(ui, app);

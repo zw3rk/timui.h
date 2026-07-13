@@ -160,6 +160,8 @@ int main(void){
         test_render_cursor_hidden,
         test_render_cursor_extreme_coords_safe,
         test_frame_lifecycle,
+        test_begin_result_statuses,
+        test_begin_result_transport_error,
         test_invalidate_resets_terminal_state_cache,
         test_full_redraw_repaints_unchanged_frame,
         test_frame_quit_flag,
@@ -387,6 +389,7 @@ int main(void){
         /* round-7 (Z-series) coverage */
         test_open_oom_cleanup,
         test_message_api_roundtrip,
+        test_message_api_reports_oom,
         test_layout_siblings,
         test_label_hyperlink_wrapper,
         test_function_bar_widget,

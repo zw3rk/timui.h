@@ -22,6 +22,7 @@ TimuiConfig cfg = TIMUI_CONFIG_INIT;
 void        timui_config_init(TimuiConfig *cfg);
 TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 void        timui_close(Timui *ui);
+TimuiResult timui_begin_result(Timui *ui, TimuiFrame **out_frame);
 bool        timui_begin(Timui *ui, TimuiFrame **out_frame);   /* UI-thread */
 void        timui_end(TimuiFrame *frame);
 void        timui_quit(Timui *ui);
@@ -50,9 +51,18 @@ only when the input descriptor is a tty, and screen-mode escapes are emitted
 only when the output descriptor is a tty.
 
 `timui_open` enters raw mode + screen modes requested by flags, detects
-capabilities, and sizes the buffers. `timui_begin` ingests input, clears the
-frame, and resets the id stack; `timui_end` diff-renders and swaps. A
-`TimuiFrame` is valid only between `begin` and `end`.
+capabilities, and sizes the buffers. `timui_begin_result` ingests input, clears
+the frame, and resets the id stack; `timui_begin` is the source-compatible bool
+wrapper that returns true only for `TIMUI_OK`. A `TimuiFrame` is valid only
+between a successful begin and exactly one `timui_end`.
+
+`timui_begin_result` returns `TIMUI_ERR_INVALID_ARGUMENT` for bad handles,
+`TIMUI_ERR_CLOSED` after `timui_quit`, `TIMUI_ERR_EOF` when the POSIX input fd
+or a custom transport reports closed input, and `TIMUI_ERR_IO` for runtime
+transport read failures. No pending bytes is not an error: real terminal input
+is polled briefly and fake/ConPTY transports return a redrawable frame with no
+new input. `timui_post` does not interrupt that poll; wakeup latency is bounded
+by the next UI-loop iteration and the current 16 ms terminal-input poll.
 
 Live terminal resize is explicit in v0.2: call `timui_term_size(output_fd, &w,
 &h)` and then `timui_ui_resize(ui, w, h)` when the dimensions change.
@@ -294,8 +304,23 @@ Apps usually react through widget results + `timui_key_pressed`.
 ## Threads
 
 ```c
-bool timui_post(Timui *, uint32_t type, const void *data, size_t size);  /* any thread */
+TimuiResult timui_post_result(Timui *, uint32_t type,
+                              const void *data, size_t size);  /* any thread */
+bool        timui_post(Timui *, uint32_t type,
+                       const void *data, size_t size);         /* bool wrapper */
+TimuiResult timui_emit_result(TimuiFrame *, uint32_t type,
+                              const void *data, size_t size);  /* UI thread */
+bool        timui_emit(TimuiFrame *, uint32_t type,
+                       const void *data, size_t size);         /* bool wrapper */
 ```
+
+`timui_post_result` and `timui_emit_result` copy the payload before returning.
+The caller retains ownership of `data`. A non-zero `size` requires non-NULL
+`data`; zero-size messages are allowed with `data == NULL`. Queue entries are
+FIFO in successful post order; concurrent producers are ordered by mutex
+acquisition. Allocation failure returns `TIMUI_ERR_OUT_OF_MEMORY`; bad
+arguments return `TIMUI_ERR_INVALID_ARGUMENT`. Producers must stop before
+`timui_close`; posting to a destroyed queue is outside the API contract.
 
 ## Feature macros
 
