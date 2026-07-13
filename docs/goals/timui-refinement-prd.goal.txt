@@ -1,0 +1,135 @@
+/goal Implement the timui.h refinement PRD in `timui.h-refinement-prd.md`.
+
+Objective:
+Move timui.h from a strong technical prototype into a trustworthy pre-release
+C99 TUI library. The milestone is confidence, not feature sprawl: release
+hygiene, API clarity, lifecycle guarantees, diagnostics, documentation, fuzzing,
+and compatibility evidence.
+
+Read first:
+- AGENTS.md / CLAUDE.md project rules.
+- `timui.h-refinement-prd.md`.
+- `docs/DECISIONS.md`, `docs/API.md`, `docs/DESIGN.md`,
+  `docs/TERMINAL_PROTOCOLS.md`.
+- `docs/backlog.md`, `docs/gaps.md`, and
+  `docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt`.
+- Existing CI, Makefile targets, release/amalgamation tooling, and website
+  header flow.
+
+Working rules:
+- Use a feature worktree and branch. Do not work directly on `master`.
+- All commands go through `nix develop -c make <target>`.
+- TDD is mandatory: positive and negative tests before implementation.
+- For every bug, add a named regression test before the fix.
+- Commit small verified units as they land. Do not push unless explicitly asked.
+- Preserve the single-header user experience and immediate-mode design. Do not
+  introduce a framework rewrite.
+
+First pass:
+Audit the PRD against the current tree. Some items may already be partly or
+fully implemented, especially `TimuiResult`, capability APIs, Phase 1.5
+widgets/images/ConPTY evidence, CI, and docs. Create or update a concise
+tracking doc under `docs/` that marks each PRD item as DONE, PARTIAL, TODO, or
+DEFERRED with source links.
+
+Implementation scope:
+1. Release engineering
+   - Ensure public-release readiness: changelog, tagged-release flow, CI gates,
+     sanitizer gates, fuzz targets, examples, release artifacts, checksums, and
+     version/commit/date metadata.
+   - Release artifacts should include `/timui.h`,
+     `/releases/<version>/timui.h`, `/releases/<version>/timui.tar.gz`, and
+     `/releases/<version>/SHA256SUMS` where appropriate.
+
+2. Single-header architecture
+   - Keep `include/timui.h` as the user-facing header and generated release
+     header clean.
+   - Preserve modular internals under `src/`; improve structure only where it
+     reduces real complexity.
+
+3. Safer initialization
+   - Add or verify `TIMUI_CONFIG_INIT` and/or `timui_config_init(&cfg)`.
+   - Include struct size, API version, descriptors, feature flags, descriptor
+     ownership, and restoration behavior.
+   - Prefer source-compatible additions unless a breaking cleanup is clearly
+     justified pre-release.
+
+4. Lifecycle and errors
+   - Replace ambiguous public boolean failures with `TimuiResult` where still
+     present.
+   - Document blocking behavior, wakeups, shutdown order, EOF/quit/I/O/OOM
+     distinctions, and terminal restoration guarantees.
+
+5. Threading contract
+   - Keep rendering single-threaded.
+   - Document `timui_post` ownership, copying, queue size, overflow behavior,
+     ordering guarantees, and shutdown races.
+   - Prefer explicit result enums over booleans for fallible message/thread APIs.
+
+6. Capability diagnostics
+   - Extend capability inspection beyond raw flags if needed: explain why
+     features are enabled/disabled across terminal, ssh, tmux/zellij/screen, and
+     platform layers.
+   - Keep detection conservative and testable.
+
+7. Compatibility matrix
+   - Publish a matrix for Ghostty, Kitty, WezTerm, iTerm2, Windows Terminal,
+     xterm, tmux, SSH, and relevant hosted-runner evidence.
+   - Distinguish supported, tested, compile-tested, experimental, and
+     unsupported.
+
+8. Unicode contract
+   - Document what timui owns: UTF-8 decoding, grapheme handling, cell width,
+     and cursor positioning.
+   - Document what terminals own: glyph rendering, fonts, and shaping.
+   - State Unicode version/policy, emoji/combining behavior, bidi limitations,
+     and remaining UAX #29/UAX #9 gaps.
+
+9. Image handling
+   - Document resource limits: max image bytes, decoded pixels, cache/lifetime,
+     and cleanup behavior.
+   - Add or improve fuzz/adversarial coverage for image decode/protocol paths.
+   - Preserve Kitty/Sixel/iTerm2 behavior and `TIMUI_NO_IMAGES` semantics.
+
+10. Rendering ownership
+   - Add or verify public `timui_invalidate(Timui *)` and
+     `timui_full_redraw(Timui *)`.
+   - Document external terminal writes, subprocess output, terminal reset,
+     suspend/resume, and full-redraw recovery.
+
+11. Preserve the differentiator
+   - Keep controlled immediate mode with caller-owned state.
+   - Preserve APIs shaped like `timui_checkbox(...)` and `_mut` convenience
+     wrappers.
+   - Do not add hidden global managers for widgets, notifications, focus,
+     images, or app state.
+
+Documentation deliverables:
+- Update `docs/API.md`, `docs/THREADING.md`, `docs/TERMINAL_PROTOCOLS.md`,
+  `docs/backlog.md`, `docs/gaps.md`, and website copy only when behavior is
+  real.
+- Add a short handoff under `docs/handoff/YYYY-MM-DD-refinement-prd.md` if any
+  PRD item remains blocked, deferred, or evidence-dependent.
+- Keep the website honest and slightly tongue-in-cheek, but do not overclaim
+  release maturity.
+
+Verification gates:
+- `nix develop -c make test`
+- `nix develop -c make build`
+- `nix develop -c make release-check`
+- `nix develop -c make www`
+- `nix develop -c make check`
+- `nix develop -c make test-san SAN=address`
+- `nix develop -c make test-san SAN=undefined`
+- `nix develop -c make test-san SAN=thread` where supported
+- `nix develop -c make vt-test` where libvterm is available
+- Any new fuzz, release, docs, or compatibility checks added for this PRD.
+
+Definition of done:
+- Every PRD section has an artifact-backed status.
+- Implemented API changes have positive, negative, and regression coverage
+  where applicable.
+- Release/header generation is reproducible and checked.
+- Docs accurately describe guarantees and limitations.
+- The full relevant verification suite is green.
+- Work is committed in small semantic commits and ready for PR review.
