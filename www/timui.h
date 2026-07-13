@@ -37,6 +37,8 @@ extern "C" {
 #define TIMUI_VERSION_MINOR 2
 #define TIMUI_VERSION_PATCH 0
 #define TIMUI_VERSION_STRING "0.2.0"
+#define TIMUI_API_VERSION \
+    ((TIMUI_VERSION_MAJOR << 16) | (TIMUI_VERSION_MINOR << 8) | TIMUI_VERSION_PATCH)
 
 /* ---- Feature macros ----------------------------------------------------- *
  * TIMUI_IMPLEMENTATION   include the implementation (exactly one TU)
@@ -108,7 +110,11 @@ typedef enum {
     TIMUI_ERR_NOT_A_TTY,
     TIMUI_ERR_OS,
     TIMUI_ERR_UNSUPPORTED,
-    TIMUI_ERR_PROTOCOL
+    TIMUI_ERR_PROTOCOL,
+    TIMUI_ERR_IO,
+    TIMUI_ERR_WOULD_BLOCK,
+    TIMUI_ERR_EOF,
+    TIMUI_ERR_CLOSED
 } TimuiResult;
 
 /* ---- Arena (low-level bump allocator; frames use it internally) ------- *
@@ -156,6 +162,8 @@ typedef enum {
 } TimuiFlags;
 
 typedef struct {
+    size_t            struct_size;
+    uint32_t          api_version;
     const char       *title;
     int               input_fd;
     int               output_fd;
@@ -173,8 +181,12 @@ typedef struct {
 #define TIMUI_STR_LIT(s)     ((TimuiStr){ (s), sizeof(s) - 1 })
 #define TIMUI_RECT(x, y, w, h) ((TimuiRect){ (x), (y), (w), (h) })
 #define TIMUI_ID(s)          timui_id_from_cstr(s)
+#define TIMUI_CONFIG_INIT    ((TimuiConfig){ sizeof(TimuiConfig), TIMUI_API_VERSION, NULL, 0, 1, \
+                                             TIMUI_PROFILE_AUTO, TIMUI_FLAG_RESTORE_ON_EXIT, \
+                                             TIMUI_THEME_MODERN_DARK, {0}, 0, 0, 0, NULL })
 
 /* ---- Lifecycle (POSIX terminal backend; Win32 ConPTY transport) -------- */
+TIMUI_API void        timui_config_init(TimuiConfig *cfg);
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 TIMUI_API void        timui_close(Timui *ui);
 /* Restore the terminal (screen exit + termios). Call from normal control flow
@@ -185,7 +197,8 @@ TIMUI_API void        timui_restore_terminal(Timui *ui);
 TIMUI_API const char *timui_error_string(TimuiResult result);
 TIMUI_API const char *timui_version_string(void);
 
-TIMUI_API bool      timui_begin(Timui *ui, TimuiFrame **out_frame);
+TIMUI_API TimuiResult timui_begin_result(Timui *ui, TimuiFrame **out_frame);
+TIMUI_API bool        timui_begin(Timui *ui, TimuiFrame **out_frame);
 TIMUI_API void      timui_end(TimuiFrame *frame);   /* exactly once per begin; a second end re-renders + re-swaps */
 TIMUI_API TimuiRect timui_root(const TimuiFrame *frame);
 TIMUI_API int       timui_width(const TimuiFrame *frame);
@@ -195,6 +208,13 @@ TIMUI_API TimuiCellBuffer *timui_frame_buffer(TimuiFrame *frame);
  * NULL ui / non-positive size, or TIMUI_ERR_OUT_OF_MEMORY if a buffer can't grow
  * (dimensions are left unchanged in that case — see V10 rollback). */
 TIMUI_API TimuiResult      timui_ui_resize(Timui *ui, int w, int h);
+/* Reset cached terminal state after an external terminal mode/style reset.
+ * Does not force cell repaint by itself. */
+TIMUI_API void             timui_invalidate(Timui *ui);
+/* Force the next timui_end to repaint every cell. Use after subprocess output,
+ * terminal reset, suspend/resume, or any external write that may have changed
+ * screen contents behind timui's diff renderer. */
+TIMUI_API void             timui_full_redraw(Timui *ui);
 /* Advanced raw-event polling. timui_begin consumes key/text/mouse/paste into
  * frame aggregators (timui_text_input, key flags, mouse helpers). Events left
  * after begin are for out-of-band cases such as focus changes. */
@@ -337,8 +357,10 @@ typedef struct {
  * after timui_end(), so terminal/image flushes see the model used by view(). */
 TIMUI_API int  timui_app_frame(Timui *ui, TimuiApp *app);
 TIMUI_API int  timui_run(const TimuiConfig *cfg, TimuiApp *app);
+TIMUI_API TimuiResult timui_emit_result(TimuiFrame *f, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size);
+TIMUI_API TimuiResult timui_post_result(Timui *ui, uint32_t type, const void *data, size_t size);
 TIMUI_API bool timui_post(Timui *ui, uint32_t type, const void *data, size_t size);   /* thread-safe */
 TIMUI_API void timui_frame_quit(TimuiFrame *f);
 
@@ -405,6 +427,7 @@ typedef struct {
 
 TIMUI_API TimuiResult timui_mpsc_init(TimuiMpsc *q, const TimuiAllocator *alloc);
 TIMUI_API void        timui_mpsc_destroy(TimuiMpsc *q);
+TIMUI_API TimuiResult timui_mpsc_post_result(TimuiMpsc *q, uint32_t type, const void *data, size_t size);
 TIMUI_API int         timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size);
 TIMUI_API int         timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, size_t *inout_size);
 TIMUI_API int         timui_mpsc_empty(TimuiMpsc *q);
@@ -733,9 +756,11 @@ TIMUI_API TimuiResolvedStyle timui_stylesheet_resolve(const TimuiStylesheet *ss,
 TIMUI_API void timui_set_stylesheet(Timui *ui, const TimuiStylesheet *ss);
 
 /* ---- Terminal transport (backend abstraction) ------------------------- *
- * A vtable of read/write/flush/close over an opaque ctx. Real backends wrap
- * file descriptors; the fake backend captures output and replays injected
- * input so renderer/parser logic is unit-testable with no real terminal. */
+ * A vtable of read/write/flush/close over an opaque ctx. read returns >0 bytes,
+ * 0 when no bytes are ready, -1 on runtime I/O error, and -2 on EOF/closed
+ * input. Real backends wrap file descriptors; the fake backend captures output
+ * and replays injected input so renderer/parser logic is unit-testable with no
+ * real terminal. */
 typedef int  (*TimuiTransportWrite)(TimuiTransport *t, const void *data, size_t len);
 typedef int  (*TimuiTransportRead)(TimuiTransport *t, void *buf, size_t cap);
 typedef int  (*TimuiTransportFlush)(TimuiTransport *t);
@@ -830,6 +855,19 @@ typedef enum {
     TIMUI_IMAGE_PROTOCOL_ITERM2
 } TimuiImageProtocol;
 
+typedef enum {
+    TIMUI_CAPS_NOTE_SAFE_FALLBACK      = 1u << 0,
+    TIMUI_CAPS_NOTE_TRUECOLOR_ENV      = 1u << 1,
+    TIMUI_CAPS_NOTE_MODERN_TERMINAL    = 1u << 2,
+    TIMUI_CAPS_NOTE_KITTY_FAMILY       = 1u << 3,
+    TIMUI_CAPS_NOTE_ITERM2             = 1u << 4,
+    TIMUI_CAPS_NOTE_256COLOR_TERM      = 1u << 5,
+    TIMUI_CAPS_NOTE_MULTIPLEXER        = 1u << 6,
+    TIMUI_CAPS_NOTE_KITTY_PASSTHROUGH  = 1u << 7,
+    TIMUI_CAPS_NOTE_SSH_SESSION        = 1u << 8,
+    TIMUI_CAPS_NOTE_IMAGES_COMPILED_OUT = 1u << 9
+} TimuiCapsNoteFlags;
+
 typedef struct {
     uint32_t flags;
     int      colors;
@@ -840,10 +878,22 @@ typedef struct {
     char     term_program_version[64];
 } TimuiCaps;
 
+typedef struct {
+    TimuiCaps caps;
+    uint32_t  notes;
+    uint32_t  enabled_by_env;
+    uint32_t  disabled_by_multiplexer;
+    uint32_t  disabled_by_build;
+} TimuiCapsReport;
+
 /* Pure, deterministic detection from environment strings (no I/O, no live
  * queries): known modern terminals get the modern cap set; multiplexers
  * (tmux/screen/zellij) reduce it; unknown terminals fall back to a safe
  * minimum. force_on / force_off override the result. */
+TIMUI_API void timui_caps_detect_report(TimuiCapsReport *report, const char *term,
+                                        const char *term_program,
+                                        const char *colorterm,
+                                        const char *ssh_connection);
 TIMUI_API void timui_caps_detect(TimuiCaps *caps, const char *term, const char *term_program, const char *colorterm);
 TIMUI_API void timui_caps_apply_force(TimuiCaps *caps, uint32_t force_on, uint32_t force_off);
 TIMUI_API int  timui_caps_has(const TimuiCaps *caps, TimuiCapFlags cap);
@@ -1238,6 +1288,26 @@ typedef struct TimuiImage { unsigned char *data; size_t len;
                             uint32_t id;
                             int px_w, px_h; TimuiImageKind kind;
                             int stride; } TimuiImage;   /* tight RGBA stride, or 0 without pixels */
+
+#ifndef TIMUI_IMAGE_MAX_DIMENSION
+#define TIMUI_IMAGE_MAX_DIMENSION 4096
+#endif
+#ifndef TIMUI_IMAGE_MAX_PIXELS
+#define TIMUI_IMAGE_MAX_PIXELS 16777216u
+#endif
+#ifndef TIMUI_IMAGE_PNG_MAX_BYTES
+#define TIMUI_IMAGE_PNG_MAX_BYTES 16777216u
+#endif
+#ifndef TIMUI_IMAGE_PNG_MAX_DIMENSION
+#define TIMUI_IMAGE_PNG_MAX_DIMENSION TIMUI_IMAGE_MAX_DIMENSION
+#endif
+#ifndef TIMUI_IMAGE_PNG_MAX_PIXELS
+#define TIMUI_IMAGE_PNG_MAX_PIXELS TIMUI_IMAGE_MAX_PIXELS
+#endif
+#ifndef TIMUI_IMAGE_PLACEMENT_CAP
+#define TIMUI_IMAGE_PLACEMENT_CAP 8
+#endif
+
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
 TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba,
                                             int w, int h, int stride);
@@ -1493,7 +1563,7 @@ struct Timui {
     /* Terminal-image placements recorded this frame by timui_image_draw;
      * emitted ON TOP of the cell diff in timui_end, so they compose with the
      * renderer. Protocol-specific lifecycle state is tracked separately. */
-    struct { TimuiImage *img; TimuiRect rect; TimuiRect full; } img_place[8];   /* rect=visible, full=uncropped */
+    struct { TimuiImage *img; TimuiRect rect; TimuiRect full; } img_place[TIMUI_IMAGE_PLACEMENT_CAP];   /* rect=visible, full=uncropped */
     int               img_place_count;
     int               img_last_count;       /* placements emitted last frame */
     TimuiImageProtocol img_last_protocol;   /* protocol that emitted those placements */
@@ -1599,6 +1669,10 @@ TIMUI_API const char *timui_version_string(void){
     return TIMUI_VERSION_STRING;
 }
 
+TIMUI_API void timui_config_init(TimuiConfig *cfg){
+    if(cfg) *cfg = TIMUI_CONFIG_INIT;
+}
+
 /* ---- errors ------------------------------------------------------------ */
 TIMUI_API const char *timui_error_string(TimuiResult result){
     switch(result){
@@ -1609,6 +1683,10 @@ TIMUI_API const char *timui_error_string(TimuiResult result){
         case TIMUI_ERR_OS:               return "os error";
         case TIMUI_ERR_UNSUPPORTED:      return "unsupported";
         case TIMUI_ERR_PROTOCOL:         return "protocol error";
+        case TIMUI_ERR_IO:               return "i/o error";
+        case TIMUI_ERR_WOULD_BLOCK:      return "would block";
+        case TIMUI_ERR_EOF:              return "end of file";
+        case TIMUI_ERR_CLOSED:           return "closed";
     }
     return "unknown";
 }
@@ -1826,8 +1904,14 @@ static int fd_write(TimuiTransport *t, const void *d, size_t n){
 }
 static int fd_read(TimuiTransport *t, void *b, size_t cap){
     TimuiFdCtx *c = (TimuiFdCtx *)t->ctx;
-    ssize_t r = read(c->read_fd, b, cap);
-    return r <= 0 ? 0 : (int)r;
+    ssize_t r;
+    do {
+        r = read(c->read_fd, b, cap);
+    } while(r < 0 && errno == EINTR);
+    if(r > 0) return (int)r;
+    if(r == 0) return -2;
+    if(errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+    return -1;
 }
 static int fd_flush(TimuiTransport *t){ (void)t; return 0; }
 static void fd_close(TimuiTransport *t){ (void)t; }
@@ -2019,6 +2103,8 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     if(!out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
     if(!cfg) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(cfg->struct_size != sizeof(TimuiConfig) || cfg->api_version != TIMUI_API_VERSION)
+        return TIMUI_ERR_INVALID_ARGUMENT;
     if(cfg->input_fd < 0 || cfg->output_fd < 0) return TIMUI_ERR_INVALID_ARGUMENT;
     input_flags = fcntl(cfg->input_fd, F_GETFL, 0);
     if(input_flags < 0) return TIMUI_ERR_OS;
@@ -2108,8 +2194,10 @@ TIMUI_API uint64_t timui_now_ms(void){
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
-TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
-    if(!ui || !out_frame) return false;
+TIMUI_API TimuiResult timui_begin_result(Timui *ui, TimuiFrame **out_frame){
+    if(out_frame) *out_frame = NULL;
+    if(!ui || !out_frame) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(ui->should_quit) return TIMUI_ERR_CLOSED;
     if(ui->have_transport){
         char buf[256];
         int n;
@@ -2123,6 +2211,9 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
             if(ui->trace_fd >= 0) trace_write_(ui->trace_fd, "READ  ", (const unsigned char *)buf, (size_t)n);
             timui_input_set_now(&ui->input, timui_now_ms());
             timui_input_feed(&ui->input, buf, (size_t)n, ui_event_cb, ui);
+        }else if(n < 0){
+            if(n == -2) return TIMUI_ERR_EOF;
+            return TIMUI_ERR_IO;
         }else if(ui->fd.read_fd >= 0 && !ui->termios_active){
             /* non-tty real fd with no data (piped/headless input, incl. EOF):
              * the tty poll above doesn't run, so throttle explicitly to avoid a
@@ -2269,7 +2360,10 @@ TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
     ui->ids.count = 0;                  /* fresh id stack for this frame */
     ui->frame.ui = ui;
     *out_frame = &ui->frame;
-    return true;
+    return TIMUI_OK;
+}
+TIMUI_API bool timui_begin(Timui *ui, TimuiFrame **out_frame){
+    return timui_begin_result(ui, out_frame) == TIMUI_OK;
 }
 TIMUI_API void timui_end(TimuiFrame *frame){
     Timui *ui;
@@ -2351,6 +2445,22 @@ TIMUI_API TimuiResult timui_ui_resize(Timui *ui, int w, int h){
     ui->h = h;
     timui_renderer_reset(&ui->renderer);   /* cursor/SGR tracking invalidated */
     return TIMUI_OK;
+}
+TIMUI_API void timui_invalidate(Timui *ui){
+    if(!ui) return;
+    timui_renderer_reset(&ui->renderer);
+}
+TIMUI_API void timui_full_redraw(Timui *ui){
+    size_t i, n;
+    if(!ui) return;
+    timui_invalidate(ui);
+    if(!ui->have_buffers || !ui->prev.cells || ui->prev.w <= 0 || ui->prev.h <= 0) return;
+    n = (size_t)ui->prev.w * (size_t)ui->prev.h;
+    timui_cells_clear(&ui->prev);
+    for(i = 0; i < n; i++){
+        ui->prev.cells[i].codepoint = 0xFFFFFFFFu;   /* impossible live cell: force a diff, including blanks */
+        ui->prev.cells[i].width = 1;
+    }
 }
 TIMUI_API int timui_poll_event(Timui *ui, TimuiEvent *out_event){
     int i;
@@ -2696,25 +2806,28 @@ TIMUI_API void timui_mpsc_destroy(TimuiMpsc *q){
     q->pending = 0;
     memset(&q->alloc, 0, sizeof q->alloc);
 }
-TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
+TIMUI_API TimuiResult timui_mpsc_post_result(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
     TimuiMpscNode *n;
-    if(!q) return 0;
-    if(!timui_allocator_valid_(&q->alloc)) return 0;
+    if(!q) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(!timui_allocator_valid_(&q->alloc)) return TIMUI_ERR_INVALID_ARGUMENT;
 #ifndef TIMUI_NO_THREADS
-    if(!q->lock) return 0;
+    if(!q->lock) return TIMUI_ERR_CLOSED;
 #endif
-    if(size > 0 && !data) return 0;
-    if(size > SIZE_MAX - sizeof(*n)) return 0;   /* overflow guard (cf. msgq_emit) */
+    if(size > 0 && !data) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(size > SIZE_MAX - sizeof(*n)) return TIMUI_ERR_INVALID_ARGUMENT;   /* overflow guard (cf. msgq_emit) */
     TIMUI_MPSC_LOCK(q);
     n = (TimuiMpscNode *)q->alloc.alloc(q->alloc.userdata, sizeof(*n) + size);
-    if(!n){ TIMUI_MPSC_UNLOCK(q); return 0; }
+    if(!n){ TIMUI_MPSC_UNLOCK(q); return TIMUI_ERR_OUT_OF_MEMORY; }
     n->next = NULL; n->type = type; n->size = size;
     if(size > 0 && data) memcpy(n->data, data, size);
     if(q->tail) q->tail->next = n; else q->head = n;
     q->tail = n;
     q->pending++;
     TIMUI_MPSC_UNLOCK(q);
-    return 1;
+    return TIMUI_OK;
+}
+TIMUI_API int timui_mpsc_post(TimuiMpsc *q, uint32_t type, const void *data, size_t size){
+    return timui_mpsc_post_result(q, type, data, size) == TIMUI_OK;
 }
 TIMUI_API int timui_mpsc_recv(TimuiMpsc *q, uint32_t *out_type, void *out_buf, size_t *inout_size){
     TimuiMpscNode *n;
@@ -4204,29 +4317,62 @@ static void caps_set_str(char *dst, size_t cap, const char *src){
 
 #define TIMUI_IMAGE_CAP_MASK_ ((uint32_t)(TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_SIXEL_GRAPHICS | TIMUI_CAP_ITERM2_IMAGES))
 
-TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *term_program, const char *colorterm){
-    if(!c) return;
-    memset(c, 0, sizeof(*c));
+TIMUI_API void timui_caps_detect_report(TimuiCapsReport *r, const char *term,
+                                        const char *term_program,
+                                        const char *colorterm,
+                                        const char *ssh_connection){
+    TimuiCaps *c;
+    uint32_t bits;
+    uint32_t before;
+    int modern;
+    int kitty_family;
+    int iterm2;
+    int multiplexer;
+    if(!r) return;
+    memset(r, 0, sizeof(*r));
+    c = &r->caps;
+    modern = caps_is_modern(term_program) || caps_is_modern(term);
+    kitty_family = caps_is_kitty_family(term_program) || caps_is_kitty_family(term);
+    iterm2 = caps_is_iterm2(term_program) || caps_is_iterm2(term);
+    multiplexer = term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) ||
+                           !strncmp(term, "zellij", 6));
+    if(ssh_connection && *ssh_connection) r->notes |= TIMUI_CAPS_NOTE_SSH_SESSION;
     c->colors = 16;
     caps_set_str(c->term, sizeof(c->term), term);
     caps_set_str(c->term_program, sizeof(c->term_program), term_program);
     if(colorterm && (caps_streq(colorterm, "truecolor") || caps_streq(colorterm, "24bit"))){
         c->flags |= TIMUI_CAP_TRUECOLOR;
+        r->enabled_by_env |= TIMUI_CAP_TRUECOLOR;
+        r->notes |= TIMUI_CAPS_NOTE_TRUECOLOR_ENV;
         c->colors = 16777216;
     }
-    if(caps_is_modern(term_program) || caps_is_modern(term)){
-        c->flags |= TIMUI_CAP_TRUECOLOR | TIMUI_CAP_256_COLOR | TIMUI_CAP_SGR_MOUSE
-                  | TIMUI_CAP_BRACKETED_PASTE | TIMUI_CAP_FOCUS_EVENTS
-                  | TIMUI_CAP_SYNC_OUTPUT | TIMUI_CAP_OSC8_HYPERLINKS;
+    if(modern){
+        bits = TIMUI_CAP_TRUECOLOR | TIMUI_CAP_256_COLOR | TIMUI_CAP_SGR_MOUSE
+             | TIMUI_CAP_BRACKETED_PASTE | TIMUI_CAP_FOCUS_EVENTS
+             | TIMUI_CAP_SYNC_OUTPUT | TIMUI_CAP_OSC8_HYPERLINKS;
+        c->flags |= bits;
+        r->enabled_by_env |= bits;
+        r->notes |= TIMUI_CAPS_NOTE_MODERN_TERMINAL;
         if(c->colors < 16777216) c->colors = 16777216;
-        if(caps_is_kitty_family(term_program) || caps_is_kitty_family(term)){
-            c->flags |= TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
+        if(kitty_family){
+            bits = TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_KITTY_GRAPHICS | TIMUI_CAP_UNICODE_CORE;
+            c->flags |= bits;
+            r->enabled_by_env |= bits;
+            r->notes |= TIMUI_CAPS_NOTE_KITTY_FAMILY;
         }
-        if(caps_is_iterm2(term_program) || caps_is_iterm2(term))
-            c->flags |= TIMUI_CAP_ITERM2_IMAGES | TIMUI_CAP_UNICODE_CORE;
+        if(iterm2){
+            bits = TIMUI_CAP_ITERM2_IMAGES | TIMUI_CAP_UNICODE_CORE;
+            c->flags |= bits;
+            r->enabled_by_env |= bits;
+            r->notes |= TIMUI_CAPS_NOTE_ITERM2;
+        }
     } else if(term && strstr(term, "256color")){
         c->flags |= TIMUI_CAP_256_COLOR;
+        r->enabled_by_env |= TIMUI_CAP_256_COLOR;
+        r->notes |= TIMUI_CAPS_NOTE_256COLOR_TERM;
         c->colors = 256;
+    } else {
+        r->notes |= TIMUI_CAPS_NOTE_SAFE_FALLBACK;
     }
     /* multiplexers reduce capabilities. Image protocols are ALWAYS stripped
      * under a multiplexer: they require explicit passthrough + graphics support
@@ -4234,16 +4380,33 @@ TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *ter
      * plus stray cursor moves. Keyboard and sync are only kept when the OUTER
      * terminal (TERM_PROGRAM, inherited into the session) is kitty-family;
      * otherwise stripped. timui_force_cap overrides either way (W12). */
-    if(term && (!strncmp(term, "tmux", 4) || !strncmp(term, "screen", 6) || !strncmp(term, "zellij", 6))){
+    if(multiplexer){
+        r->notes |= TIMUI_CAPS_NOTE_MULTIPLEXER;
+        before = c->flags;
         c->flags &= ~TIMUI_IMAGE_CAP_MASK_;
-        if(!caps_is_kitty_family(term_program))
+        r->disabled_by_multiplexer |= before & TIMUI_IMAGE_CAP_MASK_;
+        if(caps_is_kitty_family(term_program)){
+            r->notes |= TIMUI_CAPS_NOTE_KITTY_PASSTHROUGH;
+        }else{
+            bits = before & (TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
             c->flags &= ~(TIMUI_CAP_KITTY_KEYBOARD | TIMUI_CAP_SYNC_OUTPUT);
+            r->disabled_by_multiplexer |= bits;
+        }
         c->flags |= TIMUI_CAP_256_COLOR;
         if(c->colors < 256) c->colors = 256;
     }
 #ifdef TIMUI_NO_IMAGES
+    before = c->flags;
     c->flags &= ~TIMUI_IMAGE_CAP_MASK_;
+    r->disabled_by_build |= before & TIMUI_IMAGE_CAP_MASK_;
+    r->notes |= TIMUI_CAPS_NOTE_IMAGES_COMPILED_OUT;
 #endif
+}
+TIMUI_API void timui_caps_detect(TimuiCaps *c, const char *term, const char *term_program, const char *colorterm){
+    TimuiCapsReport r;
+    if(!c) return;
+    timui_caps_detect_report(&r, term, term_program, colorterm, NULL);
+    *c = r.caps;
 }
 TIMUI_API void timui_caps_apply_force(TimuiCaps *c, uint32_t force_on, uint32_t force_off){
     if(!c) return;
@@ -7134,12 +7297,12 @@ static int conpty_read(TimuiTransport *t, void *b, size_t cap){
     DWORD avail = 0, got = 0;
     size_t chunk;
     if(!c || !c->hPipeOut || !b || cap == 0) return 0;
-    if(!PeekNamedPipe(c->hPipeOut, NULL, 0, NULL, &avail, NULL) || avail == 0)
-        return 0;
+    if(!PeekNamedPipe(c->hPipeOut, NULL, 0, NULL, &avail, NULL)) return -1;
+    if(avail == 0) return 0;
     chunk = timui_conpty_io_chunk_for_test(cap);
     if(chunk > (size_t)avail) chunk = (size_t)avail;
     if(chunk == 0) return 0;
-    if(!ReadFile(c->hPipeOut, b, (DWORD)chunk, &got, NULL)) return 0;
+    if(!ReadFile(c->hPipeOut, b, (DWORD)chunk, &got, NULL)) return -1;
     return (int)got;
 }
 
@@ -15426,8 +15589,9 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     TimuiAllocator al;
     int w = 0, h = 0;
     (void)ui;
+    if(!data || size == 0 || size > (size_t)TIMUI_IMAGE_PNG_MAX_BYTES) return NULL;
 #ifdef TIMUI_NO_IMAGES
-    if(!data || size == 0) return NULL;
+    (void)w; (void)h;
 #else
     if(!image_png_header_(data, size, &w, &h)) return NULL;
 #endif
@@ -15452,7 +15616,11 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
 
 static int image_rgba_size_(int w, int h, int stride, size_t *out_row, size_t *out_total){
     size_t row;
+    uint64_t pixels;
     if(w <= 0 || h <= 0) return 0;
+    if(w > TIMUI_IMAGE_MAX_DIMENSION || h > TIMUI_IMAGE_MAX_DIMENSION) return 0;
+    pixels = (uint64_t)(uint32_t)w * (uint64_t)(uint32_t)h;
+    if(pixels > (uint64_t)TIMUI_IMAGE_MAX_PIXELS) return 0;
     if(w > INT_MAX / 4) return 0;
     row = (size_t)w * 4u;
     if(stride < (int)row) return 0;
@@ -15473,7 +15641,8 @@ static void image_copy_rows_(unsigned char *dst, const unsigned char *src,
 static int image_png_preflight_(const TimuiImage *img, int *out_w, int *out_h){
     int w = 0, h = 0;
     uint64_t pixels;
-    if(!img || img->len > (size_t)INT_MAX) return 0;
+    if(!img || img->len == 0 || img->len > (size_t)TIMUI_IMAGE_PNG_MAX_BYTES ||
+       img->len > (size_t)INT_MAX) return 0;
     if(!image_png_header_(img->data, img->len, &w, &h)) return 0;
     if(w > TIMUI_IMAGE_PNG_MAX_DIMENSION || h > TIMUI_IMAGE_PNG_MAX_DIMENSION) return 0;
     pixels = (uint64_t)(uint32_t)w * (uint64_t)(uint32_t)h;
@@ -15544,7 +15713,8 @@ TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
     int png_w = 0, png_h = 0;
 #endif
     (void)ui;
-    if(!png || png_size == 0 || !rgba || !image_rgba_size_(w, h, stride, &row, &total))
+    if(!png || png_size == 0 || png_size > (size_t)TIMUI_IMAGE_PNG_MAX_BYTES ||
+       !rgba || !image_rgba_size_(w, h, stride, &row, &total))
         return NULL;
 #ifndef TIMUI_NO_IMAGES
     if(!image_png_header_(png, png_size, &png_w, &png_h)) return NULL;
@@ -16756,11 +16926,19 @@ TIMUI_API void timui_spinner(TimuiFrame *f, int x, int y, int tick, TimuiStyle s
 }
 /* ---- optional functional runner --------------------------------------- *
  * UI-thread message queue (emit during view, recv into update) + the runner. */
+TIMUI_API TimuiResult timui_emit_result(TimuiFrame *f, uint32_t type, const void *data, size_t size){
+    if(!f || !f->ui) return TIMUI_ERR_INVALID_ARGUMENT;
+    return timui_mpsc_post_result(&f->ui->postq, type, data, size);
+}
 TIMUI_API bool timui_emit(TimuiFrame *f, uint32_t type, const void *data, size_t size){
-    return f && f->ui && timui_mpsc_post(&f->ui->postq, type, data, size) != 0;
+    return timui_emit_result(f, type, data, size) == TIMUI_OK;
+}
+TIMUI_API TimuiResult timui_post_result(Timui *ui, uint32_t type, const void *data, size_t size){
+    if(!ui) return TIMUI_ERR_INVALID_ARGUMENT;
+    return timui_mpsc_post_result(&ui->postq, type, data, size);
 }
 TIMUI_API bool timui_post(Timui *ui, uint32_t type, const void *data, size_t size){
-    return ui && timui_mpsc_post(&ui->postq, type, data, size) != 0;
+    return timui_post_result(ui, type, data, size) == TIMUI_OK;
 }
 TIMUI_API bool timui_recv(Timui *ui, uint32_t *out_type, void *out_buf, size_t *inout_size){
     return ui && timui_mpsc_recv(&ui->postq, out_type, out_buf, inout_size) != 0;
@@ -16778,8 +16956,10 @@ static void timui_app_drain_updates_(Timui *ui, TimuiApp *app){
 }
 TIMUI_API int timui_app_frame(Timui *ui, TimuiApp *app){
     TimuiFrame *f = NULL;
+    TimuiResult r;
     if(!ui || !app || !app->view || timui_should_quit(ui)) return 0;
-    if(!timui_begin(ui, &f)) return 0;
+    r = timui_begin_result(ui, &f);
+    if(r != TIMUI_OK) return 0;
     app->view(f, app->model);
     timui_end(f);
     timui_app_drain_updates_(ui, app);

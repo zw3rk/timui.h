@@ -194,6 +194,11 @@ a Windows host. The canonical evidence procedure and recording template live in
 : Regenerate the release artifacts, verify checksums/manifest metadata, and
   compile the generated header standalone.
 
+**fuzz**
+: Run the deterministic parser/image fuzz regression corpus. Linux builds use
+  ASAN+UBSAN by default; other platforms run the same corpus without sanitizer
+  flags unless `FUZZ_SAN` is set.
+
 **www**
 : Regenerate the amalgamated release header and refresh `www/timui.h` plus
   `www/LICENSE` for the static website.

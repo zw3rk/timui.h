@@ -33,6 +33,7 @@ Everything goes through the nix dev shell + Makefile:
 
     nix develop -c make          # menu
     nix develop -c make check    # build examples + run tests
+    nix develop -c make fuzz     # deterministic parser/image fuzz corpus
     nix develop -c make run      # build & run examples/hello
     nix develop -c make release VERSION=0.2.0
 

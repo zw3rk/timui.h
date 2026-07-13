@@ -16,6 +16,14 @@ endif
 CFLAGS     ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O2 -pthread
 TESTCFLAGS ?= -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O0 -g -pthread
 SAN        ?= address
+ifeq ($(origin FUZZ_SAN),undefined)
+  ifeq ($(UNAME_S),Linux)
+    FUZZ_SAN := address,undefined
+  else
+    FUZZ_SAN :=
+  endif
+endif
+FUZZ_SAN_FLAGS := $(if $(FUZZ_SAN),-fsanitize=$(FUZZ_SAN) -fno-omit-frame-pointer,)
 CONPTY_WIN_CC ?= x86_64-w64-mingw32-gcc
 CONPTY_WIN_CFLAGS ?= -std=c99 -Wall -Wextra -Wpedantic -Werror -D_WIN32_WINNT=0x0A00
 
@@ -46,6 +54,8 @@ LIB_SECTIONS := $(wildcard $(SRCDIR)/timui_*.c) $(SRCDIR)/timui_int.h \
 EXAMPLES  := $(filter-out $(BLDDIR)/radio,$(patsubst $(EXADIR)/%.c,$(BLDDIR)/%,$(wildcard $(EXADIR)/*.c)))
 TEST_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/test_main.c $(TSTDIR)/test_rect.c $(TSTDIR)/test_result.c $(TSTDIR)/test_arena.c $(TSTDIR)/test_strings.c $(TSTDIR)/test_id_stack.c $(TSTDIR)/test_msgq.c $(TSTDIR)/test_mpsc.c $(TSTDIR)/test_transport.c $(TSTDIR)/test_screen.c $(TSTDIR)/test_input.c $(TSTDIR)/test_mouse.c $(TSTDIR)/test_termios.c $(TSTDIR)/test_size.c $(TSTDIR)/test_caps.c $(TSTDIR)/test_kitty.c $(TSTDIR)/test_sync.c $(TSTDIR)/test_cells.c $(TSTDIR)/test_utf8.c $(TSTDIR)/test_draw.c $(TSTDIR)/test_render.c $(TSTDIR)/test_cursor.c $(TSTDIR)/test_frame.c $(TSTDIR)/test_interact.c $(TSTDIR)/test_theme.c $(TSTDIR)/test_stylesheet.c $(TSTDIR)/test_button.c $(TSTDIR)/test_widgets.c $(TSTDIR)/test_input_widget.c $(TSTDIR)/test_listbox.c $(TSTDIR)/test_grid_widget.c $(TSTDIR)/test_dialog.c $(TSTDIR)/test_fuzz.c $(TSTDIR)/test_clip.c $(TSTDIR)/test_menus.c $(TSTDIR)/test_modal.c $(TSTDIR)/test_hyperlink.c $(TSTDIR)/test_esc_timeout.c $(TSTDIR)/test_scroll.c $(TSTDIR)/test_v02_batch.c $(TSTDIR)/test_v02_widgets.c $(TSTDIR)/test_v02_more.c $(TSTDIR)/test_images_pty.c $(TSTDIR)/test_review_critical.c $(TSTDIR)/test_snapshot.c $(TSTDIR)/test_coverage_z7.c $(TSTDIR)/test_render_stream.c $(TSTDIR)/test_async_scan.c
 TEST_BIN  := $(BLDDIR)/test_unit
+FUZZ_SRCS := $(SRCDIR)/timui.c $(TSTDIR)/fuzz_main.c $(TSTDIR)/test_fuzz.c $(TSTDIR)/test_images_pty.c
+FUZZ_BIN  := $(BLDDIR)/fuzz_regression
 GOLDEN_BIN := $(BLDDIR)/gen_golden
 
 # libvterm round-trip tests (Tier A) are opt-in. WITH_VTERM=1 resolves the
@@ -138,7 +148,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www check-www check-www-assets check-refinement-docs check-phase1-5-docs check-hosted-visual-windows check-conpty-evidence-artifacts verify-conpty-evidence amalgamate release release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: help build test test-san fuzz run www check-www check-www-assets check-refinement-docs check-phase1-5-docs check-hosted-visual-windows check-conpty-evidence-artifacts verify-conpty-evidence amalgamate release release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
 .PHONY: accept check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden gen-golden-vtgif check-vt-gif-style check-vt-gif-all
 .PHONY: run-chat-demo rec-chat-demo gif-chat-demo webp-chat-demo gen-font-ttf gen-emoji gen-cjk
 
@@ -171,6 +181,11 @@ $(TEST_BIN): $(TEST_SRCS) $(HEADER) $(LIB_SECTIONS)
 	@mkdir -p $(@D)
 	@printf "$(C_CYAN)build$(C_RESET) tests\n"
 	@$(CC) $(TESTCFLAGS) -I$(INCDIR) $(TEST_SRCS) -o $@
+
+$(FUZZ_BIN): $(FUZZ_SRCS) $(HEADER) $(LIB_SECTIONS)
+	@mkdir -p $(@D)
+	@printf "$(C_CYAN)build$(C_RESET) fuzz regression corpus\n"
+	@$(CC) $(TESTCFLAGS) $(FUZZ_SAN_FLAGS) -I$(INCDIR) -I$(TSTDIR) $(FUZZ_SRCS) -o $@
 
 $(GOLDEN_BIN): $(TOOLDIR)/gen_golden.c $(HEADER) $(TSTDIR)/scenes.h $(LIB_SECTIONS)
 	@mkdir -p $(@D)
@@ -308,6 +323,12 @@ test-san: ## Compile + run unit tests under a sanitizer: make test-san SAN=addre
 	@$(CC) -std=c99 $(POSIX_CFLAGS) -Wall -Wextra -Wpedantic -O1 -g -fsanitize=$(SAN) -I$(INCDIR) $(TEST_SRCS) -o $(BLDDIR)/test_san
 	@./$(BLDDIR)/test_san
 
+fuzz: ## Run deterministic parser/image fuzz corpus (Linux: ASAN+UBSAN)
+	@rm -f $(FUZZ_BIN)
+	@$(MAKE) $(FUZZ_BIN)
+	@printf "$(C_YELL)▶ running fuzz regression corpus$(C_RESET)\n"
+	@./$(FUZZ_BIN)
+
 vt-test: build ## Compile + run unit tests WITH vterm round-trip tests (needs libvterm-neovim)
 	@$(MAKE) $(VT_BIN) WITH_VTERM=1
 	@printf "$(C_YELL)▶ running vt-tests$(C_RESET)\n"
@@ -356,6 +377,8 @@ check-refinement-docs: ## Verify refinement contract docs exist and keep require
 	@grep -q 'timui_post_result' docs/THREADING.md
 	@grep -q 'timui_caps_detect_report' docs/API.md
 	@grep -q 'disabled_by_multiplexer' docs/TERMINAL_PROTOCOLS.md
+	@grep -q 'make fuzz' docs/runbooks/release.md
+	@grep -q 'SHA256SUMS' docs/runbooks/release.md
 	@printf "$(C_GREEN)✓ refinement contract docs$(C_RESET)\n"
 
 verify-conpty-evidence: tools/verify_conpty_evidence.py ## Validate downloaded hosted ConPTY evidence (ARTIFACT_DIR=... [COMMIT=...])

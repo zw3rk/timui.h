@@ -6,6 +6,15 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 
 ## [Unreleased]
 
+### Added
+- **Refinement release gates**: `make fuzz` now runs a deterministic
+  parser/image adversarial corpus, and the release runbook documents local
+  gates, generated artifacts, checksums, tagging, and GitHub draft-release
+  steps.
+- **Capability diagnostics**: `timui_caps_detect_report` explains caps enabled
+  by environment and caps disabled by multiplexers, build flags, SSH context, or
+  conservative fallback.
+
 ### Fixed
 - **Adversarial terminal hardening**: renderer cells no longer emit raw control
   codepoints, malformed UTF-8 width scans initialize their replacement

@@ -28,6 +28,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix develop -c make check
+      - run: nix develop -c make fuzz
       - run: nix develop -c make release-check
       # Golden staleness: if rendering drifted and tests/golden/*.txt weren't
       # regenerated, the regenerated files differ from the committed ones.
