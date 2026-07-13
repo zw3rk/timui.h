@@ -59,8 +59,8 @@ calling `ResizePseudoConsole`.
 
 On non-Windows builds, ConPTY APIs return `TIMUI_ERR_UNSUPPORTED` after
 clearing output handles. The Win32 path is enforced by the MinGW compile seam in
-`make check`; live Windows Terminal smoke evidence is still required before
-documenting Windows as supported.
+`make check`; live Windows ConPTY smoke evidence from a Windows host is still
+required before documenting Windows as supported.
 
 ## Layout
 

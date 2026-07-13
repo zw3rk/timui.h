@@ -149,11 +149,16 @@ in `docs/runbooks/phase1-5-live-evidence.md`.
 : Cross-compile the Win32 ConPTY smoke runner when MinGW is available. This is
   compile evidence only.
 
+**check-conpty-smoke-tool**
+: Compile and run the portable helper tests for the Win32 ConPTY smoke runner:
+  script line-ending selection, sentinel matching, and helper behavior that can
+  be checked without a Windows host.
+
 **smoke-conpty-win32**
-: Run the Win32 ConPTY smoke runner inside Windows Terminal on Windows. It opens
-  the default shell via `timui_conpty_open`, writes an echo sentinel through the
-  transport, reads it back, resizes once, and closes twice. A non-Windows skip is
-  not Windows evidence.
+: Run the Win32 ConPTY smoke runner on Windows. It opens the default shell via
+  `timui_conpty_open`, writes an echo sentinel through the transport, reads it
+  back, resizes once, and closes twice. A non-Windows skip is not Windows
+  evidence.
 
 ## Release header
 

@@ -135,7 +135,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www check-www check-www-assets amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www check-www check-www-assets amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
 .PHONY: accept check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden gen-golden-vtgif check-vt-gif-style check-vt-gif-all
 .PHONY: run-chat-demo rec-chat-demo gif-chat-demo webp-chat-demo gen-font-ttf gen-emoji gen-cjk
 
@@ -293,7 +293,7 @@ rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
 # 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
 # ============================================================================
 
-check: build test check-no-images check-conpty-win32-compile check-conpty-win32-smoke-compile check-www ## Build + test gate
+check: build test check-no-images check-conpty-smoke-tool check-conpty-win32-compile check-conpty-win32-smoke-compile check-www ## Build + test gate
 	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 test: $(TEST_BIN) ## Compile and run the unit tests
@@ -322,6 +322,12 @@ check-conpty-posix: $(TEST_BIN) ## Run POSIX ConPTY fallback/helper coverage
 	@printf "$(C_YELL)▶ running ConPTY POSIX helper tests$(C_RESET)\n"
 	@./$(TEST_BIN)
 
+check-conpty-smoke-tool: $(TSTDIR)/test_conpty_smoke_tool.c $(TOOLDIR)/conpty_smoke_win32.c $(HEADER) $(LIB_SECTIONS) ## Test portable ConPTY smoke-tool helpers
+	@mkdir -p $(BLDDIR)
+	@printf "$(C_CYAN)build$(C_RESET) ConPTY smoke helper tests\n"
+	@$(CC) $(CFLAGS) -I$(INCDIR) $(TSTDIR)/test_conpty_smoke_tool.c -o $(BLDDIR)/test_conpty_smoke_tool
+	@./$(BLDDIR)/test_conpty_smoke_tool
+
 check-conpty-win32-compile: ## Cross-compile the isolated Win32 ConPTY backend when mingw is available
 	@mkdir -p $(BLDDIR)
 	@if ! command -v $(CONPTY_WIN_CC) >/dev/null 2>&1; then \
@@ -342,7 +348,7 @@ check-conpty-win32-smoke-compile: ## Cross-compile the operator Win32 ConPTY smo
 	@$(CONPTY_WIN_CC) $(CONPTY_WIN_CFLAGS) -I$(INCDIR) $(TOOLDIR)/conpty_smoke_win32.c -o $(BLDDIR)/conpty_smoke_win32.exe
 	@printf "$(C_GREEN)✓ Win32 ConPTY operator smoke runner compiles$(C_RESET)\n"
 
-check-conpty: check-conpty-posix check-conpty-win32-compile ## Run ConPTY POSIX helper + optional Win32 compile checks
+check-conpty: check-conpty-posix check-conpty-smoke-tool check-conpty-win32-compile ## Run ConPTY helper + optional Win32 compile checks
 
 goldens: $(GOLDEN_BIN) ## Regenerate tests/golden/*.txt snapshots
 	@mkdir -p tests/golden
@@ -675,11 +681,11 @@ smoke-image-live-iterm2: smoke-image-live ## Live image smoke forcing iTerm2 inl
 smoke-image-live-none: PROTO=none
 smoke-image-live-none: smoke-image-live ## Live image smoke forcing text placeholders
 
-smoke-conpty-win32: check-conpty-win32-smoke-compile ## Run the ConPTY smoke runner on Windows Terminal only
+smoke-conpty-win32: check-conpty-win32-smoke-compile ## Run the ConPTY smoke runner on Windows only
 	@if [ "$${OS:-}" = "Windows_NT" ]; then \
 	  ./$(BLDDIR)/conpty_smoke_win32.exe; \
 	else \
-	  printf "$(C_YELL)SKIP$(C_RESET) smoke-conpty-win32 must run inside Windows Terminal on Windows\n"; \
+	  printf "$(C_YELL)SKIP$(C_RESET) smoke-conpty-win32 must run on Windows\n"; \
 	fi
 
 # ============================================================================

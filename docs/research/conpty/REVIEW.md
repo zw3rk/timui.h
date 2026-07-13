@@ -12,6 +12,8 @@ date: 2026-07-08
   <https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session>
 - Microsoft Learn, CreatePseudoConsole:
   <https://learn.microsoft.com/en-us/windows/console/createpseudoconsole>
+- Microsoft Windows Command Line blog, ConPTY introduction:
+  <https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/>
 - Microsoft Learn, ClosePseudoConsole:
   <https://learn.microsoft.com/en-us/windows/console/closepseudoconsole>
 - Microsoft Learn, ResizePseudoConsole:
@@ -79,9 +81,18 @@ instead of creating a binary that fails to load.
   resizes the pseudoconsole, writes an echo sentinel through the transport,
   reads it back, and closes twice to exercise idempotent cleanup when run on
   Windows.
-- `make smoke-conpty-win32` is the live Windows Terminal target. A non-Windows
-  skip or a MinGW compile is not live evidence.
+- The hosted Windows artifact from run `28982641529` showed partial ConPTY
+  success: `cmd.exe` started and the smoke read the initial banner/prompt, but
+  the sentinel was not observed. The smoke now serializes Enter as LF first,
+  matching Microsoft's ConPTY input example, keeps a fresh-session CRLF
+  fallback, writes `exit` only after the sentinel read attempt, treats short
+  writes as failures, and dumps a bounded escaped excerpt on failure so the
+  next hosted or interactive run can distinguish input-line-ending problems
+  from transport write failures.
+- `make smoke-conpty-win32` is the live Windows host target. A non-Windows skip
+  or a MinGW compile is not live evidence.
 - `docs/runbooks/phase1-5-live-evidence.md` defines the accepted Windows
   evidence record and what host/compiler/terminal details to capture.
 - These compile checks are not live Windows evidence. Do not claim supported
-  Windows operation until a real Windows Terminal smoke run is captured.
+  Windows operation until a real Windows ConPTY smoke run on a Windows host is
+  captured.
