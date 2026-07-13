@@ -74,7 +74,7 @@ static const char CODE_SRC[] =
     "}\n";
 
 int main(int argc, char **argv){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     int max_frames = 0, frames = 0, tick = 0, tab_sel = 0, code_scroll = 0;
     TimuiTableState tstate = {0, 0, 0};

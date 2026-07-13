@@ -192,15 +192,11 @@
     </p>
 
     <h2>SYNOPSIS</h2>
-    <pre><code><span class="c-preproc">#include</span> <span class="c-string">&lt;unistd.h&gt;</span>
-
-<span class="c-preproc">#define</span> <span class="c-define">TIMUI_IMPLEMENTATION</span>
+    <pre><code><span class="c-preproc">#define</span> <span class="c-define">TIMUI_IMPLEMENTATION</span>
 <span class="c-preproc">#include</span> <span class="c-string">"timui.h"</span>
 
-<span class="c-type">TimuiConfig</span> cfg = {<span class="c-number">0</span>};
+<span class="c-type">TimuiConfig</span> cfg = <span class="c-define">TIMUI_CONFIG_INIT</span>;
 <span class="c-type">Timui</span> *ui = <span class="c-number">0</span>;
-cfg.input_fd = <span class="c-define">STDIN_FILENO</span>;
-cfg.output_fd = <span class="c-define">STDOUT_FILENO</span>;
 cfg.flags = <span class="c-define">TIMUI_FLAG_ALT_SCREEN</span> | <span class="c-define">TIMUI_FLAG_RESTORE_ON_EXIT</span>;
 <span class="c-call">timui_open</span>(&amp;cfg, &amp;ui);</code></pre>
 
@@ -252,14 +248,11 @@ cfg.flags = <span class="c-define">TIMUI_FLAG_ALT_SCREEN</span> | <span class="c
 <span class="c-preproc">#include</span> <span class="c-string">"timui.h"</span>
 
 <span class="c-keyword">int</span> <span class="c-call">main</span>(<span class="c-keyword">void</span>) {
-    <span class="c-type">TimuiConfig</span> cfg = {<span class="c-number">0</span>};
+    <span class="c-type">TimuiConfig</span> cfg = <span class="c-define">TIMUI_CONFIG_INIT</span>;
     <span class="c-type">Timui</span> *ui = <span class="c-number">0</span>;
 
     cfg.title = <span class="c-string">"hello timui"</span>;
-    <span class="c-comment">/* POSIX file descriptors, not stdio FILE* streams. */</span>
-    cfg.input_fd = <span class="c-define">STDIN_FILENO</span>;
-    cfg.output_fd = <span class="c-define">STDOUT_FILENO</span>;
-    cfg.profile = <span class="c-define">TIMUI_PROFILE_AUTO</span>;
+    <span class="c-comment">/* Defaults to POSIX fd 0/1, not stdio FILE* streams. */</span>
     cfg.flags = <span class="c-define">TIMUI_FLAG_ALT_SCREEN</span> | <span class="c-define">TIMUI_FLAG_RESTORE_ON_EXIT</span>;
     cfg.theme = <span class="c-define">TIMUI_THEME_DOS_BLUE</span>;
 

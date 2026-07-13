@@ -89,7 +89,7 @@ static void draw_unsupported(TimuiFrame *f, int x, int y, const char *label,
 }
 
 int main(int argc, char **argv){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     TimuiImage *png = NULL, *rgba = NULL, *both = NULL;
     TimuiImageProtocol want = TIMUI_IMAGE_PROTOCOL_NONE;

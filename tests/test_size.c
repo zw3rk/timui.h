@@ -69,7 +69,7 @@ TIMUI_TEST(test_open_falls_back_from_zero_term_size){
     ws.ws_col = 0; ws.ws_row = 0; ws.ws_xpixel = 0; ws.ws_ypixel = 0;
     TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
 
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = input;
     cfg.output_fd = slave;
     TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);

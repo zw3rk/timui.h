@@ -32,7 +32,7 @@ static const char *last_key(TimuiFrame *f){
 }
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     cfg.title     = "timui.h keyboard inspector";
     cfg.input_fd  = 0;

@@ -1832,7 +1832,7 @@ TIMUI_TEST(test_signal_restore){
         ioctl(slave, TIOCSWINSZ, &ws);
         dup2(slave, 0); dup2(slave, 1); dup2(slave, 2);
         close(slave); close(master);
-        memset(&cfg, 0, sizeof cfg);
+        timui_config_init(&cfg);
         cfg.input_fd = 0; cfg.output_fd = 1;
         cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_RESTORE_ON_EXIT;
         cfg.title = ""; cfg.profile = TIMUI_PROFILE_AUTO;

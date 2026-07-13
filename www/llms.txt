@@ -34,25 +34,21 @@ Minimal include pattern:
 ```
 
 `TimuiConfig.input_fd` and `TimuiConfig.output_fd` are POSIX integer file
-descriptors. Use `STDIN_FILENO` and `STDOUT_FILENO` from `<unistd.h>`, not
-`stdin` and `stdout` from stdio.
+descriptors. `TIMUI_CONFIG_INIT` defaults them to fd 0 and fd 1
+(`STDIN_FILENO`/`STDOUT_FILENO`). Override them with integer descriptors, not
+`stdin` and `stdout` stdio streams.
 
 ## Minimal app skeleton
 
 ```c
-#include <unistd.h>
-
 #define TIMUI_IMPLEMENTATION
 #include "timui.h"
 
 int main(void) {
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = 0;
 
     cfg.title = "hello timui";
-    cfg.input_fd = STDIN_FILENO;
-    cfg.output_fd = STDOUT_FILENO;
-    cfg.profile = TIMUI_PROFILE_AUTO;
     cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_RESTORE_ON_EXIT;
     cfg.theme = TIMUI_THEME_DOS_BLUE;
 

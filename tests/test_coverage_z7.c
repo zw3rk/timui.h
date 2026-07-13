@@ -278,7 +278,7 @@ TIMUI_TEST(test_hyperlink_set_edges){
 TIMUI_TEST(test_run_negative_guards){
     TimuiConfig cfg;
     TimuiApp app;
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     memset(&app, 0, sizeof app);
     TIMUI_CHECK(timui_run(NULL, &app) == 1);
     TIMUI_CHECK(timui_run(&cfg, NULL) == 1);

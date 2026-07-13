@@ -257,8 +257,9 @@ Avoid:
    testing/rendering, single-header release.
 6. Quality proof: over 300 tests, CI gates, sanitizers, libvterm, goldens,
    release-check.
-7. Honest limitations: Windows smoke pending, terminal-dependent images/Shift+Enter,
-   limited bidi/grapheme support, pre-1.0 API movement.
+7. Honest limitations: terminal-dependent images/Shift+Enter, conservative
+   multiplexer image handling, limited bidi/grapheme parity, pre-1.0 API
+   movement.
 8. Get started: `nix develop -c make`, `make run-chat`, drop-in header pattern.
 
 ## Code snippet for the site
@@ -267,20 +268,15 @@ Keep the first snippet small. Show the loop shape and controlled result, not
 every subsystem.
 
 ```c
-#include <unistd.h>
-
 #define TIMUI_IMPLEMENTATION
 #include "timui.h"
 
 int main(void) {
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = 0;
     bool enabled = true;
 
     cfg.title = "hello timui";
-    cfg.input_fd = STDIN_FILENO;
-    cfg.output_fd = STDOUT_FILENO;
-    cfg.profile = TIMUI_PROFILE_AUTO;
     cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_MOUSE |
                 TIMUI_FLAG_RESTORE_ON_EXIT;
     cfg.theme = TIMUI_THEME_DOS_BLUE;

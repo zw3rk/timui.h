@@ -474,7 +474,7 @@ static void draw_kv(TimuiFrame *f, int x, int y, int w, const char *k, const cha
 }
 
 int main(int argc, char **argv){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     RadioCtl ctl;
     StreamArgs sargs;

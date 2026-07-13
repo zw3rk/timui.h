@@ -18,6 +18,8 @@ translation unit before including it (or link the dev build's `src/timui.c`).
 ## Lifecycle
 
 ```c
+TimuiConfig cfg = TIMUI_CONFIG_INIT;
+void        timui_config_init(TimuiConfig *cfg);
 TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 void        timui_close(Timui *ui);
 bool        timui_begin(Timui *ui, TimuiFrame **out_frame);   /* UI-thread */
@@ -32,10 +34,23 @@ TimuiResult timui_term_size_pixels(int fd, int *out_w, int *out_h,
                                    int *out_px_w, int *out_px_h);
 ```
 
-`timui_open` enters raw mode + alternate screen (if a tty), detects
+Initialize `TimuiConfig` with `TIMUI_CONFIG_INIT` or `timui_config_init(&cfg)`.
+The initializer fills the ABI guards (`struct_size`, `api_version`), defaults
+to file descriptors `0`/`1` (`STDIN_FILENO`/`STDOUT_FILENO`), `AUTO` profile,
+the modern dark theme, and `TIMUI_FLAG_RESTORE_ON_EXIT`. `timui_open` rejects
+config size/API-version mismatches so stale binaries fail before touching the
+terminal.
+
+The input/output descriptors are borrowed. timui never closes them. The POSIX
+backend temporarily sets the input descriptor non-blocking and restores its
+original flags on `timui_restore_terminal` / `timui_close`; raw mode is entered
+only when the input descriptor is a tty, and screen-mode escapes are emitted
+only when the output descriptor is a tty.
+
+`timui_open` enters raw mode + screen modes requested by flags, detects
 capabilities, and sizes the buffers. `timui_begin` ingests input, clears the
-frame, and resets the id stack; `timui_end` diff-renders and swaps. A `TimuiFrame`
-is valid only between `begin` and `end`.
+frame, and resets the id stack; `timui_end` diff-renders and swaps. A
+`TimuiFrame` is valid only between `begin` and `end`.
 
 Live terminal resize is explicit in v0.2: call `timui_term_size(output_fd, &w,
 &h)` and then `timui_ui_resize(ui, w, h)` when the dimensions change.

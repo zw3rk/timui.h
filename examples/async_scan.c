@@ -48,7 +48,7 @@ static void update(void *m, uint32_t type, const void *msg, size_t sz){
 }
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     AsyncScanModel mdl = {0};
     pthread_t th;

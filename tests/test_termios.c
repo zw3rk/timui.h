@@ -144,7 +144,7 @@ TIMUI_TEST(test_open_restores_input_fd_flags){
     orig = fcntl(p[0], F_GETFL, 0);
     TIMUI_CHECK(orig >= 0);
 
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = p[0];
     cfg.output_fd = p[1];
     TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);
@@ -170,7 +170,7 @@ TIMUI_TEST(test_open_fails_when_nonblock_set_fails){
     orig = fcntl(p[0], F_GETFL, 0);
     TIMUI_CHECK(orig >= 0);
 
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = p[0];
     cfg.output_fd = p[1];
 
@@ -199,7 +199,7 @@ TIMUI_TEST(test_restore_terminal_restores_input_fd_flags){
     if(ok != 0) return;
 
     orig = fcntl(p[0], F_GETFL, 0);
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = p[0];
     cfg.output_fd = p[1];
     TIMUI_CHECK(timui_open(&cfg, &ui) == TIMUI_OK);
@@ -240,7 +240,7 @@ TIMUI_TEST(test_open_restores_previous_signal_handler){
     sigemptyset(&custom.sa_mask);
     TIMUI_CHECK(sigaction(SIGTERM, &custom, NULL) == 0);
 
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = slave;
     cfg.output_fd = nullfd;
     cfg.flags = TIMUI_FLAG_ALT_SCREEN | TIMUI_FLAG_RESTORE_ON_EXIT;
@@ -278,7 +278,7 @@ TIMUI_TEST(test_open_enters_screen_when_only_output_is_tty){
     ws.ws_row = 24;
     TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
 
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = input;
     cfg.output_fd = slave;
     cfg.flags = TIMUI_FLAG_ALT_SCREEN;
@@ -311,7 +311,7 @@ TIMUI_TEST(test_open_fails_when_raw_mode_fails){
     if(nullfd < 0){ close(slave); close(master); TIMUI_CHECK(0); return; }
 
     orig_flags = fcntl(slave, F_GETFL, 0);
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = slave;
     cfg.output_fd = nullfd;
 
@@ -336,7 +336,7 @@ TIMUI_TEST(test_open_rejects_invalid_fds){
     int p[2];
     int ok;
 
-    memset(&cfg, 0, sizeof cfg);
+    timui_config_init(&cfg);
     cfg.input_fd = -1;
     cfg.output_fd = 1;
     r = timui_open(&cfg, &ui);

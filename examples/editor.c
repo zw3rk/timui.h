@@ -51,7 +51,7 @@ int main(int argc, char **argv){
      * and threads it through the frame as TimuiTextAreaState.text. */
     static char buf[64 * 1024];
 
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui      *ui  = NULL;
     TimuiTextAreaState ta = { buf, sizeof buf, 0, 0 };   /* text + cursor + scroll */
     char     filename[1024];

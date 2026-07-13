@@ -8,7 +8,7 @@
 #include "timui.h"
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     bool enable = true;
     int choice = 0, show_msg = 0;

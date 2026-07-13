@@ -44,7 +44,7 @@ static void update(void *m, uint32_t type, const void *msg, size_t sz){
 }
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Model mdl = {0};
     TimuiApp app = { &mdl, view, update };
     cfg.title     = "timui.h counter (runner)";

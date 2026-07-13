@@ -15,7 +15,7 @@ static const char *RITEMS[] = { "..", "bin", "lib", "share", "notes.txt" };
 static const char *pick(void *ud, int i){ const char **a = (const char **)ud; return a[i]; }
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     TimuiListState lst = {0, 0}, rst = {0, 0};
     char cmd[128] = {0};

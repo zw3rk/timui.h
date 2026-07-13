@@ -798,7 +798,7 @@ static void draw_fullscreen(TimuiFrame *f, TimuiRect root, TimuiImage *img, cons
 }
 
 int main(int argc, char **argv){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     Worker worker = {0};
     pthread_t th;

@@ -85,7 +85,7 @@ static char todo_command_key(const TimuiFrame *f) {
 }
 
 int main(void) {
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     TimuiTheme theme = timui_theme_builtin(TIMUI_THEME_DOS_BLUE);
 

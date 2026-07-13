@@ -47,6 +47,7 @@ header used by the split source tree.
 
     #define TIMUI_IMPLEMENTATION
     #include "timui.h"
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
 
 Define `TIMUI_IMPLEMENTATION` in exactly one translation unit. See
 [USAGE.md](USAGE.md) and [docs/API.md](docs/API.md).

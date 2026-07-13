@@ -3,6 +3,10 @@ TIMUI_API const char *timui_version_string(void){
     return TIMUI_VERSION_STRING;
 }
 
+TIMUI_API void timui_config_init(TimuiConfig *cfg){
+    if(cfg) *cfg = TIMUI_CONFIG_INIT;
+}
+
 /* ---- errors ------------------------------------------------------------ */
 TIMUI_API const char *timui_error_string(TimuiResult result){
     switch(result){
@@ -423,6 +427,8 @@ TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui){
     if(!out_ui) return TIMUI_ERR_INVALID_ARGUMENT;
     *out_ui = NULL;
     if(!cfg) return TIMUI_ERR_INVALID_ARGUMENT;
+    if(cfg->struct_size != sizeof(TimuiConfig) || cfg->api_version != TIMUI_API_VERSION)
+        return TIMUI_ERR_INVALID_ARGUMENT;
     if(cfg->input_fd < 0 || cfg->output_fd < 0) return TIMUI_ERR_INVALID_ARGUMENT;
     input_flags = fcntl(cfg->input_fd, F_GETFL, 0);
     if(input_flags < 0) return TIMUI_ERR_OS;

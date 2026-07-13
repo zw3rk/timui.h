@@ -12,7 +12,7 @@
 #include "timui.h"
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
 
     cfg.title     = "timui.h hello";

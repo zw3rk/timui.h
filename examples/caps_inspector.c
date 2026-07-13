@@ -24,7 +24,7 @@ static void cap_line(TimuiFrame *f, int y, const char *name, int on){
 }
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     TimuiCaps caps;
     timui_caps_detect(&caps, getenv("TERM"), getenv("TERM_PROGRAM"), getenv("COLORTERM"));

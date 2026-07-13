@@ -645,7 +645,7 @@ static void irc_replay_file(IrcClient *cl, const char *path){
 }
 
 int main(int argc, char **argv){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     /* The client model holds per-buffer scrollback rings (several MB); keep it
      * OFF the stack as a function-local static (as chat.c does for its ring)

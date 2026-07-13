@@ -36,6 +36,8 @@ extern "C" {
 #define TIMUI_VERSION_MINOR 2
 #define TIMUI_VERSION_PATCH 0
 #define TIMUI_VERSION_STRING "0.2.0"
+#define TIMUI_API_VERSION \
+    ((TIMUI_VERSION_MAJOR << 16) | (TIMUI_VERSION_MINOR << 8) | TIMUI_VERSION_PATCH)
 
 /* ---- Feature macros ----------------------------------------------------- *
  * TIMUI_IMPLEMENTATION   include the implementation (exactly one TU)
@@ -155,6 +157,8 @@ typedef enum {
 } TimuiFlags;
 
 typedef struct {
+    size_t            struct_size;
+    uint32_t          api_version;
     const char       *title;
     int               input_fd;
     int               output_fd;
@@ -172,8 +176,12 @@ typedef struct {
 #define TIMUI_STR_LIT(s)     ((TimuiStr){ (s), sizeof(s) - 1 })
 #define TIMUI_RECT(x, y, w, h) ((TimuiRect){ (x), (y), (w), (h) })
 #define TIMUI_ID(s)          timui_id_from_cstr(s)
+#define TIMUI_CONFIG_INIT    ((TimuiConfig){ sizeof(TimuiConfig), TIMUI_API_VERSION, NULL, 0, 1, \
+                                             TIMUI_PROFILE_AUTO, TIMUI_FLAG_RESTORE_ON_EXIT, \
+                                             TIMUI_THEME_MODERN_DARK, {0}, 0, 0, 0, NULL })
 
 /* ---- Lifecycle (POSIX terminal backend; Win32 ConPTY transport) -------- */
+TIMUI_API void        timui_config_init(TimuiConfig *cfg);
 TIMUI_API TimuiResult timui_open(const TimuiConfig *cfg, Timui **out_ui);
 TIMUI_API void        timui_close(Timui *ui);
 /* Restore the terminal (screen exit + termios). Call from normal control flow

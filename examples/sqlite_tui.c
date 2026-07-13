@@ -670,7 +670,7 @@ int main(int argc, char **argv)
     App a;
     const char *db_path = NULL, *query = NULL;
     int headless = 0, frames = 0, cols = 100, rows = 30, i, fr;
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
     TimuiFakeTransport fake;
 

@@ -178,7 +178,7 @@ static int poll_sort_key(const TimuiFrame *f){
 }
 
 int main(void){
-    TimuiConfig     cfg    = {0};
+    TimuiConfig     cfg    = TIMUI_CONFIG_INIT;
     Timui          *ui     = NULL;
     ProcTable       table  = {0};
     TimuiTableState tstate = {0, 0, 0};

@@ -34,6 +34,8 @@ void test_rect_inset_pad_extreme_safe(void);
 void test_ids_stable(void);
 void test_error_string(void);
 void test_version(void);
+void test_config_init_defaults(void);
+void test_open_rejects_config_version_mismatch(void);
 void test_default_allocator(void);
 void test_arena_alloc_reset(void);
 void test_arena_oom(void);

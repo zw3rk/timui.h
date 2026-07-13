@@ -23,6 +23,8 @@ int main(void){
         test_ids_stable,
         test_error_string,
         test_version,
+        test_config_init_defaults,
+        test_open_rejects_config_version_mismatch,
         test_default_allocator,
         test_arena_alloc_reset,
         test_arena_oom,

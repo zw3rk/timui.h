@@ -264,7 +264,7 @@ static const char HELP_TEXT[] =
     "Press any key to close.\n";
 
 int main(void){
-    TimuiConfig cfg = {0};
+    TimuiConfig cfg = TIMUI_CONFIG_INIT;
     Timui *ui = NULL;
 
     /* The model, owned by main(). Large but well within the main-thread stack. */
