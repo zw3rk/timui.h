@@ -187,6 +187,17 @@ Hosted runner probe:
   above and record that the manifest was unavailable.
 - `conpty-smoke.command.txt` and `conpty-smoke.meta.txt` are diagnostics for
   the exact hosted MSYS2 invocation and host/toolchain metadata.
+- For current artifacts, validate the machine predicate before updating any
+  docs:
+
+  ```sh
+  nix develop -c make verify-conpty-evidence ARTIFACT_DIR=artifacts/gh-runs/<run>/hosted-visual-windows-terminal COMMIT=<commit>
+  ```
+
+  The verifier requires `conpty-acceptance.json`, `evidence.md`,
+  `conpty-smoke.stdout`, `conpty-smoke.stderr`, `conpty-smoke.status`,
+  `conpty-smoke.command.txt`, and `conpty-smoke.meta.txt` to agree on the same
+  commit, status 0, and the exact ConPTY PASS token.
 - `windows-terminal-sixel-*.png` is supplemental Sixel evidence only if it
   visibly shows the Windows Terminal live smoke with image tiles and the
   session diagnostics show an interactive desktop. Run `28982641529` is the

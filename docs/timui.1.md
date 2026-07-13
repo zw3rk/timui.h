@@ -159,6 +159,19 @@ a Windows host. The canonical evidence procedure and recording template live in
 : Verify the hosted Windows visual probe script still emits the ConPTY
   acceptance manifest (`conpty-acceptance.json`) and its command/meta sidecars.
 
+**check-conpty-evidence-artifacts**
+: Run synthetic positive and negative fixture tests for the hosted ConPTY
+  evidence verifier. This proves the verifier rejects wrong commits, malformed
+  JSON, false acceptance flags, nonzero status, missing PASS tokens, and unsafe
+  manifest paths.
+
+**verify-conpty-evidence**
+: Validate a downloaded hosted Windows ConPTY artifact directory:
+  `make verify-conpty-evidence ARTIFACT_DIR=... COMMIT=...`. The target checks
+  `conpty-acceptance.json` and its stdout/stderr/status/meta/evidence sidecars
+  against one expected commit. It does not create Windows evidence; it only
+  accepts or rejects an artifact already collected from a Windows host.
+
 **smoke-conpty-win32**
 : Run the Win32 ConPTY smoke runner on Windows. It opens the default shell via
   `timui_conpty_open`, writes an echo sentinel through the transport, reads it

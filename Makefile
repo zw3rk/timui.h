@@ -135,7 +135,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www check-www check-www-assets check-phase1-5-docs check-hosted-visual-windows amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www check-www check-www-assets check-phase1-5-docs check-hosted-visual-windows check-conpty-evidence-artifacts verify-conpty-evidence amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
 .PHONY: accept check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden gen-golden-vtgif check-vt-gif-style check-vt-gif-all
 .PHONY: run-chat-demo rec-chat-demo gif-chat-demo webp-chat-demo gen-font-ttf gen-emoji gen-cjk
 
@@ -293,7 +293,7 @@ rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
 # 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
 # ============================================================================
 
-check: build test check-no-images check-conpty-smoke-tool check-conpty-win32-compile check-conpty-win32-smoke-compile check-hosted-visual-windows check-www check-phase1-5-docs ## Build + test gate
+check: build test check-no-images check-conpty-smoke-tool check-conpty-win32-compile check-conpty-win32-smoke-compile check-hosted-visual-windows check-conpty-evidence-artifacts check-www check-phase1-5-docs ## Build + test gate
 	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 test: $(TEST_BIN) ## Compile and run the unit tests
@@ -319,6 +319,7 @@ check-phase1-5-docs: ## Verify Phase 1.5 evidence docs agree
 	@grep -Fq -- 'DONE: iTerm2 terminal evidence via hosted macOS iTerm2 run `28986249841`.' docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt
 	@awk '{$$1=$$1; printf "%s ", $$0}' docs/goals/phase1_5-platform-widgets-style-text-image.goal.txt | grep -Fq -- 'remaining Windows ConPTY live evidence gate'
 	@awk '{$$1=$$1; printf "%s ", $$0}' docs/TERMINAL_PROTOCOLS.md | grep -Fq -- 'Hosted Windows Terminal Sixel evidence is accepted in run `28982641529`; hosted macOS iTerm2 evidence is accepted in run `28986249841`.'
+	@grep -Fq -- 'make verify-conpty-evidence ARTIFACT_DIR=' docs/runbooks/phase1-5-live-evidence.md
 	@printf "$(C_GREEN)✓ Phase 1.5 evidence docs$(C_RESET)\n"
 
 check-hosted-visual-windows: tools/ci/hosted_visual_windows.ps1 ## Verify hosted Windows probe emits ConPTY acceptance artifacts
@@ -331,6 +332,16 @@ check-hosted-visual-windows: tools/ci/hosted_visual_windows.ps1 ## Verify hosted
 	@grep -Fq -- 'ConvertTo-Json' tools/ci/hosted_visual_windows.ps1
 	@grep -Fq -- 'return (Invoke-Captured $$Name' tools/ci/hosted_visual_windows.ps1
 	@printf "$(C_GREEN)✓ hosted Windows ConPTY evidence manifest$(C_RESET)\n"
+
+check-conpty-evidence-artifacts: tests/test_conpty_evidence.py tools/verify_conpty_evidence.py ## Verify hosted ConPTY artifact acceptance predicates
+	@TIMUI_TEST_COMMIT=$$(git rev-parse HEAD) python3 tests/test_conpty_evidence.py
+	@printf "$(C_GREEN)✓ hosted ConPTY evidence artifact verifier$(C_RESET)\n"
+
+verify-conpty-evidence: tools/verify_conpty_evidence.py ## Validate downloaded hosted ConPTY evidence (ARTIFACT_DIR=... [COMMIT=...])
+	@[ -n "$(ARTIFACT_DIR)" ] || { printf "$(C_YELL)ARTIFACT_DIR is required$(C_RESET)\n"; exit 2; }
+	@commit="$(COMMIT)"; \
+	  if [ -z "$$commit" ]; then commit=$$(git rev-parse HEAD); fi; \
+	  python3 tools/verify_conpty_evidence.py --artifact-dir "$(ARTIFACT_DIR)" --commit "$$commit"
 
 check-no-images: $(TSTDIR)/test_no_images.c $(HEADER) $(LIB_SECTIONS) ## Test TIMUI_NO_IMAGES keeps API but disables terminal image escapes
 	@mkdir -p $(BLDDIR)
