@@ -34,7 +34,8 @@ push. Detailed pickup prompt: `docs/goals/phase1_5-platform-widgets-style-text-i
       terminal image protocol capability above the transport.
       - [x] `_WIN32` backend implementation, resize API, POSIX fallback tests,
             and MinGW compile seam in `make check`.
-      - [ ] Real Windows Terminal smoke run and captured operator evidence.
+      - [ ] Real Windows ConPTY smoke run on a Windows host and captured
+            operator evidence.
 - [x] **Submit-capable multi-line text area** - add a result-returning,
       controlled API plus `_mut` convenience wrapper, preserving the current
       void `timui_text_area` compatibility wrapper. Refactor `examples/chat.c`

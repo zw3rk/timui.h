@@ -135,7 +135,9 @@ Hosted runner probe:
 
 Prerequisites:
 
-- Windows Terminal on Windows.
+- A Windows host with ConPTY support. Windows Terminal is useful for hosted GUI
+  context and the Sixel visual probe, but the ConPTY smoke itself is a
+  byte-stream predicate over `conpty-smoke.stdout`.
 - A Windows-capable build environment that can produce
   `build/conpty_smoke_win32.exe` from the Makefile target, or an equivalent
   already-built executable from the same commit.
@@ -157,8 +159,10 @@ Accept if all are true:
 
 - The command exits with status 0.
 - The output includes `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE`.
-- The note records Windows build, Windows Terminal version, compiler, command,
-  commit, and whether this was run from PowerShell, cmd, MSYS, or another shell.
+- The note records Windows build, compiler, command, commit, and whether this
+  was run from PowerShell, cmd, MSYS, or another shell. Record Windows Terminal
+  version too when the smoke is collected through the hosted visual workflow or
+  an interactive Windows Terminal session.
 
 Reject or mark inconclusive if:
 

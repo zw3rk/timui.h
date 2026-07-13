@@ -78,7 +78,7 @@ Core:
 - C99 baseline, libc hard dependency, optional pthreads.
 - POSIX raw-mode terminal backend.
 - Win32 ConPTY is implemented behind `_WIN32`, runtime-probed, and
-  compile-checked, but live Windows Terminal smoke evidence is still pending.
+  compile-checked, but live Windows-host smoke evidence is still pending.
 
 Rendering and terminal:
 
@@ -338,7 +338,7 @@ int main(void) {
 ## Claims to avoid or qualify
 
 - Do not say "works on Windows" yet. ConPTY is implemented, runtime-probed, and
-  compile-checked, but the live Windows Terminal smoke run is still pending.
+  compile-checked, but the live Windows-host ConPTY smoke run is still pending.
 - Do not say "full Unicode" or "full bidi." The chat example has a useful
   Hebrew/Arabic approximation and CJK/emoji rendering support, but full UAX #9,
   grapheme clusters, ZWJ emoji, and skin-tone sequences remain future work.

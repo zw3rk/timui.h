@@ -58,7 +58,7 @@ WORKSTREAM A - Windows ConPTY backend:
   cross compiler is available.
 - DONE: `make smoke-conpty-win32` and
   `make check-conpty-win32-smoke-compile` exist for operator evidence capture.
-- PENDING: a real Windows Terminal smoke run recorded per
+- PENDING: a real Windows ConPTY smoke run on a Windows host recorded per
   `docs/runbooks/phase1-5-live-evidence.md` before claiming supported Windows
   operation; `make test` and sanitizers remain green on POSIX.
 
