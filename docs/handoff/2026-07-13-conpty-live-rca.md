@@ -12,7 +12,7 @@ date: 2026-07-13
 - Base commit: `ae58a8aea26fd1cde394642a6cdb3d842b666aed`
   (`docs: stamp conpty rca handoff`)
 - RCA commit: `8098b11a58e6a5538ecc8590d0e748ab49517aec`
-- Evidence manifest commit: pending at handoff draft time.
+- Evidence manifest commit: `4105026d23c3a5e705334b7e5af30a9815ca3eb3`
 - Merge/push status: not merged, not pushed at the time this handoff was
   written.
 - Downloaded hosted artifact: `artifacts/gh-runs/28982641529/` (gitignored
