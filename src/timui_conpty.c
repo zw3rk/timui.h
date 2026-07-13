@@ -198,6 +198,10 @@ TIMUI_API TimuiResult timui_conpty_open(TimuiTransport *out_transport, int *out_
     memset(&si, 0, sizeof si);
     memset(&pi, 0, sizeof pi);
     si.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+    si.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
+    si.StartupInfo.hStdInput = NULL;
+    si.StartupInfo.hStdOutput = NULL;
+    si.StartupInfo.hStdError = NULL;
     InitializeProcThreadAttributeList(NULL, 1, 0, &attr_bytes);
     if(attr_bytes == 0) goto fail;
     si.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)calloc(1, attr_bytes);

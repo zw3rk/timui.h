@@ -21,6 +21,18 @@ def main():
                 f"{SRC}: {needle} appears before CreateProcessW; "
                 "ConPTY setup must keep those pipe ends alive until the child is created"
             )
+    required_before_create_process = (
+        "si.StartupInfo.dwFlags |= STARTF_USESTDHANDLES",
+        "si.StartupInfo.hStdInput = NULL",
+        "si.StartupInfo.hStdOutput = NULL",
+        "si.StartupInfo.hStdError = NULL",
+    )
+    for needle in required_before_create_process:
+        if needle not in between:
+            raise SystemExit(
+                f"{SRC}: {needle} is missing before CreateProcessW; "
+                "ConPTY children must not inherit redirected parent std handles"
+            )
 
 
 if __name__ == "__main__":
