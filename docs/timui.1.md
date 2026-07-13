@@ -184,8 +184,15 @@ a Windows host. The canonical evidence procedure and recording template live in
 **amalgamate**
 : Regenerate the flat, single-file release header into `release/timui.h`.
 
+**release** \[*VERSION=x.y.z*]
+: Regenerate `release/timui.h` and write ignored immutable release artifacts
+  under `release/releases/<version>/`: `timui.h`, `timui.tar.gz`, `MANIFEST`,
+  and `SHA256SUMS`. The manifest records version, commit, release date, and
+  artifact names.
+
 **release-check**
-: Regenerate the release header and verify it compiles standalone.
+: Regenerate the release artifacts, verify checksums/manifest metadata, and
+  compile the generated header standalone.
 
 **www**
 : Regenerate the amalgamated release header and refresh `www/timui.h` plus
@@ -275,6 +282,10 @@ external screen recorder:
 *release/timui.h*
 : The generated flat release header (see **amalgamate**). Public consumers
   should use this shape.
+
+*release/releases/<version>/*
+: Ignored release output from **release**: versioned header, tarball, manifest,
+  and checksums suitable for attaching to a GitHub release.
 
 *Makefile*
 : The self-documenting build interface; the sole supported entry point.

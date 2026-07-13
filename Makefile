@@ -32,6 +32,9 @@ WWWDIR   := www
 HEADER    := $(INCDIR)/timui.h
 WWW_HEADER := $(WWWDIR)/timui.h
 WWW_LICENSE := $(WWWDIR)/LICENSE
+VERSION ?= $(shell sed -n 's/^#define TIMUI_VERSION_STRING "\(.*\)"/\1/p' $(HEADER))
+RELEASE_COMMIT ?= $(shell git rev-parse --verify HEAD 2>/dev/null || printf unknown)
+RELEASE_DATE ?= $(shell date -u +%Y-%m-%d)
 # The library is a unity build: src/timui.c #includes every src/timui_*.c
 # section. Any section edit must rebuild the test binary, examples, and tools,
 # so they all depend on the whole section set (not just src/timui.c).
@@ -135,7 +138,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www check-www check-www-assets check-phase1-5-docs check-hosted-visual-windows check-conpty-evidence-artifacts verify-conpty-evidence amalgamate release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www check-www check-www-assets check-phase1-5-docs check-hosted-visual-windows check-conpty-evidence-artifacts verify-conpty-evidence amalgamate release release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
 .PHONY: accept check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden gen-golden-vtgif check-vt-gif-style check-vt-gif-all
 .PHONY: run-chat-demo rec-chat-demo gif-chat-demo webp-chat-demo gen-font-ttf gen-emoji gen-cjk
 
@@ -785,6 +788,26 @@ amalgamate: $(BLDDIR)/amalgamate $(HEADER) $(LIB_SECTIONS) ## Regenerate the fla
 	@$(BLDDIR)/amalgamate $(HEADER) $(RELDIR)/timui.h
 	@printf "$(C_GREEN)✓ wrote $(RELDIR)/timui.h$(C_RESET)\n"
 
+release: amalgamate ## Build ignored versioned release artifacts (VERSION=x.y.z)
+	@test -n "$(VERSION)" || { printf "$(C_YELL)✗ release$(C_RESET) VERSION is empty\n"; exit 1; }
+	@out="$(RELDIR)/releases/$(VERSION)"; pkg="$(BLDDIR)/release-package/timui-$(VERSION)"; \
+	  rm -rf "$$out" "$(BLDDIR)/release-package"; \
+	  mkdir -p "$$out" "$$pkg"; \
+	  install -m 0644 $(RELDIR)/timui.h "$$out/timui.h"; \
+	  install -m 0644 $(RELDIR)/timui.h "$$pkg/timui.h"; \
+	  install -m 0644 LICENSE "$$pkg/LICENSE"; \
+	  install -m 0644 README.md "$$pkg/README.md"; \
+	  install -m 0644 CHANGELOG.md "$$pkg/CHANGELOG.md"; \
+	  { printf "version=%s\n" "$(VERSION)"; \
+	    printf "commit=%s\n" "$(RELEASE_COMMIT)"; \
+	    printf "date=%s\n" "$(RELEASE_DATE)"; \
+	    printf "header=timui.h\n"; \
+	    printf "archive=timui.tar.gz\n"; \
+	  } > "$$out/MANIFEST"; \
+	  tar -czf "$$out/timui.tar.gz" -C "$(BLDDIR)/release-package" "timui-$(VERSION)"; \
+	  (cd "$$out" && shasum -a 256 timui.h timui.tar.gz MANIFEST > SHA256SUMS)
+	@printf "$(C_GREEN)✓ wrote $(RELDIR)/releases/$(VERSION)$(C_RESET)\n"
+
 www: amalgamate ## Refresh static website assets under www/
 	@mkdir -p $(WWWDIR)
 	@install -m 0644 $(RELDIR)/timui.h $(WWW_HEADER)
@@ -827,10 +850,17 @@ $(BLDDIR)/amalgamate: $(TOOLDIR)/amalgamate.c
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) $< -o $@
 
-release-check: amalgamate ## Verify the amalgamated release header compiles standalone
+release-check: release ## Verify the amalgamated release header and release artifacts
 	@printf "$(C_CYAN)build$(C_RESET) release self-test\n"
 	@if grep -nE '#[[:space:]]*include[[:space:]]+"\\.\\./src/' $(RELDIR)/timui.h; then \
 	  printf "$(C_YELL)✗ release header retained repo-relative src include$(C_RESET)\n"; exit 1; fi
+	@out="$(RELDIR)/releases/$(VERSION)"; \
+	  test -s "$$out/timui.h"; \
+	  test -s "$$out/timui.tar.gz"; \
+	  test -s "$$out/SHA256SUMS"; \
+	  grep -q '^version=$(VERSION)$$' "$$out/MANIFEST"; \
+	  grep -q '^commit=$(RELEASE_COMMIT)$$' "$$out/MANIFEST"; \
+	  (cd "$$out" && shasum -a 256 -c SHA256SUMS >/dev/null)
 	@tmp="$(BLDDIR)/release_selftest.d"; rm -rf "$$tmp"; mkdir -p "$$tmp"; \
 	  install -m 0644 $(RELDIR)/timui.h "$$tmp/timui.h"; \
 	  printf '#define TIMUI_IMPLEMENTATION\n#include "timui.h"\nint main(void){return 0;}\n' > "$$tmp/release_selftest.c"; \
