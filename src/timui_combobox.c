@@ -87,7 +87,9 @@ TIMUI_API TimuiComboboxResult timui_combobox(TimuiFrame *f, TimuiId id, TimuiRec
     res.focused = 0;
     if(!f || !f->ui || !state.query || state.cap == 0 || count < 0) return res;
     ui = f->ui;
-    if(state.cursor >= state.cap) state.cursor = state.cap - 1;
+    { size_t len = text_len_bounded_(state.query, state.cap);
+      if(len >= state.cap){ len = state.cap - 1; state.query[len] = '\0'; }
+      if(state.cursor > len) state.cursor = len; }
     field = TIMUI_RECT(r.x, r.y, r.w, r.h > 0 ? 1 : 0);
     popup = TIMUI_RECT(r.x, r.y + 1, r.w, r.h > 1 ? r.h - 1 : 0);
     ir = timui_interact_button(&ui->ia, id, r);

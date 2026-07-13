@@ -231,6 +231,25 @@ TIMUI_TEST(test_input_field_edit){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_input_field_same_frame_edit_order){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    char text[16] = "ab";
+    TimuiInputState is = { text, sizeof text, 2, 0 };
+    TimuiRect r = TIMUI_RECT(0, 0, 20, 1);
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 5, &al);
+#define IO_FRAME() do{ timui_begin(ui,&f); (void)timui_input_field(f, TIMUI_ID("io"), r, &is); timui_end(f); }while(0)
+    SETIN(&fake, "\x1b[<0;2;1M"); IO_FRAME();
+    SETIN(&fake, "\x1b[<0;2;1m"); IO_FRAME();
+    SETIN(&fake, "\x7f""c"); IO_FRAME();
+    TIMUI_CHECK(strcmp(text, "ac") == 0);
+    TIMUI_CHECK(is.cursor == 2);
+#undef IO_FRAME
+    timui_close(ui);
+}
+
 TIMUI_TEST(test_input_field_grapheme_edit){
     TimuiAllocator al = timui_default_allocator();
     TimuiFakeTransport fake; TimuiTransport t;

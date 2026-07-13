@@ -117,6 +117,28 @@ TIMUI_TEST(test_table_ex_hscroll){
     timui_close(ui);
 }
 
+TIMUI_TEST(test_table_ex_wheel_only_when_hovered){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiStr hdrs[2] = { TIMUI_STR_LIT("A"), TIMUI_STR_LIT("B") };
+    TimuiTableModel m = {0};
+    TimuiTableState top = {0, 0, 0};
+    TimuiTableState bottom = {0, 0, 0};
+    m.headers = hdrs; m.ncols = 2; m.nrows = 20; m.cell_fn = gx_cell;
+
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 12, &al);
+    SETIN(&fake, "\x1b[<65;2;7M\x1b[<32;2;2M");  /* wheel bottom, then motion top */
+    timui_begin(ui, &f);
+    timui_table_ex_mut(f, TIMUI_ID("top"), TIMUI_RECT(0, 0, 20, 4), &m, &top);
+    timui_table_ex_mut(f, TIMUI_ID("bottom"), TIMUI_RECT(0, 5, 20, 4), &m, &bottom);
+    timui_end(f);
+    TIMUI_CHECK(top.scroll == 0);
+    TIMUI_CHECK(bottom.scroll == 1);
+    timui_close(ui);
+}
+
 /* ---- timui_tree_scroll: a collapsed node hides its subtree ---------------- */
 TIMUI_TEST(test_tree_scroll_hides_collapsed){
     TimuiAllocator al = timui_default_allocator();
@@ -140,6 +162,29 @@ TIMUI_TEST(test_tree_scroll_hides_collapsed){
     TIMUI_CHECK(timui_cells_get(buf, 4, 1)->codepoint == 'A');   /* A    @ (4,1) */
     TIMUI_CHECK(timui_cells_get(buf, 4, 2)->codepoint == 'B');   /* B    @ (4,2) — A1 hidden */
     timui_end(f);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_tree_scroll_wheel_only_when_hovered){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake; TimuiTransport t;
+    Timui *ui = NULL; TimuiFrame *f = NULL;
+    TimuiTreeNode nodes[] = {
+        {0, "n0", 0, 0}, {0, "n1", 0, 0}, {0, "n2", 0, 0}, {0, "n3", 0, 0},
+        {0, "n4", 0, 0}, {0, "n5", 0, 0}, {0, "n6", 0, 0}, {0, "n7", 0, 0}
+    };
+    TimuiTreeState top = {0, 0};
+    TimuiTreeState bottom = {0, 0};
+
+    timui_fake_init(&fake, &al); t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 12, &al);
+    SETIN(&fake, "\x1b[<65;2;7M\x1b[<32;2;2M");  /* wheel bottom, then motion top */
+    timui_begin(ui, &f);
+    timui_tree_scroll_mut(f, TIMUI_ID("toptr"), TIMUI_RECT(0, 0, 20, 4), nodes, 8, &top);
+    timui_tree_scroll_mut(f, TIMUI_ID("bottr"), TIMUI_RECT(0, 5, 20, 4), nodes, 8, &bottom);
+    timui_end(f);
+    TIMUI_CHECK(top.scroll == 0);
+    TIMUI_CHECK(bottom.scroll == 1);
     timui_close(ui);
 }
 

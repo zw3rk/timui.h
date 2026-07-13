@@ -65,10 +65,22 @@ TIMUI_API int timui_fit_cell(const char *s, int width, char *out, size_t cap, in
         return 0;
     }
     if(full <= width){                         /* fits whole — copy verbatim */
-        size_t n = len < cap - 1 ? len : cap - 1;
-        memcpy(out, s, n);
-        out[n] = '\0';
-        return full;
+        for(i = 0; i < len;){
+            size_t n = timui_grapheme_next(s, len, i);
+            int gw;
+            if(n <= i) n = i + 1;
+            if(o + (n - i) >= cap){
+                if(ellipsis) *ellipsis = 1;
+                break;
+            }
+            gw = timui_grapheme_width(s + i, n - i);
+            memcpy(out + o, s + i, n - i);
+            o += n - i;
+            used += gw;
+            i = n;
+        }
+        out[o] = '\0';
+        return used;
     }
     if(cap < sizeof(TIMUI_ELLIPSIS_)){         /* no room for ellipsis + NUL */
         if(ellipsis) *ellipsis = 1;
@@ -145,6 +157,14 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
     if(state.scroll < 0) state.scroll = 0;
     if(state.selected < state.scroll) state.scroll = state.selected;
     if(state.selected >= state.scroll + vis) state.scroll = state.selected - vis + 1;
+    /* Keyboard nav only when focused — process before drawing so the highlight
+     * and returned state agree in the same frame. */
+    { TimuiInteractResult tir = timui_interact_button(&ui->ia, id, r);
+      res.focused = tir.focused;
+      if(tir.focused) state.selected = timui_updown_nav_(f, state.selected, nrows);
+    }
+    if(state.selected < state.scroll) state.scroll = state.selected;
+    if(state.selected >= state.scroll + vis) state.scroll = state.selected - vis + 1;
     /* header row */
     { TimuiStyle hs = timui_widget_style_(ui, TIMUI_WIDGET_TABLE, TIMUI_SLOT_PANEL_TITLE, 0);
       x = r.x;
@@ -169,12 +189,6 @@ TIMUI_API TimuiTableResult timui_table(TimuiFrame *f, TimuiId id, TimuiRect r,
         }
     }
     timui_scroll_end(f);
-    /* keyboard nav only when focused — call interact_button once to avoid
-     * double-registering the table id in the tab order */
-    { TimuiInteractResult tir = timui_interact_button(&ui->ia, id, r);
-      res.focused = tir.focused;
-      if(tir.focused) state.selected = timui_updown_nav_(f, state.selected, nrows);
-    }
     res.state = state;
     res.state_changed = (state.selected != orig);
     return res;
@@ -278,7 +292,7 @@ TIMUI_API TimuiTableResult timui_table_ex(TimuiFrame *f, TimuiId id, TimuiRect r
 
     /* Mouse wheel scrolls the body and drags the selection into the new window. */
     wh = timui_mouse_wheel(f);
-    if(wh){
+    if(wh && timui_mouse_wheel_over_(ui, r)){
         scroll -= wh;
         scroll = timui_page_slice(nrows, vis, scroll).first;
         if(sel < scroll) sel = scroll;
