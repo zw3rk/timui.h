@@ -45,6 +45,7 @@ What `timui.h` speaks on the wire, and where it falls back.
   iTerm2 draws, and unsupported paths deliberately fall back to the same text
   placeholder instead of emitting unsupported or lossy escapes. Builds with
   `TIMUI_NO_IMAGES` keep the API but force this placeholder path for every draw.
+  Resource limits and ownership are documented in [IMAGE_LIMITS.md](IMAGE_LIMITS.md).
 
 ## Capability gating
 

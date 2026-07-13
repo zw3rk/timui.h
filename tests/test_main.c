@@ -352,6 +352,7 @@ int main(void){
         test_image_from_rgba_rejects_invalid_inputs,
         test_image_from_png_rgba_copies_png_and_pixels,
         test_image_from_png_rgba_rejects_invalid_inputs,
+        test_image_png_byte_limit_rejects_oversized_inputs,
         test_sixel_rgba_emits_dcs_single_band,
         test_sixel_png_rgba_emits_dcs_from_pixels,
         test_sixel_rejects_short_strided_sidecar,

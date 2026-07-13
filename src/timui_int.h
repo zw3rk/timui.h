@@ -108,7 +108,7 @@ struct Timui {
     /* Terminal-image placements recorded this frame by timui_image_draw;
      * emitted ON TOP of the cell diff in timui_end, so they compose with the
      * renderer. Protocol-specific lifecycle state is tracked separately. */
-    struct { TimuiImage *img; TimuiRect rect; TimuiRect full; } img_place[8];   /* rect=visible, full=uncropped */
+    struct { TimuiImage *img; TimuiRect rect; TimuiRect full; } img_place[TIMUI_IMAGE_PLACEMENT_CAP];   /* rect=visible, full=uncropped */
     int               img_place_count;
     int               img_last_count;       /* placements emitted last frame */
     TimuiImageProtocol img_last_protocol;   /* protocol that emitted those placements */

@@ -360,6 +360,7 @@ void test_image_from_rgba_copies_rows_and_dimensions(void);
 void test_image_from_rgba_rejects_invalid_inputs(void);
 void test_image_from_png_rgba_copies_png_and_pixels(void);
 void test_image_from_png_rgba_rejects_invalid_inputs(void);
+void test_image_png_byte_limit_rejects_oversized_inputs(void);
 void test_sixel_rgba_emits_dcs_single_band(void);
 void test_sixel_png_rgba_emits_dcs_from_pixels(void);
 void test_sixel_rejects_short_strided_sidecar(void);

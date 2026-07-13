@@ -138,7 +138,7 @@ endif
 # 2. BUILD RULES — help/build · example pattern rule · test & tool binaries · subsystem objects
 # ============================================================================
 
-.PHONY: help build test test-san run www check-www check-www-assets check-phase1-5-docs check-hosted-visual-windows check-conpty-evidence-artifacts verify-conpty-evidence amalgamate release release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
+.PHONY: help build test test-san run www check-www check-www-assets check-refinement-docs check-phase1-5-docs check-hosted-visual-windows check-conpty-evidence-artifacts verify-conpty-evidence amalgamate release release-check fmt check clean goldens vt-test check-no-images check-conpty check-conpty-posix check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-chat-highlight check-chat-text man install-man check-chat-text-sheenbidi check-radio smoke-radio run-radio check-sqlite-tui run-sqlite-tui smoke-sqlite-tui check-grid check-layout check-tabs check-chart check-syntax run-gallery smoke-gallery check-image-smoke smoke-image-live smoke-image-live-auto smoke-image-live-kitty smoke-image-live-sixel smoke-image-live-iterm2 smoke-image-live-none smoke-conpty-win32 check-irc run-irc smoke-irc
 .PHONY: accept check-vt-gif check-vt-gif-glyphs check-vt-gif-cjk check-vt-gif-emoji check-vt-gif-output check-vt-gif-golden gen-golden-vtgif check-vt-gif-style check-vt-gif-all
 .PHONY: run-chat-demo rec-chat-demo gif-chat-demo webp-chat-demo gen-font-ttf gen-emoji gen-cjk
 
@@ -296,7 +296,7 @@ rec-chat-demo: $(BLDDIR)/chat ## Screen-record hint, then autoplay the chat demo
 # 5. CHECK — unit tests · goldens · acceptance · per-subsystem standalone checks
 # ============================================================================
 
-check: build test check-no-images check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-hosted-visual-windows check-conpty-evidence-artifacts check-www check-phase1-5-docs ## Build + test gate
+check: build test check-no-images check-conpty-smoke-tool check-conpty-source-order check-conpty-win32-compile check-conpty-win32-smoke-compile check-hosted-visual-windows check-conpty-evidence-artifacts check-www check-refinement-docs check-phase1-5-docs ## Build + test gate
 	@printf "$(C_GREEN)✓ check passed$(C_RESET)\n"
 
 test: $(TEST_BIN) ## Compile and run the unit tests
@@ -343,6 +343,15 @@ check-hosted-visual-windows: tools/ci/hosted_visual_windows.ps1 ## Verify hosted
 check-conpty-evidence-artifacts: tests/test_conpty_evidence.py tools/verify_conpty_evidence.py ## Verify hosted ConPTY artifact acceptance predicates
 	@TIMUI_TEST_COMMIT=$$(git rev-parse HEAD) python3 tests/test_conpty_evidence.py
 	@printf "$(C_GREEN)✓ hosted ConPTY evidence artifact verifier$(C_RESET)\n"
+
+check-refinement-docs: ## Verify refinement contract docs exist and keep required vocabulary
+	@for f in docs/COMPATIBILITY.md docs/UNICODE.md docs/IMAGE_LIMITS.md; do test -s "$$f"; done
+	@for term in Ghostty Kitty WezTerm iTerm2 "Windows Terminal" xterm tmux SSH; do grep -qi "$$term" docs/COMPATIBILITY.md; done
+	@for status in supported tested compile-tested experimental unsupported; do grep -q "$$status" docs/COMPATIBILITY.md; done
+	@grep -q 'Terminal emulators own' docs/UNICODE.md
+	@grep -q 'TIMUI_IMAGE_PNG_MAX_BYTES' docs/IMAGE_LIMITS.md
+	@grep -q 'TIMUI_IMAGE_PLACEMENT_CAP' docs/IMAGE_LIMITS.md
+	@printf "$(C_GREEN)✓ refinement contract docs$(C_RESET)\n"
 
 verify-conpty-evidence: tools/verify_conpty_evidence.py ## Validate downloaded hosted ConPTY evidence (ARTIFACT_DIR=... [COMMIT=...])
 	@[ -n "$(ARTIFACT_DIR)" ] || { printf "$(C_YELL)ARTIFACT_DIR is required$(C_RESET)\n"; exit 2; }

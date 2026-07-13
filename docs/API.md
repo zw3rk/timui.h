@@ -202,6 +202,12 @@ oversized PNGs, clipped iTerm2 draws, and unsupported protocol/data pairs fall
 back to `[img]`. `timui_force_image_protocol` is intended for tests and user
 overrides; unknown enum values clear image caps and select `NONE`.
 
+Image resource limits are public macros: `TIMUI_IMAGE_MAX_DIMENSION`,
+`TIMUI_IMAGE_MAX_PIXELS`, `TIMUI_IMAGE_PNG_MAX_BYTES`,
+`TIMUI_IMAGE_PNG_MAX_DIMENSION`, `TIMUI_IMAGE_PNG_MAX_PIXELS`, and
+`TIMUI_IMAGE_PLACEMENT_CAP`. See [IMAGE_LIMITS.md](IMAGE_LIMITS.md) for the
+ownership, cache, and protocol lifecycle contract.
+
 Defining `TIMUI_NO_IMAGES` keeps this API available but disables terminal image
 protocol emission. `timui_caps_image_protocol` / `timui_image_protocol` return
 `NONE`, image caps are stripped even when forced on, `timui_force_image_protocol`
@@ -268,6 +274,8 @@ The scalar UTF-8 helpers decode one codepoint and provide a minimal terminal
 cell width. Grapheme helpers walk byte offsets across common extended clusters
 that terminal UI code must not split: combining marks, variation selectors,
 skin-tone modifiers, regional-indicator flags, CRLF, and ZWJ emoji sequences.
+See [UNICODE.md](UNICODE.md) for the ownership boundary between timui and the
+terminal/font stack.
 
 `timui_display_width` and `timui_fit_cell` use those cluster helpers, so table
 and grid truncation keep clusters intact before appending an ellipsis.

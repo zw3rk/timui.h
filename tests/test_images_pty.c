@@ -650,6 +650,8 @@ TIMUI_TEST(test_image_from_rgba_rejects_invalid_inputs){
     TIMUI_CHECK(timui_image_from_rgba(ui, px, 1, 0, 4) == NULL);
     TIMUI_CHECK(timui_image_from_rgba(ui, px, 2, 1, 7) == NULL);
     TIMUI_CHECK(timui_image_from_rgba(ui, px, INT_MAX / 2 + 1, 2, INT_MAX) == NULL);
+    TIMUI_CHECK(timui_image_from_rgba(ui, px, TIMUI_IMAGE_MAX_DIMENSION + 1, 1,
+                                      (TIMUI_IMAGE_MAX_DIMENSION + 1) * 4) == NULL);
     timui_close(ui);
 }
 
@@ -710,6 +712,26 @@ TIMUI_TEST(test_image_from_png_rgba_rejects_invalid_inputs){
     TIMUI_CHECK(timui_image_from_png_rgba(ui, png, sizeof png, px, 1, 0, 4) == NULL);
     TIMUI_CHECK(timui_image_from_png_rgba(ui, png, sizeof png, px, 2, 1, 7) == NULL);
     TIMUI_CHECK(timui_image_from_png_rgba(ui, png, sizeof png, px, INT_MAX / 2 + 1, 2, INT_MAX) == NULL);
+    timui_close(ui);
+}
+
+TIMUI_TEST(test_image_png_byte_limit_rejects_oversized_inputs){
+    TimuiAllocator al = timui_default_allocator();
+    TimuiFakeTransport fake;
+    TimuiTransport t;
+    Timui *ui = NULL;
+    unsigned char png[24];
+    unsigned char px[4] = { 0xff, 0x00, 0x00, 0xff };
+    size_t too_large = (size_t)TIMUI_IMAGE_PNG_MAX_BYTES + 1u;
+
+    timui_fake_init(&fake, &al);
+    t = timui_fake_transport(&fake);
+    timui_open_for_test(&ui, t, 30, 10, &al);
+    fake_png_ihdr(png, sizeof png, 1, 1);
+
+    TIMUI_CHECK(timui_image_from_png(ui, png, too_large) == NULL);
+    TIMUI_CHECK(timui_image_from_png_rgba(ui, png, too_large, px, 1, 1, 4) == NULL);
+
     timui_close(ui);
 }
 

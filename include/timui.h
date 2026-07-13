@@ -1252,6 +1252,26 @@ typedef struct TimuiImage { unsigned char *data; size_t len;
                             uint32_t id;
                             int px_w, px_h; TimuiImageKind kind;
                             int stride; } TimuiImage;   /* tight RGBA stride, or 0 without pixels */
+
+#ifndef TIMUI_IMAGE_MAX_DIMENSION
+#define TIMUI_IMAGE_MAX_DIMENSION 4096
+#endif
+#ifndef TIMUI_IMAGE_MAX_PIXELS
+#define TIMUI_IMAGE_MAX_PIXELS 16777216u
+#endif
+#ifndef TIMUI_IMAGE_PNG_MAX_BYTES
+#define TIMUI_IMAGE_PNG_MAX_BYTES 16777216u
+#endif
+#ifndef TIMUI_IMAGE_PNG_MAX_DIMENSION
+#define TIMUI_IMAGE_PNG_MAX_DIMENSION TIMUI_IMAGE_MAX_DIMENSION
+#endif
+#ifndef TIMUI_IMAGE_PNG_MAX_PIXELS
+#define TIMUI_IMAGE_PNG_MAX_PIXELS TIMUI_IMAGE_MAX_PIXELS
+#endif
+#ifndef TIMUI_IMAGE_PLACEMENT_CAP
+#define TIMUI_IMAGE_PLACEMENT_CAP 8
+#endif
+
 TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t size);
 TIMUI_API TimuiImage *timui_image_from_rgba(Timui *ui, const void *rgba,
                                             int w, int h, int stride);

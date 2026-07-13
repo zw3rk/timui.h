@@ -147,8 +147,9 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
     TimuiAllocator al;
     int w = 0, h = 0;
     (void)ui;
+    if(!data || size == 0 || size > (size_t)TIMUI_IMAGE_PNG_MAX_BYTES) return NULL;
 #ifdef TIMUI_NO_IMAGES
-    if(!data || size == 0) return NULL;
+    (void)w; (void)h;
 #else
     if(!image_png_header_(data, size, &w, &h)) return NULL;
 #endif
@@ -173,7 +174,11 @@ TIMUI_API TimuiImage *timui_image_from_png(Timui *ui, const void *data, size_t s
 
 static int image_rgba_size_(int w, int h, int stride, size_t *out_row, size_t *out_total){
     size_t row;
+    uint64_t pixels;
     if(w <= 0 || h <= 0) return 0;
+    if(w > TIMUI_IMAGE_MAX_DIMENSION || h > TIMUI_IMAGE_MAX_DIMENSION) return 0;
+    pixels = (uint64_t)(uint32_t)w * (uint64_t)(uint32_t)h;
+    if(pixels > (uint64_t)TIMUI_IMAGE_MAX_PIXELS) return 0;
     if(w > INT_MAX / 4) return 0;
     row = (size_t)w * 4u;
     if(stride < (int)row) return 0;
@@ -194,7 +199,8 @@ static void image_copy_rows_(unsigned char *dst, const unsigned char *src,
 static int image_png_preflight_(const TimuiImage *img, int *out_w, int *out_h){
     int w = 0, h = 0;
     uint64_t pixels;
-    if(!img || img->len > (size_t)INT_MAX) return 0;
+    if(!img || img->len == 0 || img->len > (size_t)TIMUI_IMAGE_PNG_MAX_BYTES ||
+       img->len > (size_t)INT_MAX) return 0;
     if(!image_png_header_(img->data, img->len, &w, &h)) return 0;
     if(w > TIMUI_IMAGE_PNG_MAX_DIMENSION || h > TIMUI_IMAGE_PNG_MAX_DIMENSION) return 0;
     pixels = (uint64_t)(uint32_t)w * (uint64_t)(uint32_t)h;
@@ -265,7 +271,8 @@ TIMUI_API TimuiImage *timui_image_from_png_rgba(Timui *ui, const void *png,
     int png_w = 0, png_h = 0;
 #endif
     (void)ui;
-    if(!png || png_size == 0 || !rgba || !image_rgba_size_(w, h, stride, &row, &total))
+    if(!png || png_size == 0 || png_size > (size_t)TIMUI_IMAGE_PNG_MAX_BYTES ||
+       !rgba || !image_rgba_size_(w, h, stride, &row, &total))
         return NULL;
 #ifndef TIMUI_NO_IMAGES
     if(!image_png_header_(png, png_size, &png_w, &png_h)) return NULL;
