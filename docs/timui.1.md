@@ -79,7 +79,8 @@ The following `make` targets are the primary interface. Each is invoked as
 
 **check**
 : The build-plus-test gate: runs **build**, **test**, no-image API coverage,
-  Win32 ConPTY compile seams, and static website license/link checks.
+  Win32 ConPTY compile seams, hosted evidence-script checks, and static website
+  license/link checks.
 
 **test-san** \[*SAN=address*]
 : Compile and run the unit tests under a sanitizer, e.g.
@@ -124,9 +125,9 @@ The following `make` targets are the primary interface. Each is invoked as
 
 These targets exist to collect live evidence. They are intentionally outside
 **check**; headless pty captures prove byte streams and final cell text, not
-that a real terminal consumed an image protocol or that Windows ConPTY works in
-Windows Terminal. The canonical evidence procedure and recording template live
-in `docs/runbooks/phase1-5-live-evidence.md`.
+that a real terminal consumed an image protocol or that Windows ConPTY passed on
+a Windows host. The canonical evidence procedure and recording template live in
+`docs/runbooks/phase1-5-live-evidence.md`.
 
 **check-image-smoke**
 : Headless sanity check for the image smoke harness. It forces protocol `none`,
@@ -153,6 +154,10 @@ in `docs/runbooks/phase1-5-live-evidence.md`.
 : Compile and run the portable helper tests for the Win32 ConPTY smoke runner:
   script line-ending selection, sentinel matching, and helper behavior that can
   be checked without a Windows host.
+
+**check-hosted-visual-windows**
+: Verify the hosted Windows visual probe script still emits the ConPTY
+  acceptance manifest (`conpty-acceptance.json`) and its command/meta sidecars.
 
 **smoke-conpty-win32**
 : Run the Win32 ConPTY smoke runner on Windows. It opens the default shell via

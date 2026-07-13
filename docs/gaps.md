@@ -51,7 +51,7 @@ These are known limitations promoted into the next planned follow-up. See
   ConPTY entry points, and covered by the MinGW compile seam in `make check`
   plus POSIX fallback/helper tests. `make smoke-conpty-win32` is available for
   operator evidence, but do not claim Windows support until a real Windows
-  Terminal smoke run is green and recorded per
+  ConPTY smoke run on a Windows host is green and recorded per
   `docs/runbooks/phase1-5-live-evidence.md`.
 - **Image protocol emitters** still need iTerm2 terminal evidence.
   Kitty graphics, iTerm2 inline PNG images, raw-RGBA Sixel, PNG+RGBA sidecar
