@@ -11,7 +11,7 @@ date: 2026-07-13
 - Branch: `conpty-live-rca-2026-07-13`
 - Base commit: `0a11fab251745f58da15dd321dbfa4d86e62a235`
   (`docs: align phase 1.5 evidence gates`)
-- RCA commit: pending at handoff draft time.
+- RCA commit: `8098b11a58e6a5538ecc8590d0e748ab49517aec`
 - Merge/push status: not merged, not pushed at the time this handoff was
   written.
 - Downloaded hosted artifact: `artifacts/gh-runs/28982641529/` (gitignored
