@@ -163,14 +163,15 @@ a Windows host. The canonical evidence procedure and recording template live in
 : Run synthetic positive and negative fixture tests for the hosted ConPTY
   evidence verifier. This proves the verifier rejects wrong commits, malformed
   JSON, false acceptance flags, nonzero status, missing PASS tokens, and unsafe
-  manifest paths.
+  manifest paths, plus compile-only commands or non-Windows metadata.
 
 **verify-conpty-evidence**
 : Validate a downloaded hosted Windows ConPTY artifact directory:
   `make verify-conpty-evidence ARTIFACT_DIR=... COMMIT=...`. The target checks
   `conpty-acceptance.json` and its stdout/stderr/status/meta/evidence sidecars
-  against one expected commit. It does not create Windows evidence; it only
-  accepts or rejects an artifact already collected from a Windows host.
+  against one expected commit, the real smoke target, and Windows host metadata.
+  It does not create Windows evidence; it only accepts or rejects an artifact
+  already collected from a Windows host.
 
 **smoke-conpty-win32**
 : Run the Win32 ConPTY smoke runner on Windows. It opens the default shell via

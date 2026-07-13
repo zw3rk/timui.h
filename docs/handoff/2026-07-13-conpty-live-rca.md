@@ -59,7 +59,8 @@ date: 2026-07-13
   downloaded hosted Windows artifact against that predicate. The fixture test
   rejects missing/malformed manifests, wrong commits, false acceptance flags,
   nonzero status files, missing PASS tokens, evidence.md mismatch, and unsafe
-  manifest paths.
+  manifest paths. It now also rejects compile-only commands and artifacts that
+  do not record Windows host metadata.
 
 ## Verification Already Run
 

@@ -12,7 +12,7 @@ PASS_NEEDLE = "PASS conpty smoke: observed TIMUI_CONPTY_SMOKE"
 
 
 def write_artifact(root: Path, commit: str, *, manifest=None, stdout=None, status="0",
-                   evidence_commit=None, meta=None):
+                   evidence_commit=None, command=None, meta=None):
     root.mkdir(parents=True, exist_ok=True)
     if manifest is None:
         manifest = {
@@ -28,10 +28,14 @@ def write_artifact(root: Path, commit: str, *, manifest=None, stdout=None, statu
     (root / "conpty-smoke.stdout").write_text(stdout if stdout is not None else PASS_NEEDLE + "\n", encoding="utf-8")
     (root / "conpty-smoke.stderr").write_text("", encoding="utf-8")
     (root / "conpty-smoke.status").write_text(status + "\n", encoding="ascii")
-    (root / "conpty-smoke.command.txt").write_text("make smoke-conpty-win32\n", encoding="utf-8")
+    (root / "conpty-smoke.command.txt").write_text(
+        command if command is not None else "make smoke-conpty-win32\n",
+        encoding="utf-8",
+    )
     if meta is None:
         meta = "\n".join([
             f"commit={commit}",
+            "os_env=Windows_NT",
             "status=0",
             "passTokenPresent=True",
             "accepted=True",
@@ -139,6 +143,20 @@ def main():
             "statusFile": "conpty-smoke.status",
         })
         expect_fail("manifest path escape", run_verify(repo, path_escape, commit))
+
+        wrong_command = tmp / "wrong-command"
+        write_artifact(wrong_command, commit, command="make check-conpty-win32-smoke-compile\n")
+        expect_fail("wrong command", run_verify(repo, wrong_command, commit))
+
+        missing_windows_meta = tmp / "missing-windows-meta"
+        write_artifact(missing_windows_meta, commit, meta="\n".join([
+            f"commit={commit}",
+            "status=0",
+            "passTokenPresent=True",
+            "accepted=True",
+            "",
+        ]))
+        expect_fail("missing Windows metadata", run_verify(repo, missing_windows_meta, commit))
     finally:
         shutil.rmtree(tmp)
 

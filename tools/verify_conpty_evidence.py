@@ -92,10 +92,13 @@ def verify(artifact_dir, commit):
     command = read_text(artifact_dir / "conpty-smoke.command.txt").strip()
     if not command:
         raise ValueError("conpty-smoke.command.txt is empty")
+    if "smoke-conpty-win32" not in command:
+        raise ValueError("conpty-smoke.command.txt does not run smoke-conpty-win32")
 
     meta = read_text(artifact_dir / "conpty-smoke.meta.txt")
     for needle in (
         f"commit={commit}",
+        "os_env=Windows_NT",
         "status=0",
         "passTokenPresent=True",
         "accepted=True",

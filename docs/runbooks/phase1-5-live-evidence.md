@@ -197,7 +197,8 @@ Hosted runner probe:
   The verifier requires `conpty-acceptance.json`, `evidence.md`,
   `conpty-smoke.stdout`, `conpty-smoke.stderr`, `conpty-smoke.status`,
   `conpty-smoke.command.txt`, and `conpty-smoke.meta.txt` to agree on the same
-  commit, status 0, and the exact ConPTY PASS token.
+  commit, status 0, the exact ConPTY PASS token, a `smoke-conpty-win32`
+  command, and `os_env=Windows_NT` host metadata.
 - `windows-terminal-sixel-*.png` is supplemental Sixel evidence only if it
   visibly shows the Windows Terminal live smoke with image tiles and the
   session diagnostics show an interactive desktop. Run `28982641529` is the
