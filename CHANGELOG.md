@@ -6,6 +6,16 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.2.0] — 2026-07-15
+
+First public pre-release of the header-only C99 terminal UI library: a
+single-header release artifact, POSIX terminal backend, deterministic parser and
+renderer tests, release/website automation, modern terminal capability
+diagnostics, image protocol support, and a pile of adversarial hardening. No
+ncurses. No runtime circus.
+
 ### Added
 - **Refinement release gates**: `make fuzz` now runs a deterministic
   parser/image adversarial corpus, and the release runbook documents local
@@ -194,13 +204,14 @@ semver (a MINOR bump signals a breaking API change, PATCH a fix).
   (digits/space/letters arrive as text, not `TimuiKey` events). These remove the
   need for apps to reach into `struct Timui`.
 
-## [0.2.0] — 2026-07-05
+### Initial prototype baseline
 
-First tagged release. A working immediate-mode C99 TUI — terminal backend,
-incremental input parser, truecolour diff renderer, and a themed widget set —
-hardened over seven review rounds (ASAN/UBSAN clean, 182 unit tests).
+The initial internal 0.2.0 baseline already had a working immediate-mode C99 TUI
+— terminal backend, incremental input parser, truecolour diff renderer, and a
+themed widget set — hardened over seven review rounds (ASAN/UBSAN clean, 182
+unit tests).
 
-### Added
+#### Added
 - **In-line cursor editing** for text inputs. `timui_text_area` and the new
   `timui_input_field` support Left/Right (by codepoint), Home/End (line bounds),
   Backspace/Delete (before/at the cursor), and mid-string insertion.
@@ -212,7 +223,7 @@ hardened over seven review rounds (ASAN/UBSAN clean, 182 unit tests).
 - `timui_events_dropped()` (queue-overflow count) and a colour-model sentinel so
   pure black `0x000000` is distinct from `TIMUI_COLOR_DEFAULT` (ADR 0001).
 
-### Changed (breaking)
+#### Changed (breaking)
 - **`timui_ui_resize` now returns `TimuiResult`** (was `void`) so a resize-time
   out-of-memory is signalable.
 - **`timui_tree` / `timui_table` / `timui_command_palette` are now controlled**
@@ -227,7 +238,7 @@ hardened over seven review rounds (ASAN/UBSAN clean, 182 unit tests).
 - `timui_id_stack_push` returns `TimuiResult` so an OOM can't silently corrupt
   the id hierarchy.
 
-### Fixed
+#### Fixed
 - **Input parser**: the UTF-8 decoder now rejects overlong / surrogate /
   above-max sequences (substituting U+FFFD), closing a NUL/invalid-UTF-8
   injection into app buffers; an ESC mid-CSI/SS3 aborts and restarts the
@@ -239,7 +250,7 @@ hardened over seven review rounds (ASAN/UBSAN clean, 182 unit tests).
 - Terminal restoration on SIGTERM/SIGHUP/SIGQUIT; numerous adversarial-input and
   lifecycle-OOM edge cases hardened (see `docs/gaps.md`).
 
-### Internal
+#### Internal
 - Single shared UTF-8 encoder and unified glyph-emit path; extracted shared
   list-widget scaffolding; stopped implementation-only macros/typedefs leaking
   into the consumer translation unit; honest public-header documentation.
