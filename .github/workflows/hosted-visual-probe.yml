@@ -28,7 +28,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v27
         id: install-nix
         continue-on-error: true
@@ -39,20 +39,135 @@ jobs:
           TIMUI_HOSTED_NIX_STATUS: ${{ steps.install-nix.outcome }}
         run: bash tools/ci/hosted_visual_macos.sh "${{ inputs.frames }}"
       - name: Upload macOS visual evidence
+        id: upload-macos-evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hosted-visual-macos-iterm2
           path: artifacts/hosted-visual/macos
           if-no-files-found: error
           retention-days: 14
+      - name: Upload macOS terminal sanity screenshot
+        id: upload-macos-terminal-sanity
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/macos/terminal-sanity.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload iTerm2 API screenshot
+        id: upload-macos-iterm2-api
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/macos/iterm2-api-session.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload iTerm2 window screenshot
+        id: upload-macos-iterm2-window
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/macos/iterm2-window-12s.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload iTerm2 region screenshot
+        id: upload-macos-iterm2-region
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/macos/iterm2-region-12s.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload iTerm2 screen screenshot at 12s
+        id: upload-macos-iterm2-screen-12s
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/macos/iterm2-screen-12s.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload iTerm2 screen screenshot at 24s
+        id: upload-macos-iterm2-screen-24s
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/macos/iterm2-screen-24s.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Summarize macOS visual evidence
+        if: always()
+        env:
+          EVIDENCE_URL: ${{ steps.upload-macos-evidence.outputs.artifact-url }}
+          TERMINAL_SANITY_URL: ${{ steps.upload-macos-terminal-sanity.outputs.artifact-url }}
+          ITERM2_API_URL: ${{ steps.upload-macos-iterm2-api.outputs.artifact-url }}
+          ITERM2_WINDOW_URL: ${{ steps.upload-macos-iterm2-window.outputs.artifact-url }}
+          ITERM2_REGION_URL: ${{ steps.upload-macos-iterm2-region.outputs.artifact-url }}
+          ITERM2_SCREEN_12S_URL: ${{ steps.upload-macos-iterm2-screen-12s.outputs.artifact-url }}
+          ITERM2_SCREEN_24S_URL: ${{ steps.upload-macos-iterm2-screen-24s.outputs.artifact-url }}
+        run: |
+          evidence="artifacts/hosted-visual/macos/evidence.md"
+
+          add_row() {
+            name="$1"
+            path="$2"
+            url="$3"
+            status="missing"
+            if [ -f "${path}" ]; then
+              status="captured"
+            fi
+            link="not uploaded"
+            if [ -n "${url}" ]; then
+              link="[open artifact](${url})"
+            fi
+            printf "| \`%s\` | %s | %s |\n" "${name}" "${status}" "${link}" >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          {
+            echo "## macOS iTerm2 Visual Evidence"
+            echo
+            if [ -n "${EVIDENCE_URL}" ]; then
+              echo "- Full evidence bundle: [hosted-visual-macos-iterm2](${EVIDENCE_URL})"
+            else
+              echo "- Full evidence bundle: not uploaded"
+            fi
+            echo
+            echo "| Screenshot | Status | Link |"
+            echo "| --- | --- | --- |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          add_row "terminal-sanity.png" "artifacts/hosted-visual/macos/terminal-sanity.png" "${TERMINAL_SANITY_URL}"
+          add_row "iterm2-api-session.png" "artifacts/hosted-visual/macos/iterm2-api-session.png" "${ITERM2_API_URL}"
+          add_row "iterm2-window-12s.png" "artifacts/hosted-visual/macos/iterm2-window-12s.png" "${ITERM2_WINDOW_URL}"
+          add_row "iterm2-region-12s.png" "artifacts/hosted-visual/macos/iterm2-region-12s.png" "${ITERM2_REGION_URL}"
+          add_row "iterm2-screen-12s.png" "artifacts/hosted-visual/macos/iterm2-screen-12s.png" "${ITERM2_SCREEN_12S_URL}"
+          add_row "iterm2-screen-24s.png" "artifacts/hosted-visual/macos/iterm2-screen-24s.png" "${ITERM2_SCREEN_24S_URL}"
+
+          {
+            echo
+            echo "> GitHub job summaries do not reliably render generated workspace images inline, so screenshots are uploaded as individual artifacts and linked here."
+            if [ -f "${evidence}" ]; then
+              echo
+              echo "<details><summary>Evidence notes</summary>"
+              echo
+              sed -n '1,220p' "${evidence}"
+              echo
+              echo "</details>"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   windows-terminal:
     name: Windows Terminal screenshot + ConPTY probe
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: msys2/setup-msys2@v2
         id: setup-msys2
         with:
@@ -69,10 +184,91 @@ jobs:
           TIMUI_MSYS2_LOCATION: ${{ steps.setup-msys2.outputs.msys2-location }}
         run: ./tools/ci/hosted_visual_windows.ps1 -Frames "${{ inputs.frames }}"
       - name: Upload Windows visual evidence
+        id: upload-windows-evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hosted-visual-windows-terminal
           path: artifacts/hosted-visual/windows
           if-no-files-found: error
           retention-days: 14
+      - name: Upload Windows cmd sanity screenshot
+        id: upload-windows-cmd-sanity
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/windows/cmd-sanity.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload Windows direct Sixel screenshot
+        id: upload-windows-direct-sixel
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/windows/windows-terminal-direct-sixel-12s.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload Windows Terminal Sixel screenshot at 12s
+        id: upload-windows-sixel-12s
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/windows/windows-terminal-sixel-12s.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Upload Windows Terminal Sixel screenshot at 24s
+        id: upload-windows-sixel-24s
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/hosted-visual/windows/windows-terminal-sixel-24s.png
+          if-no-files-found: ignore
+          retention-days: 14
+          archive: false
+      - name: Summarize Windows visual evidence
+        if: always()
+        shell: pwsh
+        env:
+          EVIDENCE_URL: ${{ steps.upload-windows-evidence.outputs.artifact-url }}
+          CMD_SANITY_URL: ${{ steps.upload-windows-cmd-sanity.outputs.artifact-url }}
+          DIRECT_SIXEL_URL: ${{ steps.upload-windows-direct-sixel.outputs.artifact-url }}
+          SIXEL_12S_URL: ${{ steps.upload-windows-sixel-12s.outputs.artifact-url }}
+          SIXEL_24S_URL: ${{ steps.upload-windows-sixel-24s.outputs.artifact-url }}
+        run: |
+          $summary = $env:GITHUB_STEP_SUMMARY
+          $evidence = "artifacts/hosted-visual/windows/evidence.md"
+          $rows = @(
+            @{ Name = "cmd-sanity.png"; Path = "artifacts/hosted-visual/windows/cmd-sanity.png"; Url = $env:CMD_SANITY_URL },
+            @{ Name = "windows-terminal-direct-sixel-12s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-direct-sixel-12s.png"; Url = $env:DIRECT_SIXEL_URL },
+            @{ Name = "windows-terminal-sixel-12s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-sixel-12s.png"; Url = $env:SIXEL_12S_URL },
+            @{ Name = "windows-terminal-sixel-24s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-sixel-24s.png"; Url = $env:SIXEL_24S_URL }
+          )
+
+          Add-Content -Path $summary -Value "## Windows Terminal Visual Evidence"
+          Add-Content -Path $summary -Value ""
+          if ($env:EVIDENCE_URL) {
+            Add-Content -Path $summary -Value "- Full evidence bundle: [hosted-visual-windows-terminal]($env:EVIDENCE_URL)"
+          } else {
+            Add-Content -Path $summary -Value "- Full evidence bundle: not uploaded"
+          }
+          Add-Content -Path $summary -Value ""
+          Add-Content -Path $summary -Value "| Screenshot | Status | Link |"
+          Add-Content -Path $summary -Value "| --- | --- | --- |"
+          foreach ($row in $rows) {
+            $status = if (Test-Path $row.Path) { "captured" } else { "missing" }
+            $link = if ($row.Url) { "[open artifact]($($row.Url))" } else { "not uploaded" }
+            Add-Content -Path $summary -Value "| ``$($row.Name)`` | $status | $link |"
+          }
+          Add-Content -Path $summary -Value ""
+          Add-Content -Path $summary -Value "> GitHub job summaries do not reliably render generated workspace images inline, so screenshots are uploaded as individual artifacts and linked here."
+          if (Test-Path $evidence) {
+            Add-Content -Path $summary -Value ""
+            Add-Content -Path $summary -Value "<details><summary>Evidence notes</summary>"
+            Add-Content -Path $summary -Value ""
+            Get-Content -Path $evidence -TotalCount 220 | Add-Content -Path $summary
+            Add-Content -Path $summary -Value ""
+            Add-Content -Path $summary -Value "</details>"
+          }
