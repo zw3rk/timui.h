@@ -47,6 +47,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          name: iterm2-window.png
           path: artifacts/hosted-visual/macos/iterm2-window-12s.png
           if-no-files-found: ignore
           retention-days: 14
@@ -87,7 +88,7 @@ jobs:
             echo "| --- | --- | --- |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          add_row "iterm2-window-12s.png" "artifacts/hosted-visual/macos/iterm2-window-12s.png" "${ITERM2_WINDOW_URL}"
+          add_row "iTerm2 window" "artifacts/hosted-visual/macos/iterm2-window-12s.png" "${ITERM2_WINDOW_URL}"
 
           {
             echo
@@ -137,25 +138,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          name: windows-terminal-direct-sixel.png
           path: artifacts/hosted-visual/windows/windows-terminal-direct-sixel-12s.png
           if-no-files-found: ignore
           retention-days: 14
           archive: false
-      - name: Upload Windows Terminal Sixel screenshot at 12s
+      - name: Upload Windows Terminal Sixel screenshot
         id: upload-windows-sixel-12s
         if: always()
         uses: actions/upload-artifact@v7
         with:
+          name: windows-terminal-sixel.png
           path: artifacts/hosted-visual/windows/windows-terminal-sixel-12s.png
-          if-no-files-found: ignore
-          retention-days: 14
-          archive: false
-      - name: Upload Windows Terminal Sixel screenshot at 24s
-        id: upload-windows-sixel-24s
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          path: artifacts/hosted-visual/windows/windows-terminal-sixel-24s.png
           if-no-files-found: ignore
           retention-days: 14
           archive: false
@@ -166,14 +160,12 @@ jobs:
           EVIDENCE_URL: ${{ steps.upload-windows-evidence.outputs.artifact-url }}
           DIRECT_SIXEL_URL: ${{ steps.upload-windows-direct-sixel.outputs.artifact-url }}
           SIXEL_12S_URL: ${{ steps.upload-windows-sixel-12s.outputs.artifact-url }}
-          SIXEL_24S_URL: ${{ steps.upload-windows-sixel-24s.outputs.artifact-url }}
         run: |
           $summary = $env:GITHUB_STEP_SUMMARY
           $evidence = "artifacts/hosted-visual/windows/evidence.md"
           $rows = @(
-            @{ Name = "windows-terminal-direct-sixel-12s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-direct-sixel-12s.png"; Url = $env:DIRECT_SIXEL_URL },
-            @{ Name = "windows-terminal-sixel-12s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-sixel-12s.png"; Url = $env:SIXEL_12S_URL },
-            @{ Name = "windows-terminal-sixel-24s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-sixel-24s.png"; Url = $env:SIXEL_24S_URL }
+            @{ Name = "Windows direct Sixel"; Path = "artifacts/hosted-visual/windows/windows-terminal-direct-sixel-12s.png"; Url = $env:DIRECT_SIXEL_URL },
+            @{ Name = "Windows Terminal Sixel"; Path = "artifacts/hosted-visual/windows/windows-terminal-sixel-12s.png"; Url = $env:SIXEL_12S_URL }
           )
 
           Add-Content -Path $summary -Value "## Windows Terminal Visual Evidence"
@@ -262,6 +254,7 @@ jobs:
             local platform="$1"
             local artifact="$2"
             local name="$3"
+            local dest="${4:-${name}}"
             local artifact_dir="${src_root}/${artifact}"
             local match=""
 
@@ -270,16 +263,15 @@ jobs:
             fi
 
             if [ -n "${match}" ]; then
-              cp "${match}" "${RUN_PATH}/${platform}/${name}"
+              cp "${match}" "${RUN_PATH}/${platform}/${dest}"
             fi
           }
 
-          copy_named macos hosted-visual-macos-iterm2 iterm2-window-12s.png
+          copy_named macos hosted-visual-macos-iterm2 iterm2-window-12s.png iterm2-window.png
           copy_named macos hosted-visual-macos-iterm2 evidence.md
 
-          copy_named windows hosted-visual-windows-terminal windows-terminal-direct-sixel-12s.png
-          copy_named windows hosted-visual-windows-terminal windows-terminal-sixel-12s.png
-          copy_named windows hosted-visual-windows-terminal windows-terminal-sixel-24s.png
+          copy_named windows hosted-visual-windows-terminal windows-terminal-direct-sixel-12s.png windows-terminal-direct-sixel.png
+          copy_named windows hosted-visual-windows-terminal windows-terminal-sixel-12s.png windows-terminal-sixel.png
           copy_named windows hosted-visual-windows-terminal evidence.md
 
           cat > "${RUN_PATH}/README.md" <<EOF
@@ -349,7 +341,6 @@ jobs:
             echo
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          add_image "macOS iTerm2 window at 12s" macos iterm2-window-12s.png
-          add_image "Windows direct Sixel at 12s" windows windows-terminal-direct-sixel-12s.png
-          add_image "Windows Terminal Sixel at 12s" windows windows-terminal-sixel-12s.png
-          add_image "Windows Terminal Sixel at 24s" windows windows-terminal-sixel-24s.png
+          add_image "macOS iTerm2" macos iterm2-window.png
+          add_image "Windows direct Sixel" windows windows-terminal-direct-sixel.png
+          add_image "Windows Terminal Sixel" windows windows-terminal-sixel.png

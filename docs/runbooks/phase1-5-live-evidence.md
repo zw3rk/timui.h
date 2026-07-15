@@ -113,12 +113,12 @@ Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
 - Open the `Visual screenshot summary` job summary and inspect the embedded
-  `iterm2-window-12s.png` screenshot from the `ci-screenshots` branch. If
+  `macos/iterm2-window.png` screenshot from the `ci-screenshots` branch. If
   inline rendering is unavailable, open the linked file or download the
   `hosted-visual-macos-iterm2` artifact.
-- Prefer `iterm2-window-12s.png`. Accept it if it visibly shows the iTerm2 live
-  smoke with `active: iterm2 (forced)`, PNG-backed image tiles for `plain png`
-  and `png+rgba sidecar`, and an unsupported note for `raw rgba`. Run
+- Prefer the iTerm2 window screenshot. Accept it if it visibly shows the iTerm2
+  live smoke with `active: iterm2 (forced)`, PNG-backed image tiles for
+  `plain png` and `png+rgba sidecar`, and an unsupported note for `raw rgba`. Run
   `28986249841` is the accepted hosted macOS iTerm2 baseline for this cleaned-up
   smoke.
 - `iterm2-region-12s.png` and `iterm2-screen-*.png` may also count only if they
@@ -185,9 +185,10 @@ Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
 - Open the `Visual screenshot summary` job summary and inspect the embedded
-  Windows Sixel screenshots from the `ci-screenshots` branch. If inline
-  rendering is unavailable, open the linked files or download the
-  `hosted-visual-windows-terminal` artifact.
+  `windows/windows-terminal-direct-sixel.png` and
+  `windows/windows-terminal-sixel.png` screenshots from the `ci-screenshots`
+  branch. If inline rendering is unavailable, open the linked files or download
+  the `hosted-visual-windows-terminal` artifact.
 - `conpty-smoke.stdout` may count for the ConPTY smoke if it contains
   `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE` and `evidence.md` records
   the same commit.
