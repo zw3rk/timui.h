@@ -310,7 +310,7 @@ jobs:
           src_root="${GITHUB_WORKSPACE}/visual-artifacts"
           publish_root="${RUNNER_TEMP}/timui-screenshots-publish-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
-          raw_base_url="https://raw.githubusercontent.com/${GH_REPO}/${SCREENSHOT_BRANCH}/${RUN_PATH}"
+          raw_base_url="https://github.com/${GH_REPO}/raw/${SCREENSHOT_BRANCH}/${RUN_PATH}"
           blob_base_url="https://github.com/${GH_REPO}/blob/${SCREENSHOT_BRANCH}/${RUN_PATH}"
           run_url="https://github.com/${GH_REPO}/actions/runs/${GITHUB_RUN_ID}"
           branch_run_url="https://github.com/${GH_REPO}/tree/${SCREENSHOT_BRANCH}/${RUN_PATH}"
@@ -422,7 +422,7 @@ jobs:
             echo "- Workflow run: [${GITHUB_RUN_ID}](${run_url})"
             echo "- Full evidence bundles remain attached as job artifacts."
             echo
-            echo "> The thumbnails below are loaded from the dedicated \`${SCREENSHOT_BRANCH}\` branch. If private-repository raw image rendering is blocked by GitHub, use the linked file or artifact bundle."
+            echo "> The thumbnails below are loaded from the dedicated \`${SCREENSHOT_BRANCH}\` branch. If GitHub does not render them inline, use the linked file or artifact bundle."
             echo
           } >> "${GITHUB_STEP_SUMMARY}"
 
