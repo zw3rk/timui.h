@@ -22,19 +22,26 @@ as evidence, what does not, and the artifact text to record afterward.
   hosted runner probe. Its final `Visual screenshot summary` job publishes
   run-scoped PNGs to the `ci-screenshots` branch and embeds them in the GitHub
   Actions summary; if GitHub does not render raw private-repository images,
-  use the linked file or artifact bundle. Screenshots count only after manual
-  inspection shows the expected visible terminal result. Screenshot-sanity
-  artifacts such as `terminal-sanity.png` or `cmd-sanity.png` prove capture
-  mechanics only; they are not image-protocol evidence. Raw escape streams,
-  DCS/OSC marker counts, process lists, session diagnostics, and launch logs
-  are diagnostics only. iTerm2's own Python API screenshot artifact is a
-  native-terminal visual artifact, but still requires manual inspection before
-  acceptance.
+  use the linked file or artifact bundle. The summary gallery promotes only
+  acceptance screenshots; sanity/full-screen/API screenshots remain diagnostics
+  in the full evidence artifact when present. Screenshots count only after
+  manual inspection shows the expected visible terminal result. Screenshot
+  sanity artifacts such as `terminal-sanity.png` or `cmd-sanity.png` prove
+  capture mechanics only; they are not image-protocol evidence. Raw escape
+  streams, DCS/OSC marker counts, process lists, session diagnostics, and launch
+  logs are diagnostics only. iTerm2's own Python API screenshot artifact is a
+  native-terminal visual artifact when present, but still requires manual
+  inspection before acceptance.
 - Hosted Windows GUI screenshots count when the artifact clearly shows the
   expected terminal payload and records an active interactive session. Run
   `28982641529` is accepted Sixel evidence. If a future Windows GUI predicate
   cannot be satisfied on hosted runners, use a self-hosted Windows runner
   launched from an autologon interactive session, not a runner service.
+- The hosted macOS visual job uses native `make` for this best-effort GUI
+  evidence path. The regular macOS/Linux PR checks still run through Nix; the
+  visual job avoids installing Nix on the GitHub macOS image because the
+  installer can fail on pre-existing `_nixbld*` users and leave a red annotation
+  even when the visual evidence path succeeds.
 - The hosted Windows job uses native MSYS2 `make` rather than `nix develop`
   because the flake currently declares Linux and Darwin systems only. That is a
   documented CI exception for this evidence probe, not a project-wide toolchain
@@ -106,11 +113,9 @@ Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
 - Open the `Visual screenshot summary` job summary and inspect the embedded
-  macOS screenshots from the `ci-screenshots` branch. If inline rendering is
-  unavailable, download the `hosted-visual-macos-iterm2` artifact.
-- First inspect `terminal-sanity.png`. It should show the
-  `TIMUI_HOSTED_SCREENSHOT_SANITY` Terminal.app window; if it does not, the
-  hosted macOS screenshot path is inconclusive before iTerm2 is considered.
+  `iterm2-window-12s.png` screenshot from the `ci-screenshots` branch. If
+  inline rendering is unavailable, open the linked file or download the
+  `hosted-visual-macos-iterm2` artifact.
 - Prefer `iterm2-window-12s.png`. Accept it if it visibly shows the iTerm2 live
   smoke with `active: iterm2 (forced)`, PNG-backed image tiles for `plain png`
   and `png+rgba sidecar`, and an unsupported note for `raw rgba`. Run
@@ -180,11 +185,9 @@ Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
 - Open the `Visual screenshot summary` job summary and inspect the embedded
-  Windows screenshots from the `ci-screenshots` branch. If inline rendering is
-  unavailable, download the `hosted-visual-windows-terminal` artifact.
-- First inspect `cmd-sanity.png`. It should show the
-  `TIMUI_HOSTED_SCREENSHOT_SANITY` console window; if it does not, the hosted
-  Windows screenshot path is inconclusive before Windows Terminal is considered.
+  Windows Sixel screenshots from the `ci-screenshots` branch. If inline
+  rendering is unavailable, open the linked files or download the
+  `hosted-visual-windows-terminal` artifact.
 - `conpty-smoke.stdout` may count for the ConPTY smoke if it contains
   `PASS conpty smoke: observed TIMUI_CONPTY_SMOKE` and `evidence.md` records
   the same commit.

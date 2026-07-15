@@ -83,11 +83,11 @@ note ""
 } > "${out}/metadata.txt" 2>&1
 
 note "## Build and stream diagnostics"
-if command -v nix >/dev/null 2>&1 && [ "${TIMUI_HOSTED_NIX_STATUS:-success}" != "failure" ]; then
+if command -v nix >/dev/null 2>&1 && [ "${TIMUI_HOSTED_NIX_STATUS:-success}" = "success" ]; then
   note "- Build path: nix develop -c make"
   capture image-smoke-build nix develop -c make build/image_smoke || true
 else
-  note "- Build path: native make fallback (Nix unavailable or install failed)"
+  note "- Build path: native make fallback (Nix unavailable, skipped, or install failed)"
   capture image-smoke-build make build/image_smoke CC="${CC:-cc}" || true
 fi
 
@@ -623,7 +623,7 @@ note ""
 note "## Outcome"
 note "- Accepted: manual inspection required."
 note "- terminal-sanity.png only proves hosted macOS screenshot mechanics. It is not image-protocol evidence."
-note "- Count this as iTerm2 live visual evidence only if iterm2-api-session.png, iterm2-window-*.png, iterm2-region-*.png, or iterm2-screen-*.png visibly shows the timui image smoke with PNG-backed image tiles, not placeholders."
+note "- Count this as iTerm2 live visual evidence only if iterm2-window-12s.png visibly shows the timui image smoke with PNG-backed image tiles, not placeholders. API, region, and full-screen captures are diagnostics when present."
 note "- The typescript and OSC 1337 count are diagnostics only; they do not replace a visual screenshot or recording."
 
 exit 0

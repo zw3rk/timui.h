@@ -29,14 +29,9 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
-      - uses: cachix/install-nix-action@v27
-        id: install-nix
-        continue-on-error: true
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
       - name: Run hosted iTerm2 probe
         env:
-          TIMUI_HOSTED_NIX_STATUS: ${{ steps.install-nix.outcome }}
+          TIMUI_HOSTED_NIX_STATUS: skipped
         run: bash tools/ci/hosted_visual_macos.sh "${{ inputs.frames }}"
       - name: Upload macOS visual evidence
         id: upload-macos-evidence
@@ -47,24 +42,6 @@ jobs:
           path: artifacts/hosted-visual/macos
           if-no-files-found: error
           retention-days: 14
-      - name: Upload macOS terminal sanity screenshot
-        id: upload-macos-terminal-sanity
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          path: artifacts/hosted-visual/macos/terminal-sanity.png
-          if-no-files-found: ignore
-          retention-days: 14
-          archive: false
-      - name: Upload iTerm2 API screenshot
-        id: upload-macos-iterm2-api
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          path: artifacts/hosted-visual/macos/iterm2-api-session.png
-          if-no-files-found: ignore
-          retention-days: 14
-          archive: false
       - name: Upload iTerm2 window screenshot
         id: upload-macos-iterm2-window
         if: always()
@@ -74,43 +51,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           archive: false
-      - name: Upload iTerm2 region screenshot
-        id: upload-macos-iterm2-region
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          path: artifacts/hosted-visual/macos/iterm2-region-12s.png
-          if-no-files-found: ignore
-          retention-days: 14
-          archive: false
-      - name: Upload iTerm2 screen screenshot at 12s
-        id: upload-macos-iterm2-screen-12s
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          path: artifacts/hosted-visual/macos/iterm2-screen-12s.png
-          if-no-files-found: ignore
-          retention-days: 14
-          archive: false
-      - name: Upload iTerm2 screen screenshot at 24s
-        id: upload-macos-iterm2-screen-24s
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          path: artifacts/hosted-visual/macos/iterm2-screen-24s.png
-          if-no-files-found: ignore
-          retention-days: 14
-          archive: false
       - name: Summarize macOS visual evidence
         if: always()
         env:
           EVIDENCE_URL: ${{ steps.upload-macos-evidence.outputs.artifact-url }}
-          TERMINAL_SANITY_URL: ${{ steps.upload-macos-terminal-sanity.outputs.artifact-url }}
-          ITERM2_API_URL: ${{ steps.upload-macos-iterm2-api.outputs.artifact-url }}
           ITERM2_WINDOW_URL: ${{ steps.upload-macos-iterm2-window.outputs.artifact-url }}
-          ITERM2_REGION_URL: ${{ steps.upload-macos-iterm2-region.outputs.artifact-url }}
-          ITERM2_SCREEN_12S_URL: ${{ steps.upload-macos-iterm2-screen-12s.outputs.artifact-url }}
-          ITERM2_SCREEN_24S_URL: ${{ steps.upload-macos-iterm2-screen-24s.outputs.artifact-url }}
         run: |
           evidence="artifacts/hosted-visual/macos/evidence.md"
 
@@ -142,12 +87,7 @@ jobs:
             echo "| --- | --- | --- |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          add_row "terminal-sanity.png" "artifacts/hosted-visual/macos/terminal-sanity.png" "${TERMINAL_SANITY_URL}"
-          add_row "iterm2-api-session.png" "artifacts/hosted-visual/macos/iterm2-api-session.png" "${ITERM2_API_URL}"
           add_row "iterm2-window-12s.png" "artifacts/hosted-visual/macos/iterm2-window-12s.png" "${ITERM2_WINDOW_URL}"
-          add_row "iterm2-region-12s.png" "artifacts/hosted-visual/macos/iterm2-region-12s.png" "${ITERM2_REGION_URL}"
-          add_row "iterm2-screen-12s.png" "artifacts/hosted-visual/macos/iterm2-screen-12s.png" "${ITERM2_SCREEN_12S_URL}"
-          add_row "iterm2-screen-24s.png" "artifacts/hosted-visual/macos/iterm2-screen-24s.png" "${ITERM2_SCREEN_24S_URL}"
 
           {
             echo
@@ -192,15 +132,6 @@ jobs:
           path: artifacts/hosted-visual/windows
           if-no-files-found: error
           retention-days: 14
-      - name: Upload Windows cmd sanity screenshot
-        id: upload-windows-cmd-sanity
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          path: artifacts/hosted-visual/windows/cmd-sanity.png
-          if-no-files-found: ignore
-          retention-days: 14
-          archive: false
       - name: Upload Windows direct Sixel screenshot
         id: upload-windows-direct-sixel
         if: always()
@@ -233,7 +164,6 @@ jobs:
         shell: pwsh
         env:
           EVIDENCE_URL: ${{ steps.upload-windows-evidence.outputs.artifact-url }}
-          CMD_SANITY_URL: ${{ steps.upload-windows-cmd-sanity.outputs.artifact-url }}
           DIRECT_SIXEL_URL: ${{ steps.upload-windows-direct-sixel.outputs.artifact-url }}
           SIXEL_12S_URL: ${{ steps.upload-windows-sixel-12s.outputs.artifact-url }}
           SIXEL_24S_URL: ${{ steps.upload-windows-sixel-24s.outputs.artifact-url }}
@@ -241,7 +171,6 @@ jobs:
           $summary = $env:GITHUB_STEP_SUMMARY
           $evidence = "artifacts/hosted-visual/windows/evidence.md"
           $rows = @(
-            @{ Name = "cmd-sanity.png"; Path = "artifacts/hosted-visual/windows/cmd-sanity.png"; Url = $env:CMD_SANITY_URL },
             @{ Name = "windows-terminal-direct-sixel-12s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-direct-sixel-12s.png"; Url = $env:DIRECT_SIXEL_URL },
             @{ Name = "windows-terminal-sixel-12s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-sixel-12s.png"; Url = $env:SIXEL_12S_URL },
             @{ Name = "windows-terminal-sixel-24s.png"; Path = "artifacts/hosted-visual/windows/windows-terminal-sixel-24s.png"; Url = $env:SIXEL_24S_URL }
@@ -345,15 +274,9 @@ jobs:
             fi
           }
 
-          copy_named macos hosted-visual-macos-iterm2 terminal-sanity.png
-          copy_named macos hosted-visual-macos-iterm2 iterm2-api-session.png
           copy_named macos hosted-visual-macos-iterm2 iterm2-window-12s.png
-          copy_named macos hosted-visual-macos-iterm2 iterm2-region-12s.png
-          copy_named macos hosted-visual-macos-iterm2 iterm2-screen-12s.png
-          copy_named macos hosted-visual-macos-iterm2 iterm2-screen-24s.png
           copy_named macos hosted-visual-macos-iterm2 evidence.md
 
-          copy_named windows hosted-visual-windows-terminal cmd-sanity.png
           copy_named windows hosted-visual-windows-terminal windows-terminal-direct-sixel-12s.png
           copy_named windows hosted-visual-windows-terminal windows-terminal-sixel-12s.png
           copy_named windows hosted-visual-windows-terminal windows-terminal-sixel-24s.png
@@ -426,13 +349,7 @@ jobs:
             echo
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          add_image "macOS Terminal sanity" macos terminal-sanity.png
-          add_image "macOS iTerm2 API screenshot" macos iterm2-api-session.png
           add_image "macOS iTerm2 window at 12s" macos iterm2-window-12s.png
-          add_image "macOS iTerm2 region at 12s" macos iterm2-region-12s.png
-          add_image "macOS full screen at 12s" macos iterm2-screen-12s.png
-          add_image "macOS full screen at 24s" macos iterm2-screen-24s.png
-          add_image "Windows cmd sanity" windows cmd-sanity.png
           add_image "Windows direct Sixel at 12s" windows windows-terminal-direct-sixel-12s.png
           add_image "Windows Terminal Sixel at 12s" windows windows-terminal-sixel-12s.png
           add_image "Windows Terminal Sixel at 24s" windows windows-terminal-sixel-24s.png
