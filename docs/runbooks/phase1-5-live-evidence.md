@@ -19,13 +19,17 @@ as evidence, what does not, and the artifact text to record afterward.
   Escape-driven session.
 - The manual GitHub Actions workflow
   `.github/workflows/hosted-visual-probe.yml` may be used as a best-effort
-  hosted runner probe. Its screenshots count only after manual inspection shows
-  the expected visible terminal result. Screenshot-sanity artifacts such as
-  `terminal-sanity.png` or `cmd-sanity.png` prove capture mechanics only; they
-  are not image-protocol evidence. Raw escape streams, DCS/OSC marker counts,
-  process lists, session diagnostics, and launch logs are diagnostics only.
-  iTerm2's own Python API screenshot artifact is a native-terminal visual
-  artifact, but still requires manual inspection before acceptance.
+  hosted runner probe. Its final `Visual screenshot summary` job publishes
+  run-scoped PNGs to the `ci-screenshots` branch and embeds them in the GitHub
+  Actions summary; if GitHub does not render raw private-repository images,
+  use the linked file or artifact bundle. Screenshots count only after manual
+  inspection shows the expected visible terminal result. Screenshot-sanity
+  artifacts such as `terminal-sanity.png` or `cmd-sanity.png` prove capture
+  mechanics only; they are not image-protocol evidence. Raw escape streams,
+  DCS/OSC marker counts, process lists, session diagnostics, and launch logs
+  are diagnostics only. iTerm2's own Python API screenshot artifact is a
+  native-terminal visual artifact, but still requires manual inspection before
+  acceptance.
 - Hosted Windows GUI screenshots count when the artifact clearly shows the
   expected terminal payload and records an active interactive session. Run
   `28982641529` is accepted Sixel evidence. If a future Windows GUI predicate
@@ -101,7 +105,9 @@ Reject or mark inconclusive if:
 Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
-- Download the `hosted-visual-macos-iterm2` artifact.
+- Open the `Visual screenshot summary` job summary and inspect the embedded
+  macOS screenshots from the `ci-screenshots` branch. If inline rendering is
+  unavailable, download the `hosted-visual-macos-iterm2` artifact.
 - First inspect `terminal-sanity.png`. It should show the
   `TIMUI_HOSTED_SCREENSHOT_SANITY` Terminal.app window; if it does not, the
   hosted macOS screenshot path is inconclusive before iTerm2 is considered.
@@ -173,7 +179,9 @@ Reject or mark inconclusive if:
 Hosted runner probe:
 
 - Trigger `Hosted visual probes` from GitHub Actions.
-- Download the `hosted-visual-windows-terminal` artifact.
+- Open the `Visual screenshot summary` job summary and inspect the embedded
+  Windows screenshots from the `ci-screenshots` branch. If inline rendering is
+  unavailable, download the `hosted-visual-windows-terminal` artifact.
 - First inspect `cmd-sanity.png`. It should show the
   `TIMUI_HOSTED_SCREENSHOT_SANITY` console window; if it does not, the hosted
   Windows screenshot path is inconclusive before Windows Terminal is considered.

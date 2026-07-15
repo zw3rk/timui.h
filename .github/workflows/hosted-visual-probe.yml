@@ -151,7 +151,7 @@ jobs:
 
           {
             echo
-            echo "> GitHub job summaries do not reliably render generated workspace images inline, so screenshots are uploaded as individual artifacts and linked here."
+            echo "> Inline thumbnails are published by the Visual screenshot summary job after both platform probes finish."
             if [ -f "${evidence}" ]; then
               echo
               echo "<details><summary>Evidence notes</summary>"
@@ -263,7 +263,7 @@ jobs:
             Add-Content -Path $summary -Value "| ``$($row.Name)`` | $status | $link |"
           }
           Add-Content -Path $summary -Value ""
-          Add-Content -Path $summary -Value "> GitHub job summaries do not reliably render generated workspace images inline, so screenshots are uploaded as individual artifacts and linked here."
+          Add-Content -Path $summary -Value "> Inline thumbnails are published by the Visual screenshot summary job after both platform probes finish."
           if (Test-Path $evidence) {
             Add-Content -Path $summary -Value ""
             Add-Content -Path $summary -Value "<details><summary>Evidence notes</summary>"
@@ -272,3 +272,162 @@ jobs:
             Add-Content -Path $summary -Value ""
             Add-Content -Path $summary -Value "</details>"
           }
+
+  visual-summary:
+    name: Visual screenshot summary
+    runs-on: ubuntu-latest
+    needs:
+      - macos-iterm2
+      - windows-terminal
+    if: always()
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download hosted visual evidence
+        id: download-visual-evidence
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: hosted-visual-*
+          path: visual-artifacts
+          merge-multiple: false
+      - name: Publish inline screenshot gallery
+        env:
+          GH_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SCREENSHOT_BRANCH: ci-screenshots
+          RUN_PATH: runs/${{ github.run_id }}/${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          src_root="${GITHUB_WORKSPACE}/visual-artifacts"
+          publish_root="${RUNNER_TEMP}/timui-screenshots-publish-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GH_REPO}.git"
+          raw_base_url="https://raw.githubusercontent.com/${GH_REPO}/${SCREENSHOT_BRANCH}/${RUN_PATH}"
+          blob_base_url="https://github.com/${GH_REPO}/blob/${SCREENSHOT_BRANCH}/${RUN_PATH}"
+          run_url="https://github.com/${GH_REPO}/actions/runs/${GITHUB_RUN_ID}"
+          branch_run_url="https://github.com/${GH_REPO}/tree/${SCREENSHOT_BRANCH}/${RUN_PATH}"
+
+          if git ls-remote --exit-code --heads "${remote_url}" "${SCREENSHOT_BRANCH}" >/dev/null 2>&1; then
+            git clone --depth=1 --branch "${SCREENSHOT_BRANCH}" "${remote_url}" "${publish_root}"
+          else
+            mkdir -p "${publish_root}"
+            git init -b "${SCREENSHOT_BRANCH}" "${publish_root}"
+            git -C "${publish_root}" remote add origin "${remote_url}"
+          fi
+
+          cd "${publish_root}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          mkdir -p "${RUN_PATH}/macos" "${RUN_PATH}/windows"
+
+          copy_named() {
+            local platform="$1"
+            local artifact="$2"
+            local name="$3"
+            local artifact_dir="${src_root}/${artifact}"
+            local match=""
+
+            if [ -d "${artifact_dir}" ]; then
+              match="$(find "${artifact_dir}" -type f -name "${name}" -print -quit)"
+            fi
+
+            if [ -n "${match}" ]; then
+              cp "${match}" "${RUN_PATH}/${platform}/${name}"
+            fi
+          }
+
+          copy_named macos hosted-visual-macos-iterm2 terminal-sanity.png
+          copy_named macos hosted-visual-macos-iterm2 iterm2-api-session.png
+          copy_named macos hosted-visual-macos-iterm2 iterm2-window-12s.png
+          copy_named macos hosted-visual-macos-iterm2 iterm2-region-12s.png
+          copy_named macos hosted-visual-macos-iterm2 iterm2-screen-12s.png
+          copy_named macos hosted-visual-macos-iterm2 iterm2-screen-24s.png
+          copy_named macos hosted-visual-macos-iterm2 evidence.md
+
+          copy_named windows hosted-visual-windows-terminal cmd-sanity.png
+          copy_named windows hosted-visual-windows-terminal windows-terminal-direct-sixel-12s.png
+          copy_named windows hosted-visual-windows-terminal windows-terminal-sixel-12s.png
+          copy_named windows hosted-visual-windows-terminal windows-terminal-sixel-24s.png
+          copy_named windows hosted-visual-windows-terminal evidence.md
+
+          cat > "${RUN_PATH}/README.md" <<EOF
+          # timui.h hosted visual evidence
+
+          - Workflow run: ${run_url}
+          - Attempt: ${GITHUB_RUN_ATTEMPT}
+          - Source ref: ${GITHUB_REF_NAME}
+          - Source SHA: ${GITHUB_SHA}
+          EOF
+
+          git add "${RUN_PATH}"
+          if ! git diff --cached --quiet; then
+            git commit -m "visual: publish run ${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+
+            pushed=0
+            for attempt in 1 2 3; do
+              if git push origin "HEAD:${SCREENSHOT_BRANCH}"; then
+                pushed=1
+                break
+              fi
+
+              if [ "${attempt}" -eq 3 ]; then
+                break
+              fi
+
+              git fetch --depth=1 origin "${SCREENSHOT_BRANCH}"
+              git rebase "origin/${SCREENSHOT_BRANCH}"
+            done
+
+            if [ "${pushed}" -ne 1 ]; then
+              echo "failed to publish screenshots to ${SCREENSHOT_BRANCH}" >&2
+              exit 1
+            fi
+          fi
+
+          add_image() {
+            local title="$1"
+            local platform="$2"
+            local name="$3"
+            local file="${RUN_PATH}/${platform}/${name}"
+            local raw_url="${raw_base_url}/${platform}/${name}"
+            local blob_url="${blob_base_url}/${platform}/${name}"
+
+            {
+              echo "### ${title}"
+              echo
+              if [ -f "${file}" ]; then
+                echo "[open file](${blob_url})"
+                echo
+                echo "<img width=\"900\" alt=\"${title}\" src=\"${raw_url}\">"
+              else
+                echo "_Missing: \`${name}\`_"
+              fi
+              echo
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          {
+            echo "## Hosted Visual Screenshot Gallery"
+            echo
+            echo "- Published branch path: [\`${SCREENSHOT_BRANCH}/${RUN_PATH}\`](${branch_run_url})"
+            echo "- Workflow run: [${GITHUB_RUN_ID}](${run_url})"
+            echo "- Full evidence bundles remain attached as job artifacts."
+            echo
+            echo "> The thumbnails below are loaded from the dedicated \`${SCREENSHOT_BRANCH}\` branch. If private-repository raw image rendering is blocked by GitHub, use the linked file or artifact bundle."
+            echo
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          add_image "macOS Terminal sanity" macos terminal-sanity.png
+          add_image "macOS iTerm2 API screenshot" macos iterm2-api-session.png
+          add_image "macOS iTerm2 window at 12s" macos iterm2-window-12s.png
+          add_image "macOS iTerm2 region at 12s" macos iterm2-region-12s.png
+          add_image "macOS full screen at 12s" macos iterm2-screen-12s.png
+          add_image "macOS full screen at 24s" macos iterm2-screen-24s.png
+          add_image "Windows cmd sanity" windows cmd-sanity.png
+          add_image "Windows direct Sixel at 12s" windows windows-terminal-direct-sixel-12s.png
+          add_image "Windows Terminal Sixel at 12s" windows windows-terminal-sixel-12s.png
+          add_image "Windows Terminal Sixel at 24s" windows windows-terminal-sixel-24s.png
