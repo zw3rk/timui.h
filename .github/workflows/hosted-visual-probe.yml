@@ -286,12 +286,17 @@ jobs:
     steps:
       - name: Download hosted visual evidence
         id: download-visual-evidence
-        uses: actions/download-artifact@v8
-        continue-on-error: true
-        with:
-          pattern: hosted-visual-*
-          path: visual-artifacts
-          merge-multiple: false
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p visual-artifacts
+          gh run download "${GITHUB_RUN_ID}" \
+            --repo "${GH_REPO}" \
+            --pattern "hosted-visual-*" \
+            --dir visual-artifacts
       - name: Publish inline screenshot gallery
         env:
           GH_REPO: ${{ github.repository }}
