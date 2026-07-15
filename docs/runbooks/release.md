@@ -49,7 +49,7 @@ The generated, ignored release payload is:
 - `release/releases/0.2.0/SHA256SUMS`
 
 Verify the manifest records the intended version, commit, and UTC date; verify
-`shasum -a 256 -c SHA256SUMS` passes inside the version directory.
+`sha256sum -c SHA256SUMS` passes inside the version directory.
 
 ## Tag and GitHub release
 

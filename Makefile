@@ -43,6 +43,7 @@ WWW_LICENSE := $(WWWDIR)/LICENSE
 VERSION ?= $(shell sed -n 's/^#define TIMUI_VERSION_STRING "\(.*\)"/\1/p' $(HEADER))
 RELEASE_COMMIT ?= $(shell git rev-parse --verify HEAD 2>/dev/null || printf unknown)
 RELEASE_DATE ?= $(shell date -u +%Y-%m-%d)
+SHA256SUM ?= sha256sum
 # The library is a unity build: src/timui.c #includes every src/timui_*.c
 # section. Any section edit must rebuild the test binary, examples, and tools,
 # so they all depend on the whole section set (not just src/timui.c).
@@ -351,9 +352,9 @@ check-phase1-5-docs: ## Verify Phase 1.5 evidence docs agree
 	@printf "$(C_GREEN)✓ Phase 1.5 evidence docs$(C_RESET)\n"
 
 check-release-checksum-tool: ## Verify release packaging uses nix-available checksum tooling
-	@command -v sha256sum >/dev/null || { printf "$(C_YELL)✗ release$(C_RESET) sha256sum is required\n"; exit 1; }
-	@! grep -nE '(^|[^[:alnum:]_])shasum([^[:alnum:]_]|$$)' Makefile docs/runbooks/release.md || { \
-	  printf "$(C_YELL)✗ release$(C_RESET) do not depend on shasum; use sha256sum\n"; exit 1; }
+	@command -v $(SHA256SUM) >/dev/null || { printf "$(C_YELL)✗ release$(C_RESET) $(SHA256SUM) is required\n"; exit 1; }
+	@! grep -nE '(^|[^[:alnum:]_])[s]hasum([^[:alnum:]_]|$$)' Makefile docs/runbooks/release.md || { \
+	  printf "$(C_YELL)✗ release$(C_RESET) do not depend on the Perl checksum tool; use sha256sum\n"; exit 1; }
 	@printf "$(C_GREEN)✓ release checksum tool$(C_RESET)\n"
 
 check-hosted-visual-windows: tools/ci/hosted_visual_windows.ps1 ## Verify hosted Windows probe emits ConPTY acceptance artifacts
@@ -849,7 +850,7 @@ release: amalgamate ## Build ignored versioned release artifacts (VERSION=x.y.z)
 	    printf "archive=timui.tar.gz\n"; \
 	  } > "$$out/MANIFEST"; \
 	  tar -czf "$$out/timui.tar.gz" -C "$(BLDDIR)/release-package" "timui-$(VERSION)"; \
-	  (cd "$$out" && shasum -a 256 timui.h timui.tar.gz MANIFEST > SHA256SUMS)
+	  (cd "$$out" && $(SHA256SUM) timui.h timui.tar.gz MANIFEST > SHA256SUMS)
 	@printf "$(C_GREEN)✓ wrote $(RELDIR)/releases/$(VERSION)$(C_RESET)\n"
 
 www: amalgamate ## Refresh static website assets under www/
@@ -904,7 +905,7 @@ release-check: release ## Verify the amalgamated release header and release arti
 	  test -s "$$out/SHA256SUMS"; \
 	  grep -q '^version=$(VERSION)$$' "$$out/MANIFEST"; \
 	  grep -q '^commit=$(RELEASE_COMMIT)$$' "$$out/MANIFEST"; \
-	  (cd "$$out" && shasum -a 256 -c SHA256SUMS >/dev/null)
+	  (cd "$$out" && $(SHA256SUM) -c SHA256SUMS >/dev/null)
 	@tmp="$(BLDDIR)/release_selftest.d"; rm -rf "$$tmp"; mkdir -p "$$tmp"; \
 	  install -m 0644 $(RELDIR)/timui.h "$$tmp/timui.h"; \
 	  printf '#define TIMUI_IMPLEMENTATION\n#include "timui.h"\nint main(void){return 0;}\n' > "$$tmp/release_selftest.c"; \
