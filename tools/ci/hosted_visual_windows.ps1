@@ -434,10 +434,6 @@ if ($Wt) {
   Get-Process WindowsTerminal,OpenConsole,cmd,bash -ErrorAction SilentlyContinue |
     Format-List * > (Join-Path $Out "terminal-processes-12s.txt") 2>&1
   Save-ScreenCapture "windows-terminal-sixel-12s.png"
-  Start-Sleep -Seconds 12
-  Get-Process WindowsTerminal,OpenConsole,cmd,bash -ErrorAction SilentlyContinue |
-    Format-List * > (Join-Path $Out "terminal-processes-24s.txt") 2>&1
-  Save-ScreenCapture "windows-terminal-sixel-24s.png"
 } else {
   Add-Evidence "- Windows Terminal: wt.exe unavailable"
 }
@@ -446,7 +442,7 @@ Add-Evidence ""
 Add-Evidence "## Outcome"
 Add-Evidence "- ConPTY smoke counts only if conpty-smoke.stdout contains PASS conpty smoke: observed TIMUI_CONPTY_SMOKE."
 Add-Evidence "- cmd-sanity.png only proves hosted Windows screenshot mechanics. It is not image-protocol evidence."
-Add-Evidence "- windows-terminal-direct-sixel-12s.png is a control: it proves whether hosted Windows Terminal renders Sixel at all, independent of timui."
+Add-Evidence "- The direct Sixel screenshot is a control: it proves whether hosted Windows Terminal renders Sixel at all, independent of timui."
 Add-Evidence "- Sixel visual evidence counts only if a windows-terminal-sixel-*.png visibly shows the live image smoke in Windows Terminal with visible image tiles, not placeholders."
 Add-Evidence "- The sixel typescript, direct.sixel, DCS counts, and DCS raster metrics are diagnostics only; they do not replace a visual screenshot or recording."
 
