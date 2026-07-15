@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "test.h"
+#include "test_pty.h"
 #include "timui.h"
 
 #include <errno.h>
@@ -54,22 +55,12 @@ static int pty_output_contains(int fd, const char *needle){
 /* Exercises the real termios path through a posix_openpt pty pair (no -lutil
  * needed): raw mode clears ICANON/ECHO; restore reproduces the original c_lflag. */
 TIMUI_TEST(test_termios_raw_and_restore){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     struct termios orig, after_raw, after_restore;
     TimuiTermios t;
-    char *name;
     int slave;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
-
-    name = ptsname(master);
-    TIMUI_CHECK(name != NULL);
-    if(!name){ close(master); return; }
-    slave = open(name, O_RDWR);
-    TIMUI_CHECK(slave >= 0);
-    if(slave < 0){ close(master); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
 
     TIMUI_CHECK(tcgetattr(slave, &orig) == 0);
 
@@ -93,18 +84,11 @@ TIMUI_TEST(test_termios_raw_and_restore){
  * failure seam on a real pty slave (tcgetattr succeeds, then the seam forces the
  * tcsetattr branch). */
 TIMUI_TEST(test_termios_setattr_failure){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     TimuiTermios t;
-    char *name;
     int slave;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
-    name = ptsname(master);
-    if(!name){ close(master); TIMUI_CHECK(0); return; }
-    slave = open(name, O_RDWR);
-    if(slave < 0){ close(master); TIMUI_CHECK(0); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
 
     timui_termios_fail_tcsetattr_for_test(1);            /* arm the seam */
     TIMUI_CHECK(timui_termios_enter(&t, slave) == TIMUI_ERR_OS);
@@ -217,20 +201,13 @@ TIMUI_TEST(test_restore_terminal_restores_input_fd_flags){
 }
 
 TIMUI_TEST(test_open_restores_previous_signal_handler){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     int slave, nullfd;
-    char *name;
     struct sigaction orig, custom, after;
     TimuiConfig cfg;
     Timui *ui = NULL;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
-    name = ptsname(master);
-    if(!name){ close(master); TIMUI_CHECK(0); return; }
-    slave = open(name, O_RDWR);
-    if(slave < 0){ close(master); TIMUI_CHECK(0); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
     nullfd = open("/dev/null", O_WRONLY);
     if(nullfd < 0){ close(slave); close(master); TIMUI_CHECK(0); return; }
 
@@ -257,20 +234,13 @@ TIMUI_TEST(test_open_restores_previous_signal_handler){
 }
 
 TIMUI_TEST(test_open_enters_screen_when_only_output_is_tty){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     int slave, input;
-    char *name;
     TimuiConfig cfg;
     Timui *ui = NULL;
     struct winsize ws;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
-    name = ptsname(master);
-    if(!name){ close(master); TIMUI_CHECK(0); return; }
-    slave = open(name, O_RDWR);
-    if(slave < 0){ close(master); TIMUI_CHECK(0); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
     input = open("/dev/null", O_RDONLY);
     if(input < 0){ close(slave); close(master); TIMUI_CHECK(0); return; }
     memset(&ws, 0, sizeof ws);
@@ -293,20 +263,13 @@ TIMUI_TEST(test_open_enters_screen_when_only_output_is_tty){
 }
 
 TIMUI_TEST(test_open_fails_when_raw_mode_fails){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     int slave, nullfd, orig_flags, after_flags;
-    char *name;
     TimuiConfig cfg;
     Timui *ui = NULL;
     TimuiResult r;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); TIMUI_CHECK(0); return; }
-    name = ptsname(master);
-    if(!name){ close(master); TIMUI_CHECK(0); return; }
-    slave = open(name, O_RDWR);
-    if(slave < 0){ close(master); TIMUI_CHECK(0); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
     nullfd = open("/dev/null", O_WRONLY);
     if(nullfd < 0){ close(slave); close(master); TIMUI_CHECK(0); return; }
 

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "test.h"
+#include "test_pty.h"
 #include "timui.h"
 
 #include <string.h>
@@ -1761,9 +1762,7 @@ TIMUI_TEST(test_pty_hello_exits_on_esc){
     pid_t pid;
 
     if(access("build/hello", X_OK) != 0) return;   /* V4: skip if the example isn't built */
-    master = posix_openpt(O_RDWR | O_NOCTTY);
-    if(master < 0){ return; }   /* skip if no pty support */
-    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); return; }
+    if(!timui_test_open_pty_master(__func__, &master)) return;
 
     pid = fork();
     if(pid < 0){ close(master); return; }
@@ -1836,10 +1835,9 @@ TIMUI_TEST(test_pty_hello_exits_on_esc){
  * pty (enters alt screen), pause()s; the parent sends SIGTERM and checks the
  * pty output for the alt-screen-exit sequence (the handler's screen_exit). */
 TIMUI_TEST(test_signal_restore){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     pid_t pid;
-    if(master < 0){ return; }   /* skip if no pty support */
-    if(grantpt(master) != 0 || unlockpt(master) != 0){ close(master); return; }
+    if(!timui_test_open_pty_master(__func__, &master)) return;
     pid = fork();
     if(pid < 0){ close(master); return; }
     if(pid == 0){

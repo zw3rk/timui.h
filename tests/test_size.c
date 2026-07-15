@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "test.h"
+#include "test_pty.h"
 #include "timui.h"
 
 #include <fcntl.h>
@@ -13,21 +14,12 @@
 #include <unistd.h>
 
 TIMUI_TEST(test_term_size_query){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     struct winsize ws;
     int w = 0, h = 0;
-    char *name;
     int slave;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    grantpt(master);
-    unlockpt(master);
-    name = ptsname(master);
-    TIMUI_CHECK(name != NULL);
-    slave = open(name, O_RDWR);
-    TIMUI_CHECK(slave >= 0);
-    if(slave < 0){ close(master); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
 
     ws.ws_col = 100; ws.ws_row = 40; ws.ws_xpixel = 0; ws.ws_ypixel = 0;
     TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
@@ -45,23 +37,13 @@ TIMUI_TEST(test_term_size_query){
 }
 
 TIMUI_TEST(test_open_falls_back_from_zero_term_size){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     struct winsize ws;
     TimuiConfig cfg;
     Timui *ui = NULL;
-    char *name;
     int slave, input;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    grantpt(master);
-    unlockpt(master);
-    name = ptsname(master);
-    TIMUI_CHECK(name != NULL);
-    if(!name){ close(master); return; }
-    slave = open(name, O_RDWR);
-    TIMUI_CHECK(slave >= 0);
-    if(slave < 0){ close(master); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
     input = open("/dev/null", O_RDONLY);
     TIMUI_CHECK(input >= 0);
     if(input < 0){ close(slave); close(master); return; }
@@ -90,21 +72,12 @@ TIMUI_TEST(test_term_size_not_a_tty){
 }
 
 TIMUI_TEST(test_term_size_pixels_query){
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master;
     struct winsize ws;
     int w = 0, h = 0, px_w = 0, px_h = 0;
-    char *name;
     int slave;
 
-    TIMUI_CHECK(master >= 0);
-    if(master < 0) return;
-    grantpt(master);
-    unlockpt(master);
-    name = ptsname(master);
-    TIMUI_CHECK(name != NULL);
-    slave = open(name, O_RDWR);
-    TIMUI_CHECK(slave >= 0);
-    if(slave < 0){ close(master); return; }
+    if(!timui_test_open_pty_pair(__func__, &master, &slave)) return;
 
     ws.ws_col = 100; ws.ws_row = 40; ws.ws_xpixel = 800; ws.ws_ypixel = 960;
     TIMUI_CHECK(ioctl(slave, TIOCSWINSZ, &ws) == 0);
