@@ -75,7 +75,11 @@ def expect_fail(name: str, proc):
 
 def main():
     repo = Path(__file__).resolve().parents[1]
-    commit = os.environ.get("TIMUI_TEST_COMMIT", "0123456789abcdef")
+    commit = os.environ.get("TIMUI_TEST_COMMIT")
+    if commit is None:
+        commit = "0123456789abcdef"
+    elif not commit.strip():
+        raise AssertionError("TIMUI_TEST_COMMIT must not be empty")
     tmp = Path(tempfile.mkdtemp(prefix="timui-conpty-evidence-"))
     try:
         valid = tmp / "valid"

@@ -362,7 +362,8 @@ check-hosted-visual-windows: tools/ci/hosted_visual_windows.ps1 ## Verify hosted
 	@printf "$(C_GREEN)✓ hosted Windows ConPTY evidence manifest$(C_RESET)\n"
 
 check-conpty-evidence-artifacts: tests/test_conpty_evidence.py tools/verify_conpty_evidence.py ## Verify hosted ConPTY artifact acceptance predicates
-	@TIMUI_TEST_COMMIT=$$(git rev-parse HEAD) python3 tests/test_conpty_evidence.py
+	@commit=$$(git rev-parse --verify HEAD 2>/dev/null || printf 0123456789abcdef); \
+	  TIMUI_TEST_COMMIT="$$commit" python3 tests/test_conpty_evidence.py
 	@printf "$(C_GREEN)✓ hosted ConPTY evidence artifact verifier$(C_RESET)\n"
 
 check-refinement-docs: ## Verify refinement contract docs exist and keep required vocabulary
